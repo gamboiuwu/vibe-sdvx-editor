@@ -564,12 +564,59 @@ class GameView {
         if (secEnd < tick || sec.y > tick + VT) continue;
 
         // ── Build flat segment list (clamped to visible range) ───────────────
+        // Bezier segments are pre-sampled into N micro-linear gSegs so that the
+        // perspective projection correctly follows the curve in chart space.
+        // The sampling uses the same parametric formulas as renderer.js:
+        //   tick(t) = t0*(1-t)³ + tCtrl·3t(1-t) + t1·t³   [bezier in tick axis]
+        //   v(t)    = v0·(1-t)²·(1+2t) + v1·t²·(3-2t)     [smoothstep in v]
+        // where tCtrl = t0 + (t1-t0)*curve
+        const BEZIER_STEPS = 10; // samples per bezier segment — smooth at all hispeeds
         const gSegs = [];
         for (let pi = 0; pi < sec.points.length - 1; pi++) {
           const p0 = sec.points[pi], p1 = sec.points[pi + 1];
           const t0 = sec.y + p0.ry, t1 = sec.y + p1.ry;
           const dt0g = t0 - tick, dt1g = t1 - tick;
           if (dt1g < 0 || dt0g > VT) continue;
+
+          const isSlam = ChartData.isPointSlam(p0, p1);
+          const interp = isSlam ? 'linear' : (p0.interp ?? 'linear');
+
+          if (interp === 'bezier') {
+            // ── Sample bezier into micro-linear gSegs ───────────────────────
+            const curve  = p0.curve ?? 0.5;
+            const tCtrl  = t0 + (t1 - t0) * curve;
+            const bzTick = (t) => t0*(1-t)**3 + tCtrl*3*t*(1-t) + t1*t**3;
+            const bzV    = (t) => p0.v*(1-t)**2*(1+2*t) + p1.v*t**2*(3-2*t);
+            let prevDt = null, prevV = null;
+            for (let si = 0; si <= BEZIER_STEPS; si++) {
+              const t  = si / BEZIER_STEPS;
+              const dt = bzTick(t) - tick;
+              const v  = bzV(t);
+              if (prevDt !== null) {
+                const cDt0 = Math.max(prevDt, 0), cDt1 = Math.min(dt, VT);
+                if (cDt0 <= cDt1) {
+                  const span = dt - prevDt;
+                  const r0   = span > 0 ? (cDt0 - prevDt) / span : 0;
+                  const r1   = span > 0 ? (cDt1 - prevDt) / span : 1;
+                  const mv0  = prevV + (v - prevV) * r0;
+                  const mv1  = prevV + (v - prevV) * r1;
+                  const sy0  = this._screenY(cDt0, p);
+                  const sy1  = this._screenY(cDt1, p);
+                  const hw0  = this._halfW(sy0, p) * LASER_FRAC * 2;
+                  const hw1  = this._halfW(sy1, p) * LASER_FRAC * 2;
+                  gSegs.push({ sy0, sy1,
+                    cx0: this._laserX(mv0, sy0, p, sec.wide),
+                    cx1: this._laserX(mv1, sy1, p, sec.wide),
+                    hw0, hw1, v0: mv0, v1: mv1,
+                    wide: sec.wide, isSlam: false });
+                }
+              }
+              prevDt = dt; prevV = v;
+            }
+            continue;
+          }
+
+          // ── Linear / slam (existing path) ────────────────────────────────
           const cdt0 = Math.max(dt0g, 0), cdt1 = Math.min(dt1g, VT);
           const r0   = t1 === t0 ? 0 : (cdt0 - dt0g) / (dt1g - dt0g);
           const r1   = t1 === t0 ? 1 : (cdt1 - dt0g) / (dt1g - dt0g);
@@ -581,11 +628,9 @@ class GameView {
           const hw1  = this._halfW(sy1, p) * LASER_FRAC * 2;
           const cx0  = this._laserX(v0, sy0, p, sec.wide);
           const cx1  = this._laserX(v1, sy1, p, sec.wide);
-          // Use ChartData.isPointSlam: explicit .slam flag wins; heuristic only for
-          // flagless points (drag-tool lasers or externally-authored KSON).
           // v0/v1/wide stored so slam rendering can reproject at any y level.
           gSegs.push({ sy0, sy1, cx0, cx1, hw0, hw1, v0, v1, wide: sec.wide,
-                       isSlam: ChartData.isPointSlam(p0, p1) });
+                       isSlam });
         }
         if (!gSegs.length) continue;
 

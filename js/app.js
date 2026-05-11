@@ -3273,7 +3273,13 @@ function onMouseDown(e) {
     {
       const hit = renderer?.getBezierHandleAt(e.offsetX, e.offsetY, side);
       if (hit) {
-        _curveDrag = { sec: hit.sec, ptIndex: hit.ptIndex, t0: hit.t0, t1: hit.t1 };
+        const h0 = getHit(e);
+        _curveDrag = {
+          sec: hit.sec, ptIndex: hit.ptIndex, t0: hit.t0, t1: hit.t1,
+          // For Shift fine-mode: anchor the drag origin
+          startTick:    h0.tick,
+          curveAtStart: hit.sec.points[hit.ptIndex].curve ?? 0.5,
+        };
         if (renderer) renderer.activeBezierHandle = { sec: hit.sec, ptIndex: hit.ptIndex };
         const canvas = document.getElementById('chart-canvas');
         if (canvas) canvas.style.cursor = 'grabbing';
@@ -3331,11 +3337,18 @@ function onMouseMove(e) {
   // ── Bezier handle drag ───────────────────────────────────────────────────
   if (_curveDrag) {
     const h = getHit(e);
-    const { sec, ptIndex, t0, t1 } = _curveDrag;
+    const { sec, ptIndex, t0, t1, startTick, curveAtStart } = _curveDrag;
     const span = t1 - t0;
     if (span > 0) {
-      const rawCurve = (h.tick - t0) / span;
-      sec.points[ptIndex].curve = Math.max(0.01, Math.min(0.99, rawCurve));
+      if (e.shiftKey) {
+        // Shift held → fine mode: 1/8 sensitivity, anchored to drag origin.
+        // The mouse must travel 8× as far to move the handle the same distance.
+        const delta = (h.tick - startTick) / span;
+        sec.points[ptIndex].curve = Math.max(0.01, Math.min(0.99, curveAtStart + delta * 0.125));
+      } else {
+        const rawCurve = (h.tick - t0) / span;
+        sec.points[ptIndex].curve = Math.max(0.01, Math.min(0.99, rawCurve));
+      }
     }
     const canvas = document.getElementById('chart-canvas');
     if (canvas) canvas.style.cursor = 'grabbing';
