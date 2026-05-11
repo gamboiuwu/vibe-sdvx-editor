@@ -4625,6 +4625,12 @@ function applyPreferences() {
   MAX_UNDO = prefs.historyDepth;
   highQualityRendering = prefs.highQuality !== false;
 
+  // Keep the delay DOM inputs in sync so the prefs panel always shows the live values
+  const adEl = document.getElementById('pref-audio-delay');
+  const vdEl = document.getElementById('pref-video-delay');
+  if (adEl && document.activeElement !== adEl) adEl.value = prefs.audioDelay ?? 0;
+  if (vdEl && document.activeElement !== vdEl) vdEl.value = prefs.videoDelay ?? 0;
+
   // Slam threshold (1–16 ticks)
   LASER_SLAM_TICKS = prefs.slamThreshold ?? 6;
 
@@ -5493,10 +5499,15 @@ window.addEventListener('DOMContentLoaded', () => {
   function _save() {
     const ad = +audInput.value;
     const vd = +vidInput.value;
+    // Write directly into prefs and persist — don't rely on DOM event chain
+    prefs.audioDelay = ad;
+    prefs.videoDelay = vd;
+    try { localStorage.setItem('vibe-editr-prefs', JSON.stringify(prefs)); } catch(_) {}
+    // Also sync the prefs-panel inputs so they show the new values if opened
     const adEl = document.getElementById('pref-audio-delay');
     const vdEl = document.getElementById('pref-video-delay');
-    if (adEl) { adEl.value = ad; adEl.dispatchEvent(new Event('input')); }
-    if (vdEl) { vdEl.value = vd; vdEl.dispatchEvent(new Event('input')); }
+    if (adEl) adEl.value = ad;
+    if (vdEl) vdEl.value = vd;
     _close();
   }
 
