@@ -1,0 +1,1118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>vibecoded-sdvx-clone</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- Top menu bar -->
+<header id="topbar">
+  <div id="topbar-left">
+    <span class="app-title">SDVX Editor</span>
+
+    <!-- File menu -->
+    <div class="menu-group">
+      <button class="menu-btn" data-i18n="menu.file">File ▾</button>
+      <div class="menu-dropdown">
+        <button class="menu-item" id="btn-new">New Chart</button>
+        <button class="menu-item" id="btn-open-folder">Open Folder…</button>
+        <div class="menu-sep"></div>
+        <button class="menu-item" id="btn-open-ksh">Open .ksh…</button>
+        <button class="menu-item" id="btn-open-kson">Open .kson…</button>
+        <div class="menu-sep"></div>
+        <button class="menu-item accent" id="btn-export-ksh">Export KSH</button>
+        <button class="menu-item accent" id="btn-export-kson">Export KSON</button>
+        <div class="menu-sep"></div>
+        <button class="menu-item" id="btn-recover-autosave-file">Recover Autosave…</button>
+      </div>
+    </div>
+
+    <!-- Edit menu -->
+    <div class="menu-group">
+      <button class="menu-btn" data-i18n="menu.edit">Edit ▾</button>
+      <div class="menu-dropdown">
+        <button class="menu-item" id="btn-undo">Undo  <kbd>Ctrl+Z</kbd></button>
+        <button class="menu-item" id="btn-redo">Redo  <kbd>Ctrl+Y</kbd></button>
+        <div class="menu-sep"></div>
+        <button class="menu-item" id="btn-cut">Cut  <kbd>Ctrl+X</kbd></button>
+        <button class="menu-item" id="btn-copy">Copy  <kbd>Ctrl+C</kbd></button>
+        <button class="menu-item" id="btn-paste">Paste  <kbd>Ctrl+V</kbd></button>
+        <div class="menu-sep"></div>
+        <div class="menu-item menu-has-sub">Mirror ▸
+          <div class="menu-sub">
+            <button class="menu-item" id="btn-mirror-all">Mirror All</button>
+            <button class="menu-item" id="btn-mirror-bt">Mirror BT</button>
+            <button class="menu-item" id="btn-mirror-fx">Mirror FX</button>
+            <button class="menu-item" id="btn-mirror-vol">Mirror VOL</button>
+          </div>
+        </div>
+        <div class="menu-item menu-has-sub">Adjust Speed ▸
+          <div class="menu-sub">
+            <button class="menu-item" id="btn-speed-half">½× slower (expand ticks)</button>
+            <button class="menu-item" id="btn-speed-double">2× faster (compress ticks)</button>
+          </div>
+        </div>
+        <div class="menu-sep"></div>
+        <button class="menu-item danger-item" id="btn-ripple-delete">Delete &amp; Shift  <kbd>Shift+Del</kbd></button>
+      </div>
+    </div>
+
+    <!-- Chart menu -->
+    <div class="menu-group">
+      <button class="menu-btn" data-i18n="menu.chart">Chart ▾</button>
+      <div class="menu-dropdown">
+        <button class="menu-item accent" id="btn-song-meta">Song Metadata…</button>
+        <div class="menu-sep"></div>
+        <button class="menu-item" id="btn-add-bpm">Add BPM Change…</button>
+        <button class="menu-item" id="btn-add-timesig">Add Time Sig…</button>
+        <div class="menu-sep"></div>
+        <button class="menu-item" id="btn-load-audio">Load Audio File…</button>
+        <div class="menu-sep"></div>
+        <label class="menu-item menu-label">Cols/Measure:
+          <input type="number" id="meas-per-col" min="1" max="16" value="4">
+        </label>
+      </div>
+    </div>
+
+    <!-- View menu -->
+    <div class="menu-group">
+      <button class="menu-btn" data-i18n="menu.view">View ▾</button>
+      <div class="menu-dropdown">
+        <button class="menu-item view-mitem active" data-view="edit" id="btn-view-edit">✦ Edit View</button>
+        <button class="menu-item view-mitem" data-view="game" id="btn-view-game">▶ Game Preview</button>
+        <button class="menu-item view-mitem" data-view="split" id="btn-view-split">⧉ Split View</button>
+        <div class="menu-sep"></div>
+        <label class="menu-item menu-label">HiSpeed:
+          <input type="range" id="chart-speed" min="0.2" max="10" step="0.05" value="1">
+          <span id="chart-speed-label">1.00×</span>
+        </label>
+        <div class="menu-sep"></div>
+        <label class="menu-item menu-label">Zoom:
+          <input type="range" id="zoom-slider" min="20" max="500" value="100" step="5">
+          <span id="zoom-label">100%</span>
+        </label>
+        <label class="menu-item menu-check">
+          <input type="checkbox" id="laser-wide-view"> 2× Wide Lasers
+        </label>
+        <div class="menu-sep"></div>
+        <label class="menu-item menu-label">Beats/Lane:
+          <input type="range" id="beats-per-lane" min="1" max="32" step="1" value="16">
+          <span id="beats-per-lane-label">16 beats</span>
+        </label>
+        <label class="menu-item menu-label">Snap:
+          <select id="snap-select">
+            <option value="48">1/4</option>
+            <option value="24">1/8</option>
+            <option value="16">1/12</option>
+            <option value="12" selected>1/16</option>
+            <option value="8">1/24</option>
+            <option value="6">1/32</option>
+            <option value="4">1/48</option>
+            <option value="3">1/64</option>
+            <option value="2">1/96</option>
+            <option value="1.5">1/128</option>
+            <option value="1">1/192</option>
+            <option value="0.75">1/256</option>
+            <option value="0.5">1/384</option>
+            <option value="0.375">1/512</option>
+            <option value="0">Free</option>
+          </select>
+        </label>
+      </div>
+    </div>
+
+    <!-- Settings menu (per-chart laser config + quick volume) -->
+    <div class="menu-group">
+      <button class="menu-btn" data-i18n="menu.settings">Settings ▾</button>
+      <div class="menu-dropdown">
+        <div class="menu-section-title" data-i18n="settings.laser">Per-Chart Laser</div>
+        <label class="menu-item menu-label"><span data-i18n="settings.filter">Laser Filter:</span>
+          <select id="laser-filter">
+            <option value="peak">Peak EQ</option>
+            <option value="lpf1">Low-Pass</option>
+            <option value="hpf1">High-Pass</option>
+            <option value="bitc">BitCrusher</option>
+          </select>
+        </label>
+        <label class="menu-item menu-label"><span data-i18n="settings.filterGain">Filter Gain:</span>
+          <input type="number" id="laser-gain" value="50" min="0" max="100" style="width:50px">
+        </label>
+        <label class="menu-item menu-check">
+          <input type="checkbox" id="laser-wide"> <span data-i18n="settings.wideLaser">2× Wide Lasers</span>
+        </label>
+        <div class="menu-sep"></div>
+        <div class="menu-section-title" data-i18n="settings.quickVolume">Quick Volume</div>
+        <label class="menu-item menu-label"><span data-i18n="audio.master">Master:</span>
+          <input type="range" id="vol-master" min="0" max="1" step="0.01" value="1">
+          <span id="vol-master-label" style="min-width:32px">100%</span>
+        </label>
+        <label class="menu-item menu-label"><span data-i18n="audio.music">Music:</span>
+          <input type="range" id="vol-music" min="0" max="1" step="0.01" value="1">
+          <span id="vol-music-label" style="min-width:32px">100%</span>
+        </label>
+        <label class="menu-item menu-label"><span data-i18n="audio.slam">Slam:</span>
+          <input type="range" id="vol-slam" min="0" max="1" step="0.01" value="0.5">
+          <span id="vol-slam-label" style="min-width:32px">50%</span>
+        </label>
+        <label class="menu-item menu-label"><span data-i18n="audio.tick">Tick:</span>
+          <input type="range" id="vol-tick" min="0" max="1" step="0.01" value="0.5">
+          <span id="vol-tick-label" style="min-width:32px">50%</span>
+        </label>
+        <div class="menu-sep"></div>
+        <button class="menu-item" id="btn-preferences" data-i18n="menu.preferences">System Preferences…</button>
+        <!-- Legacy hidden checkbox kept for backwards compatibility -->
+        <input type="checkbox" id="setting-tick" style="display:none">
+      </div>
+    </div>
+
+    <!-- Window menu -->
+    <div class="menu-group">
+      <button class="menu-btn" data-i18n="menu.window">Window ▾</button>
+      <div class="menu-dropdown">
+        <button class="menu-item" id="btn-history-panel">History &amp; Timeline</button>
+        <button class="menu-item" id="btn-split-opts">Split View Options</button>
+        <div class="menu-sep"></div>
+        <button class="menu-item" id="btn-gameplay-panel">🎮 Gameplay…</button>
+        <button class="menu-item accent" id="btn-tools-window">🔧 Tools Hub…</button>
+        <button class="menu-item" id="btn-radar-window">⬡ Pattern Radar…</button>
+        <button class="menu-item" id="btn-handsim-window">✋ Hand Simulator…</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="topbar-right">
+    <!-- Always-visible view/play buttons -->
+    <button class="topbar-view-btn" data-view="edit" title="Edit View"     data-i18n="view.edit">✦ Edit</button>
+    <button class="topbar-view-btn" data-view="split" title="Split View"   data-i18n="view.split">⧉ Split</button>
+    <button class="topbar-view-btn" data-view="game" title="Game Preview"  data-i18n="view.preview">▶ Preview</button>
+    <button class="topbar-play-btn" id="btn-play-top" title="Play/Stop [Space]" data-i18n="tool.play">▶ Play</button>
+    <span class="topbar-sep"></span>
+    <!-- Audio status -->
+    <span id="audio-status" style="font-size:11px;color:#6668a0">No audio</span>
+    <!-- Error badge -->
+    <button id="error-badge" class="error-badge" title="View error log">Errors: 0</button>
+    <!-- Donate button -->
+    <button id="btn-donate" class="donate-corner-btn" title="Support vibe-editr ♥">☕ Support</button>
+  </div>
+</header>
+
+<!-- Tab bar -->
+<div id="tab-bar"></div>
+
+<!-- Tool palette -->
+<div id="toolbar">
+  <button class="tool-btn active" data-tool="select" title="Select [1]"  data-i18n="tool.select">⊹ Select</button>
+  <button class="tool-btn" data-tool="bt"      title="BT Note [2]"       data-i18n="tool.bt">■ BT</button>
+  <button class="tool-btn" data-tool="fx"      title="FX Note [3]"       data-i18n="tool.fx">■ FX</button>
+  <button class="tool-btn" data-tool="laser-l" title="Left Laser [4]"    data-i18n="tool.laserL">~ L-Laser</button>
+  <button class="tool-btn" data-tool="laser-r" title="Right Laser [5]"   data-i18n="tool.laserR">~ R-Laser</button>
+  <button class="tool-btn" data-tool="erase"   title="Erase [E]"         data-i18n="tool.erase">⌫ Erase</button>
+  <span class="tool-sep"></span>
+  <button class="tool-btn" data-tool="cam-event"  title="Camera Event [6]"  style="color:#ff8844">&#x27F3; Cam</button>
+  <button class="tool-btn" data-tool="stop-event" title="Stop Event [7]"    style="color:#ff4466">&#x23F9; Stop</button>
+  <span class="tool-sep"></span>
+  <button class="tool-btn play-btn" id="btn-play" title="Play/Stop [Space]" data-i18n="tool.play">▶ Play</button>
+  <span id="play-region-hint" style="font-size:10px;color:#6668a0;margin-left:4px"></span>
+  <span class="tool-sep"></span>
+  <span style="font-size:10px;color:#5558a0;padding:0 4px">Middle-drag: Select region &nbsp;|&nbsp; Ctrl+RClick: Context menu &nbsp;|&nbsp; Esc: Clear selection</span>
+</div>
+
+<!-- Camera event sub-panel (shown when cam-event tool is active) -->
+<div id="cam-subpanel">
+  <span>Type:</span>
+  <select id="cam-type-sel" style="background:#1a1a3a; color:#fff; border:1px solid #445; border-radius:3px; padding:2px 4px;">
+    <option value="zoom_top">Zoom Top</option>
+    <option value="zoom_bottom" selected>Zoom Bottom</option>
+    <option value="zoom_side">Zoom Side</option>
+    <option value="tilt">Tilt</option>
+    <option value="center_split">Center Split</option>
+    <option value="lane_toggle">Lane Toggle</option>
+  </select>
+  <span>Value:</span>
+  <input id="cam-val-inp" type="number" value="100" min="-300" max="300" step="10" style="width:60px; background:#1a1a3a; color:#fff; border:1px solid #445; border-radius:3px; padding:2px 4px;">
+</div>
+
+<!-- Main 3-panel layout -->
+<div id="main">
+
+  <!-- LEFT: Metadata -->
+  <aside id="panel-meta">
+    <h3>Song Metadata</h3>
+    <div class="form-group">
+      <label>Title</label>
+      <input type="text" id="meta-title" placeholder="Song Title">
+    </div>
+    <div class="form-group">
+      <label>Artist</label>
+      <input type="text" id="meta-artist" placeholder="Artist Name">
+    </div>
+    <div class="form-group">
+      <label>Charter (Effect)</label>
+      <input type="text" id="meta-effect" placeholder="Charter Name">
+    </div>
+    <div class="form-group">
+      <label>Illustrator</label>
+      <input type="text" id="meta-illust" placeholder="Jacket Artist">
+    </div>
+    <div class="form-group">
+      <label>Difficulty</label>
+      <select id="meta-diff">
+        <option value="light">LIGHT</option>
+        <option value="challenge">CHALLENGE</option>
+        <option value="extended">EXTENDED</option>
+        <option value="infinite" selected>INFINITE</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Level (1–20)</label>
+      <input type="number" id="meta-level" min="1" max="20" value="10">
+    </div>
+    <div class="form-group">
+      <label>BPM</label>
+      <input type="number" id="meta-bpm" min="1" max="999" step="0.01" value="180">
+    </div>
+    <div class="form-group">
+      <label>Music File (.ogg)</label>
+      <input type="text" id="meta-music" placeholder="music.ogg">
+      <input type="file" id="music-file-picker" accept=".ogg,.mp3,.wav" style="display:none">
+      <input type="file" id="audio-import-input" accept=".ogg,.flac,.wav,.mp3,.aac,.m4a" style="display:none">
+      <button class="small-btn" id="btn-pick-music">Browse</button>
+      <button class="small-btn" id="btn-import-audio" title="Import audio (auto-converts to OGG if needed)">📂 Import</button>
+    </div>
+    <div class="form-group">
+      <label>Music Offset (ms)</label>
+      <input type="number" id="meta-offset" value="0">
+      <button class="small-btn" id="btn-calibrate" title="Open Calibration Window to set Beat 1.0 offset">⎍ Calibrate</button>
+    </div>
+    <div class="form-group">
+      <label>Preview Start (ms)</label>
+      <input type="number" id="meta-preview-start" value="0">
+    </div>
+    <div class="form-group">
+      <label>Preview Duration (ms)</label>
+      <input type="number" id="meta-preview-dur" value="15000">
+    </div>
+    <div class="form-group">
+      <label>Jacket Image</label>
+      <input type="text" id="meta-jacket" placeholder="jacket.png">
+      <input type="file" id="jacket-file-picker" accept="image/*" style="display:none">
+      <button class="small-btn" id="btn-pick-jacket">Browse</button>
+    </div>
+    <div id="jacket-preview-wrap">
+      <img id="jacket-preview" src="" alt="" style="display:none">
+    </div>
+    <div class="form-group">
+      <label>Background</label>
+      <input type="text" id="meta-bg" placeholder="bg.png or 0–19">
+    </div>
+    <div class="form-group">
+      <label>BG Layer</label>
+      <input type="text" id="meta-layer" placeholder="layer.png">
+    </div>
+    <div class="form-group">
+      <label>Measures (auto)</label>
+      <span id="meta-measures-display" style="font-size:12px;color:#6668a0">64</span>
+    </div>
+
+    <h3 style="margin-top:18px">Camera</h3>
+    <div class="form-group">
+      <label>Tilt Type</label>
+      <select id="cam-tilt">
+        <option value="normal">Normal</option>
+        <option value="bigger">Bigger</option>
+        <option value="biggest">Biggest</option>
+        <option value="keep_add">Keep Add</option>
+        <option value="zero">Zero</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Zoom Top</label>
+      <input type="range" id="cam-zoom-top" min="-300" max="300" value="0">
+    </div>
+    <div class="form-group">
+      <label>Zoom Bottom</label>
+      <input type="range" id="cam-zoom-bot" min="-300" max="300" value="0">
+    </div>
+    <div class="form-group">
+      <label>Rotation (°)</label>
+      <input type="number" id="cam-rot" value="0" step="1" min="-360" max="360">
+    </div>
+    <div class="form-group">
+      <label>Center Split</label>
+      <input type="range" id="cam-split" min="-100" max="100" value="0">
+    </div>
+  </aside>
+
+  <!-- CENTER: Chart canvas -->
+  <section id="panel-chart">
+    <div id="canvas-wrap">
+      <canvas id="chart-canvas"></canvas>
+    </div>
+    <div id="status-bar">
+      <span id="status-tick">Tick: 0</span>
+      <span id="status-measure">Measure: 1</span>
+      <span id="status-beat">Beat: 1</span>
+      <span id="status-tool">Tool: Select</span>
+      <span id="status-sel" style="color:#00cfff"></span>
+      <span class="status-hint">Press <kbd>C</kbd> for context menu</span>
+    </div>
+  </section>
+
+  <!-- RIGHT: FX Chain + Events + Shortcuts -->
+  <aside id="panel-fx">
+    <h3>FX Chain</h3>
+
+    <div class="fx-lane-section">
+      <div class="fx-lane-label lane-fx-l">FX-L</div>
+      <div id="fx-chain-l" class="fx-chain"></div>
+      <button class="add-fx-btn" data-lane="l">+ Add Effect</button>
+    </div>
+
+    <div class="fx-lane-section" style="margin-top:12px">
+      <div class="fx-lane-label lane-fx-r">FX-R</div>
+      <div id="fx-chain-r" class="fx-chain"></div>
+      <button class="add-fx-btn" data-lane="r">+ Add Effect</button>
+    </div>
+
+    <h3 style="margin-top:18px">Add FX</h3>
+    <select id="fx-type-select">
+      <option value="retrigger">Retrigger</option>
+      <option value="gate">Gate</option>
+      <option value="flanger">Flanger</option>
+      <option value="pitchshift">PitchShift</option>
+      <option value="bitcrusher">BitCrusher</option>
+      <option value="phaser">Phaser</option>
+      <option value="wobble">Wobble</option>
+      <option value="tapestop">TapeStop</option>
+      <option value="echo">Echo</option>
+      <option value="sidechain">SideChain</option>
+    </select>
+
+    <h3 style="margin-top:18px">BPM Events</h3>
+    <div id="bpm-event-list"></div>
+
+    <h3 style="margin-top:12px">Time Sig Events</h3>
+    <div id="timesig-event-list"></div>
+
+    <h3 style="margin-top:12px">Camera Events</h3>
+    <div id="camera-event-list" style="font-size:10px; max-height:120px; overflow-y:auto;"></div>
+
+    <h3 style="margin-top:12px">Stop Events</h3>
+    <div id="stop-event-list" style="font-size:10px; max-height:60px; overflow-y:auto;"></div>
+
+    <h3 style="margin-top:18px">Keyboard Shortcuts</h3>
+    <div class="shortcuts">
+      <div class="shortcut-group-label">Tools</div>
+      <div><kbd>1</kbd> Select</div>
+      <div><kbd>2</kbd> BT Note</div>
+      <div><kbd>3</kbd> FX Note</div>
+      <div><kbd>4</kbd> Left Laser</div>
+      <div><kbd>5</kbd> Right Laser</div>
+      <div><kbd>E</kbd> Erase</div>
+      <div><kbd>Tab</kbd> Cycle tools</div>
+      <div class="shortcut-group-label">Playback</div>
+      <div><kbd>Space</kbd> Play / Stop</div>
+      <div><kbd>Space</kbd> Play selection (if selected)</div>
+      <div class="shortcut-group-label">Selection</div>
+      <div><kbd>MMB drag</kbd> Select region</div>
+      <div><kbd>Ctrl+C</kbd> Copy selection</div>
+      <div><kbd>Ctrl+X</kbd> Cut selection</div>
+      <div><kbd>Ctrl+V</kbd> Paste</div>
+      <div><kbd>Shift+Del</kbd> Delete &amp; shift (ripple delete)</div>
+      <div><kbd>Esc</kbd> Clear selection</div>
+      <div><kbd>C</kbd> Context menu (anywhere)</div>
+      <div><kbd>H</kbd> History panel</div>
+      <div class="shortcut-group-label">Navigation</div>
+      <div><kbd>Home</kbd> Go to start</div>
+      <div><kbd>End</kbd> Go to end</div>
+      <div><kbd>← →</kbd> Scroll by column</div>
+      <div><kbd>Ctrl+←→</kbd> Scroll multi-col</div>
+      <div><kbd>PgUp/Dn</kbd> Jump pages</div>
+      <div><kbd>Scroll</kbd> Scroll chart</div>
+      <div><kbd>Ctrl+Scroll</kbd> Zoom</div>
+      <div class="shortcut-group-label">Snap</div>
+      <div><kbd>[</kbd> Finer snap</div>
+      <div><kbd>]</kbd> Coarser snap</div>
+      <div class="shortcut-group-label">Edit</div>
+      <div><kbd>Ctrl+Z</kbd> Undo</div>
+      <div><kbd>Ctrl+Y</kbd> Redo</div>
+      <div><kbd>Ctrl+S</kbd> Export KSH</div>
+    </div>
+  </aside>
+
+</div>
+
+<!-- Game view -->
+<div id="game-wrap">
+  <!-- Preview projection controls — shown when game/split view is active -->
+  <div id="preview-controls">
+    <div class="pvc-section">
+      <span class="pvc-label" data-i18n="preview.projection">Projection</span>
+      <div class="pvc-proj-btns">
+        <button class="pvc-proj-btn active" data-proj="ortho"  title="Flat orthographic editing view"               data-i18n="preview.ortho">Ortho</button>
+        <button class="pvc-proj-btn"        data-proj="sdvx"   title="SDVX arcade perspective (default)"            data-i18n="preview.sdvx">SDVX</button>
+        <button class="pvc-proj-btn"        data-proj="hybrid" title="Reduced-distortion perspective for readability" data-i18n="preview.hybrid">Hybrid</button>
+      </div>
+    </div>
+    <div class="pvc-section">
+      <span class="pvc-label" data-i18n="preview.perspective">Perspective</span>
+      <input type="range" id="pvc-intensity" min="0" max="100" step="1" value="65" title="Field of view / projection strength">
+      <span id="pvc-intensity-label" class="pvc-val">65</span>
+    </div>
+    <div class="pvc-section">
+      <span class="pvc-label" data-i18n="preview.hispeed">HiSpeed</span>
+      <input type="range" id="pvc-hispeed" min="0.2" max="10" step="0.1" value="1" title="Visual scroll speed">
+      <span id="pvc-hispeed-label" class="pvc-val">1.0×</span>
+    </div>
+    <div class="pvc-section">
+      <span class="pvc-label" data-i18n="preview.btWidth">BT Width</span>
+      <input type="range" id="pvc-bt-width" min="0.3" max="1.6" step="0.05" value="1" title="Visual BT note thickness">
+      <span id="pvc-bt-width-label" class="pvc-val">1.0×</span>
+    </div>
+    <div class="pvc-section">
+      <span class="pvc-label" title="Drag the judgment line up/down, or adjust here">Judge Y</span>
+      <input type="range" id="pvc-judge-y" min="0.40" max="0.90" step="0.01" value="0.73" title="Judgment line vertical position (drag in game view to adjust)">
+      <span id="pvc-judge-y-label" class="pvc-val">73%</span>
+    </div>
+    <div class="pvc-section" style="border-top:1px solid #ffffff18;padding-top:6px;margin-top:2px">
+      <button id="pvc-save-config" title="Save current Projection, HiSpeed, BT Width and Judge Y as defaults" style="flex:1;background:#1e3a5f;color:#88c8ff;border:1px solid #3a6aaa;border-radius:5px;padding:4px 8px;font-size:10px;cursor:pointer;letter-spacing:0.04em">💾 Save Config</button>
+      <span id="pvc-save-config-label" class="pvc-val" style="color:#66bb66;opacity:0;transition:opacity 0.4s">Saved!</span>
+    </div>
+  </div>
+  <canvas id="game-canvas"></canvas>
+  <!-- Seek / scrub bar -->
+  <div id="game-seekbar" title="Click or drag to seek">
+    <div id="game-seekbar-track">
+      <div id="game-seekbar-fill"></div>
+      <div id="game-seekbar-thumb"></div>
+    </div>
+    <div id="game-seekbar-time">0:00 / 0:00</div>
+  </div>
+  <!-- Edit overlay shown inside game preview when edit mode active -->
+  <div id="game-edit-overlay" style="display:none">
+    <div id="game-edit-toolbar">
+      <span class="geo-label">EDIT MODE</span>
+      <button class="geo-tool active" data-tool="bt">■ BT</button>
+      <button class="geo-tool" data-tool="fx">■ FX</button>
+      <button class="geo-tool" data-tool="erase">⌫ Erase</button>
+      <span class="geo-sep"></span>
+      <button class="geo-tool" id="geo-exit">✕ Exit Edit</button>
+    </div>
+  </div>
+</div>
+
+<!-- Hidden file inputs -->
+<input type="file" id="file-input" accept=".ksh,.kson" style="display:none">
+<input type="file" id="folder-input" webkitdirectory multiple style="display:none">
+<input type="file" id="audio-file-input" accept=".ogg,.mp3,.wav" style="display:none">
+
+<!-- Modal: Add BPM event -->
+<div id="modal-bpm" class="modal" style="display:none">
+  <div class="modal-box">
+    <h3>Add BPM Change</h3>
+    <div class="form-group"><label>Measure</label><input type="number" id="bpm-ev-measure" min="1" value="1"></div>
+    <div class="form-group"><label>Beat</label><input type="number" id="bpm-ev-beat" min="1" value="1"></div>
+    <div class="form-group"><label>BPM</label><input type="number" id="bpm-ev-value" min="1" max="999" step="0.01" value="180"></div>
+    <div class="modal-buttons">
+      <button id="bpm-ev-ok">Add</button>
+      <button id="bpm-ev-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Add Time Sig event -->
+<div id="modal-timesig" class="modal" style="display:none">
+  <div class="modal-box">
+    <h3>Add Time Signature Change</h3>
+    <div class="form-group"><label>Measure</label><input type="number" id="ts-ev-measure" min="1" value="1"></div>
+    <div class="form-group"><label>Numerator</label><input type="number" id="ts-ev-num" min="1" value="4"></div>
+    <div class="form-group"><label>Denominator</label><input type="number" id="ts-ev-den" min="1" value="4"></div>
+    <div class="modal-buttons">
+      <button id="ts-ev-ok">Add</button>
+      <button id="ts-ev-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- History Panel (floating) -->
+<div id="history-panel" class="float-panel" style="display:none">
+  <div class="float-panel-header">
+    <div class="float-panel-tabs">
+      <button class="fpanel-tab active" data-tab="history">History</button>
+      <button class="fpanel-tab" data-tab="split-opts">Split View</button>
+    </div>
+    <button class="float-panel-close" id="history-panel-close">✕</button>
+  </div>
+  <div class="fpanel-body">
+    <!-- History tab -->
+    <div id="fpanel-history" class="fpanel-page">
+      <div id="history-list"></div>
+    </div>
+    <!-- Split View Options tab -->
+    <div id="fpanel-split-opts" class="fpanel-page" style="display:none">
+      <div class="pref-group">
+        <label class="pref-label">Visible Lanes (Edit side)</label>
+        <input type="range" id="split-lane-count" min="1" max="8" value="4" step="1">
+        <span id="split-lane-label">4 lanes</span>
+      </div>
+      <div class="pref-group">
+        <label class="pref-label">Edit panel width</label>
+        <input type="range" id="split-edit-width" min="30" max="70" value="50" step="5">
+        <span id="split-edit-width-label">50%</span>
+      </div>
+      <div class="pref-group">
+        <label class="pref-label">Game preview side</label>
+        <select id="split-game-side">
+          <option value="right">Right</option>
+          <option value="left">Left</option>
+        </select>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Preferences Modal -->
+<div id="modal-prefs" class="modal" style="display:none">
+  <div class="modal-box sysprefs-box">
+    <div class="sysprefs-layout">
+
+      <!-- ── Left sidebar ── -->
+      <div class="sysprefs-sidebar">
+        <div class="sysprefs-title" data-i18n="prefs.title">System Preferences</div>
+        <button class="sysprefs-tab active" data-tab="audio"     data-i18n="prefs.tab.audio">🔊 Audio</button>
+        <button class="sysprefs-tab"        data-tab="video"     data-i18n="prefs.tab.video">🖥 Video</button>
+        <button class="sysprefs-tab"        data-tab="general"   data-i18n="prefs.tab.general">⚙ General</button>
+        <button class="sysprefs-tab"        data-tab="gameplay"  data-i18n="prefs.tab.gameplay">🎮 Gameplay</button>
+        <button class="sysprefs-tab"        data-tab="autosave"  data-i18n="prefs.tab.autosave">💾 Autosave</button>
+        <button class="sysprefs-tab"        data-tab="shortcuts" data-i18n="prefs.tab.shortcuts">⌨ Shortcuts</button>
+      </div>
+
+      <!-- ── Right content panels ── -->
+      <div class="sysprefs-content">
+
+        <!-- ════ AUDIO ════ -->
+        <div class="sysprefs-panel active" id="pref-tab-audio">
+          <div class="sp-section-title" data-i18n="audio.timing">Timing</div>
+          <div class="pref-group">
+            <label class="pref-label" data-i18n="audio.audioDelay">Audio Delay</label>
+            <input type="number" id="pref-audio-delay" min="-500" max="500" value="0" style="width:70px">
+            <span class="pref-unit">ms</span>
+            <span class="pref-hint" data-i18n="audio.audioDelayHint">Global offset for audio sync (positive = audio later)</span>
+          </div>
+
+          <div class="sp-section-title" data-i18n="audio.sfx">Sound Effects</div>
+          <div class="pref-group">
+            <label class="pref-label" data-i18n="audio.tickEnable">Enable Tick Sound</label>
+            <input type="checkbox" id="pref-tick-enabled" checked>
+            <span class="pref-hint" data-i18n="audio.tickHint">(on by default)</span>
+          </div>
+
+          <div class="sp-section-title" data-i18n="audio.volume">Volume</div>
+          <div class="pref-group">
+            <label class="pref-label" data-i18n="audio.master">Master</label>
+            <input type="range" id="pref-vol-master" min="0" max="1" step="0.01" value="1" style="width:130px">
+            <span id="pref-vol-master-label" class="pref-val">100%</span>
+          </div>
+          <div class="pref-group">
+            <label class="pref-label" data-i18n="audio.music">Music</label>
+            <input type="range" id="pref-vol-music" min="0" max="1" step="0.01" value="1" style="width:130px">
+            <span id="pref-vol-music-label" class="pref-val">100%</span>
+          </div>
+          <div class="pref-group">
+            <label class="pref-label" data-i18n="audio.slam">Slam</label>
+            <input type="range" id="pref-vol-slam" min="0" max="1" step="0.01" value="0.5" style="width:130px">
+            <span id="pref-vol-slam-label" class="pref-val">50%</span>
+          </div>
+          <div class="pref-group">
+            <label class="pref-label" data-i18n="audio.tick">Tick</label>
+            <input type="range" id="pref-vol-tick" min="0" max="2" step="0.01" value="0.5" style="width:130px">
+            <span id="pref-vol-tick-label" class="pref-val">50%</span>
+            <span class="pref-hint" data-i18n="audio.tickRange">0 – 100% – 200%</span>
+          </div>
+        </div>
+
+        <!-- ════ VIDEO ════ -->
+        <div class="sysprefs-panel" id="pref-tab-video">
+          <div class="sp-section-title" data-i18n="video.timing">Timing</div>
+          <div class="pref-group">
+            <label class="pref-label" data-i18n="video.videoDelay">Video Delay</label>
+            <input type="number" id="pref-video-delay" min="-500" max="500" value="0" style="width:70px">
+            <span class="pref-unit">ms</span>
+            <span class="pref-hint" data-i18n="video.videoDelayHint">Display offset for monitor latency calibration</span>
+          </div>
+          <div class="pref-group" style="margin-top:6px">
+            <button id="pref-open-visual-calib" style="background:#1e3a5f;color:#88c8ff;border:1px solid #3a6aaa;border-radius:5px;padding:5px 12px;font-size:11px;cursor:pointer">🎯 Visual Calibration…</button>
+            <span class="pref-hint">Blink-circle metronome to measure audio/video offset</span>
+          </div>
+
+          <div class="sp-section-title" data-i18n="video.performance">Performance</div>
+          <div class="pref-group">
+            <label class="pref-label" data-i18n="video.fpsCap">Game preview FPS cap</label>
+            <select id="pref-fps-cap">
+              <option value="30">30 fps</option>
+              <option value="60" selected>60 fps</option>
+              <option value="120">120 fps</option>
+            </select>
+          </div>
+          <div class="pref-group">
+            <label class="pref-label" data-i18n="video.glow">Glow / High Quality</label>
+            <input type="checkbox" id="pref-high-quality" checked>
+            <span class="pref-hint" data-i18n="video.glowHint">Shadow &amp; glow effects — disable on low-end hardware</span>
+          </div>
+
+          <div class="sp-section-title" data-i18n="video.laserAppearance">Laser Appearance</div>
+          <div class="pref-group">
+            <label class="pref-label" data-i18n="video.showDir">Show L/R direction label</label>
+            <input type="checkbox" id="pref-show-laser-dir" checked>
+          </div>
+          <div class="pref-group">
+            <label class="pref-label" data-i18n="video.showDots">Show envelope points always</label>
+            <input type="checkbox" id="pref-show-laser-dots">
+            <span class="pref-hint" data-i18n="video.showDotsHint">Show laser anchor dots when not editing</span>
+          </div>
+          <div class="pref-group">
+            <label class="pref-label" data-i18n="video.opacity">Opacity</label>
+            <input type="range" id="pref-laser-opacity" min="10" max="100" step="5" value="70" style="width:120px">
+            <span id="pref-laser-opacity-label" class="pref-val">70%</span>
+          </div>
+
+          <!-- Per-laser color pickers -->
+          <div class="laser-color-pickers">
+            <div class="lcp-col">
+              <div class="lcp-label">VOL-L</div>
+              <label class="lcp-swatch-wrap" title="Click to pick VOL-L color">
+                <span class="lcp-swatch" id="lcp-swatch-l" style="background:#1255e8"></span>
+                <input type="color" id="pref-laser-color-l" value="#1255e8" class="lcp-hidden-input">
+              </label>
+              <div class="lcp-quick">
+                <button class="lcp-q" data-side="l" data-color="#e8192a" style="background:#e8192a" title="Red">R</button>
+                <button class="lcp-q" data-side="l" data-color="#1255e8" style="background:#1255e8" title="Blue">B</button>
+                <button class="lcp-q" data-side="l" data-color="#19e83a" style="background:#19e83a" title="Green">G</button>
+                <button class="lcp-q" data-side="l" data-color="#f0c800" style="background:#f0c800" title="Yellow">Y</button>
+              </div>
+            </div>
+            <div class="lcp-col">
+              <div class="lcp-label">VOL-R</div>
+              <label class="lcp-swatch-wrap" title="Click to pick VOL-R color">
+                <span class="lcp-swatch" id="lcp-swatch-r" style="background:#e000b8"></span>
+                <input type="color" id="pref-laser-color-r" value="#e000b8" class="lcp-hidden-input">
+              </label>
+              <div class="lcp-quick">
+                <button class="lcp-q" data-side="r" data-color="#e8192a" style="background:#e8192a" title="Red">R</button>
+                <button class="lcp-q" data-side="r" data-color="#1255e8" style="background:#1255e8" title="Blue">B</button>
+                <button class="lcp-q" data-side="r" data-color="#19e83a" style="background:#19e83a" title="Green">G</button>
+                <button class="lcp-q" data-side="r" data-color="#f0c800" style="background:#f0c800" title="Yellow">Y</button>
+              </div>
+            </div>
+          </div>
+          <div class="pref-group" style="flex-wrap:wrap;gap:5px;margin-top:6px">
+            <label class="pref-label" style="width:100%;font-size:10px;color:var(--text-dim)" data-i18n="video.quickPresets">Quick presets (both sides)</label>
+            <button class="small-btn" data-laser-preset="sdvx-default">SDVX</button>
+            <button class="small-btn" data-laser-preset="blue-red">B/R</button>
+            <button class="small-btn" data-laser-preset="yellow-green">Y/G</button>
+            <button class="small-btn" data-laser-preset="cyan-orange">C/O</button>
+            <button class="small-btn" data-laser-preset="white-white">W/W</button>
+          </div>
+        </div>
+
+        <!-- ════ GENERAL ════ -->
+        <div class="sysprefs-panel" id="pref-tab-general">
+          <div class="sp-section-title" data-i18n="general.interface">Interface</div>
+          <div class="pref-group">
+            <label class="pref-label" data-i18n="general.language">Language</label>
+            <select id="pref-language">
+              <option value="en">English</option>
+              <option value="es">Español</option>
+              <option value="fr">Français</option>
+              <option value="ja">日本語</option>
+              <option value="zh">中文</option>
+            </select>
+            <span class="pref-hint" data-i18n="general.languageHint">Localization is in progress</span>
+          </div>
+
+          <div class="sp-section-title" style="margin-top:18px" data-i18n="general.reset">Reset</div>
+          <div class="pref-group" style="flex-direction:column;align-items:flex-start;gap:8px">
+            <button class="small-btn" id="btn-reset-prefs-defaults" style="color:#ff8888" data-i18n="general.resetBtn">Reset All Preferences to Default</button>
+            <span class="pref-hint" style="margin-left:0" data-i18n="general.resetHint">No editor restart required.</span>
+          </div>
+        </div>
+
+        <!-- ════ GAMEPLAY ════ -->
+        <div class="sysprefs-panel" id="pref-tab-gameplay">
+          <div class="sp-section-title" data-i18n="gameplay.preview">Preview</div>
+          <div class="pref-group">
+            <label class="pref-label" data-i18n="gameplay.autoplay">Autoplay (Game View)</label>
+            <input type="checkbox" id="pref-autoplay" checked>
+            <span class="pref-hint" data-i18n="gameplay.autoplayHint">Auto-play scoring chain in preview</span>
+          </div>
+
+          <div class="sp-section-title" data-i18n="gameplay.laserSlam">Laser / Slam</div>
+          <div class="pref-group">
+            <label class="pref-label" data-i18n="gameplay.slamThreshold">Slam threshold</label>
+            <input type="range" id="pref-slam-threshold" min="1" max="16" step="1" value="6" style="width:120px">
+            <span id="pref-slam-threshold-label" class="pref-val">6 ticks</span>
+          </div>
+          <div class="pref-group">
+            <span class="pref-hint" data-i18n="gameplay.slamThresholdHint">Lower = only very tight slams; Higher = more segments treated as slams. Default: 6 (1/32 note).</span>
+          </div>
+
+          <div class="sp-section-title" style="margin-top:14px" data-i18n="gameplay.snap">Snap</div>
+          <div class="pref-group">
+            <label class="pref-label" data-i18n="gameplay.defaultSnap">Default snap divisor</label>
+            <select id="pref-default-snap">
+              <option value="4">1/4</option>
+              <option value="8" selected>1/8</option>
+              <option value="16">1/16</option>
+              <option value="32">1/32</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- ════ AUTOSAVE ════ -->
+        <div class="sysprefs-panel" id="pref-tab-autosave">
+          <div class="sp-section-title" data-i18n="autosave.section">Autosave</div>
+          <div class="pref-group">
+            <label class="pref-label" data-i18n="autosave.every">Save every</label>
+            <input type="number" id="pref-autosave-interval" min="0" max="3600" value="60" style="width:70px">
+            <span class="pref-unit" data-i18n="autosave.seconds">seconds</span>
+            <span class="pref-hint" data-i18n="autosave.disabled">(0 = disabled)</span>
+          </div>
+          <div class="pref-group">
+            <label class="pref-label" data-i18n="autosave.savePath">Save location hint</label>
+            <input type="text" id="pref-save-path" value="Downloads" style="width:160px">
+          </div>
+
+          <div class="sp-section-title" style="margin-top:14px" data-i18n="autosave.history">History</div>
+          <div class="pref-group">
+            <label class="pref-label" data-i18n="autosave.maxUndo">Max undo states</label>
+            <input type="number" id="pref-history-depth" min="10" max="500" value="100" style="width:70px">
+          </div>
+
+          <div class="sp-section-title" style="margin-top:14px" data-i18n="autosave.recovery">Recovery</div>
+          <div class="pref-group">
+            <button class="small-btn" id="btn-recover-autosave" style="color:#ffcc44" data-i18n="autosave.recoverBtn">Recover Last Autosave…</button>
+          </div>
+          <div class="pref-group" style="display:block;margin-top:6px">
+            <span class="pref-hint" data-i18n="autosave.recoveryHint">Autosaves are stored in IndexedDB and persist between sessions. Recovery loads the most recent autosave slot.</span>
+          </div>
+        </div>
+
+        <!-- ════ SHORTCUTS ════ -->
+        <div class="sysprefs-panel" id="pref-tab-shortcuts">
+          <div class="sp-section-title" data-i18n="shortcuts.title">Keyboard Shortcuts</div>
+          <div class="pref-hint" style="margin-bottom:12px" data-i18n="shortcuts.rebindHint">Rebinding coming soon. Current shortcuts:</div>
+          <table class="shortcut-table">
+            <tbody>
+              <tr><td>Space</td><td>Play / Stop</td></tr>
+              <tr><td>1 – 5</td><td>Select tool (Select, BT, FX, L-Laser, R-Laser)</td></tr>
+              <tr><td>E</td><td>Erase tool</td></tr>
+              <tr><td>Ctrl + Z</td><td>Undo</td></tr>
+              <tr><td>Ctrl + Y / Shift+Z</td><td>Redo</td></tr>
+              <tr><td>Ctrl + C</td><td>Copy selection</td></tr>
+              <tr><td>Ctrl + X</td><td>Cut selection</td></tr>
+              <tr><td>Ctrl + V</td><td>Paste</td></tr>
+              <tr><td>← / →</td><td>Scroll left / right column</td></tr>
+              <tr><td>Home / End</td><td>Jump to start / end</td></tr>
+              <tr><td>Page Up / Down</td><td>Jump one screen</td></tr>
+              <tr><td>Ctrl + ← / →</td><td>Jump by numCols</td></tr>
+              <tr><td>Delete / Backspace</td><td>Delete selection</td></tr>
+              <tr><td>Shift + Delete</td><td>Ripple delete (close gap)</td></tr>
+              <tr><td>Escape</td><td>Clear selection</td></tr>
+              <tr><td>Ctrl + A</td><td>Select all</td></tr>
+              <tr><td>Ctrl + S</td><td>Export / Save</td></tr>
+              <tr><td>Ctrl + O</td><td>Open file</td></tr>
+              <tr><td>+  /  −</td><td>Zoom in / out</td></tr>
+              <tr><td>M</td><td>Mirror selection</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+      </div><!-- end sysprefs-content -->
+    </div><!-- end sysprefs-layout -->
+
+    <div class="sysprefs-footer">
+      <button id="pref-save" data-i18n="prefs.save">Save</button>
+      <button id="pref-cancel" data-i18n="prefs.cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Song Metadata Modal -->
+<div id="modal-song-meta" class="modal" style="display:none">
+  <div class="modal-box" style="min-width:440px;max-height:88vh;overflow-y:auto">
+    <h3>Song Metadata</h3>
+    <div id="meta-jacket-preview-modal" style="text-align:center;margin-bottom:12px">
+      <img id="meta-jacket-img-modal" src="" alt="" style="display:none;max-width:160px;max-height:160px;border-radius:6px;border:1px solid var(--border)">
+      <div id="meta-jacket-placeholder" style="width:160px;height:160px;background:#13131f;border:1px dashed var(--border);border-radius:6px;display:flex;align-items:center;justify-content:center;margin:0 auto;color:#5558a0;font-size:11px">No Jacket</div>
+    </div>
+    <div class="form-group"><label>Title</label><input type="text" id="sm-title" style="flex:1"></div>
+    <div class="form-group"><label>Artist</label><input type="text" id="sm-artist" style="flex:1"></div>
+    <div class="form-group"><label>Charter (Effect)</label><input type="text" id="sm-effect" style="flex:1"></div>
+    <div class="form-group"><label>Illustrator</label><input type="text" id="sm-illust" style="flex:1"></div>
+    <div class="form-group">
+      <label>Difficulty</label>
+      <select id="sm-diff">
+        <option value="light">LIGHT</option>
+        <option value="challenge">CHALLENGE</option>
+        <option value="extended">EXTENDED</option>
+        <option value="infinite">INFINITE</option>
+      </select>
+    </div>
+    <div class="form-group"><label>Level (1–20)</label><input type="number" id="sm-level" min="1" max="20" value="10" style="width:60px"></div>
+    <div class="form-group"><label>BPM</label><input type="number" id="sm-bpm" min="1" max="999" step="0.01" value="180" style="width:80px"></div>
+    <div class="form-group">
+      <label>Music File</label>
+      <input type="text" id="sm-music" style="flex:1" placeholder="music.ogg">
+      <input type="file" id="sm-audio-import-input" accept=".ogg,.flac,.wav,.mp3,.aac,.m4a" style="display:none">
+      <button class="small-btn" id="sm-btn-import-audio" title="Import audio file (auto-converts to OGG)">📂 Import</button>
+    </div>
+    <div class="form-group">
+      <label>Offset (ms)</label>
+      <input type="number" id="sm-offset" value="0" style="width:80px">
+      <button class="small-btn" id="sm-btn-calibrate" title="Open Calibration Window to find exact beat-1 offset">⎍ Calibrate</button>
+    </div>
+    <div class="form-group"><label>Preview Start (ms)</label><input type="number" id="sm-preview-start" value="0" style="width:80px"></div>
+    <div class="form-group"><label>Preview Duration (ms)</label><input type="number" id="sm-preview-dur" value="15000" style="width:80px"></div>
+    <div class="form-group">
+      <label>Jacket Image</label>
+      <input type="text" id="sm-jacket" style="flex:1" placeholder="jacket.png">
+      <input type="file" id="sm-jacket-picker" accept="image/*" style="display:none">
+      <button class="small-btn" id="sm-btn-jacket">Browse</button>
+    </div>
+    <div class="form-group"><label>Background</label><input type="text" id="sm-bg" style="flex:1" placeholder="bg.png or 0–19"></div>
+    <div class="form-group"><label>BG Layer</label><input type="text" id="sm-layer" style="flex:1" placeholder="layer.png"></div>
+    <div class="modal-buttons" style="margin-top:16px">
+      <button id="sm-save">Apply</button>
+      <button id="sm-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Import confirm -->
+<div id="modal-import-confirm" class="modal" style="display:none">
+  <div class="modal-box" style="max-width:440px">
+    <h3>Import Audio File</h3>
+    <p id="import-confirm-msg" style="margin:10px 0 14px;font-size:12px;color:#b0b0d0;line-height:1.55"></p>
+    <div style="background:#0d0d18;border:1px solid #2a2a44;border-radius:5px;padding:10px 12px;font-size:11px;color:#6668a0;margin-bottom:14px">
+      ⚠ Encoding happens in real time — it takes roughly as long as the song.<br>
+      The result will be playable in vibe-editr immediately.
+    </div>
+    <div class="modal-buttons">
+      <button id="import-confirm-ok">Convert &amp; Import</button>
+      <button id="import-confirm-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Import progress -->
+<div id="modal-import-progress" class="modal" style="display:none">
+  <div class="modal-box" style="max-width:400px">
+    <h3>Importing Audio…</h3>
+    <div id="import-stage-label" style="font-size:12px;color:#b0b0d0;margin:12px 0 8px"></div>
+    <div style="background:#0d0d18;border:1px solid #2a2a44;border-radius:4px;height:10px;overflow:hidden;margin-bottom:8px">
+      <div id="import-progress-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#1255e8,#e000b8);transition:width .4s ease"></div>
+    </div>
+    <div id="import-progress-pct" style="font-size:11px;color:#6668a0;text-align:right">0%</div>
+    <div class="modal-buttons" style="margin-top:14px">
+      <button id="btn-cancel-import" style="background:#2a0a0a;border-color:#882233;color:#ffaaaa">✕ Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Import error -->
+<div id="modal-import-error" class="modal" style="display:none">
+  <div class="modal-box" style="max-width:440px">
+    <h3 style="color:#ff4466">Import Failed</h3>
+    <p id="import-error-file"  style="font-size:12px;color:#6668a0;margin:6px 0 2px"></p>
+    <p id="import-error-msg"   style="font-size:12px;color:#d8d8f0;margin:4px 0 14px;line-height:1.5"></p>
+    <div class="modal-buttons">
+      <button id="import-error-retry">Retry</button>
+      <button id="import-error-choose">Choose Another…</button>
+      <button id="import-error-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Loading / initialization overlay — auto-fades once ready -->
+<div id="loading-overlay" style="
+  position:fixed;inset:0;z-index:9999;
+  background:#08080f;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;
+  transition:opacity .4s ease;
+">
+  <div style="font-size:22px;font-weight:700;color:#d8d8f0;letter-spacing:.08em">vibe-editr</div>
+  <div id="loading-stage" style="font-size:12px;color:#6668a0;min-height:16px">Initializing…</div>
+  <div style="width:240px;height:6px;background:#13131f;border-radius:3px;overflow:hidden">
+    <div id="loading-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#1255e8,#e000b8);transition:width .25s ease;border-radius:3px"></div>
+  </div>
+  <div id="loading-pct" style="font-size:11px;color:#3336a0">0%</div>
+</div>
+
+<script src="js/logger.js"></script>
+<script src="js/effects.js"></script>
+<script src="js/chart.js?v=2"></script>
+<script src="js/renderer.js?v=3"></script>
+<script src="js/game.js?v=2"></script>
+<script src="js/ksh.js?v=3"></script>
+<!-- Laser interpolation context menu -->
+<div id="laser-interp-menu" style="display:none;position:fixed;z-index:3000">
+  <div class="lim-item" data-type="linear">
+    <span class="lim-icon">━</span>
+    <span data-i18n="laser.interp.linear">Linear</span>
+    <span class="lim-key">L</span>
+  </div>
+  <div class="lim-item" data-type="bezier">
+    <span class="lim-icon">〜</span>
+    <span data-i18n="laser.interp.bezier">Smooth</span>
+    <span class="lim-key">S</span>
+  </div>
+  <div class="lim-item" data-type="step">
+    <span class="lim-icon">┐</span>
+    <span data-i18n="laser.interp.step">Step</span>
+    <span class="lim-key">H</span>
+  </div>
+</div>
+
+<!-- Visual Calibration modal -->
+<div id="modal-visual-calib" style="display:none;position:fixed;inset:0;background:#00000099;z-index:9000;align-items:center;justify-content:center">
+  <div style="background:#14142a;border:1px solid #3a3a6a;border-radius:12px;padding:28px 32px;width:380px;box-shadow:0 8px 40px #00000088;color:#e8e8f8;font-family:monospace">
+    <div style="font-size:15px;font-weight:bold;letter-spacing:0.07em;margin-bottom:18px;color:#88c8ff">🎯 Visual Calibration</div>
+
+    <!-- Metronome canvas -->
+    <div style="display:flex;justify-content:center;margin-bottom:18px">
+      <canvas id="vc-canvas" width="180" height="180" style="border-radius:50%;background:#0a0a1a"></canvas>
+    </div>
+
+    <!-- BPM -->
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+      <label style="width:90px;font-size:11px;color:#8888b0">BPM</label>
+      <input type="number" id="vc-bpm" min="40" max="400" value="120" step="1"
+             style="width:70px;background:#1a1a30;color:#e8e8f8;border:1px solid #3a3a6a;border-radius:4px;padding:4px 7px;font-size:12px">
+      <span style="font-size:10px;color:#5566aa">beats per minute</span>
+    </div>
+
+    <!-- Audio delay -->
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+      <label style="width:90px;font-size:11px;color:#8888b0">Audio Delay</label>
+      <input type="number" id="vc-audio-delay" min="-500" max="500" value="0" step="1"
+             style="width:70px;background:#1a1a30;color:#e8e8f8;border:1px solid #3a3a6a;border-radius:4px;padding:4px 7px;font-size:12px">
+      <span style="font-size:10px;color:#5566aa">ms  (positive = audio later)</span>
+    </div>
+
+    <!-- Video delay -->
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+      <label style="width:90px;font-size:11px;color:#8888b0">Video Delay</label>
+      <input type="number" id="vc-video-delay" min="-500" max="500" value="0" step="1"
+             style="width:70px;background:#1a1a30;color:#e8e8f8;border:1px solid #3a3a6a;border-radius:4px;padding:4px 7px;font-size:12px">
+      <span style="font-size:10px;color:#5566aa">ms  (monitor latency)</span>
+    </div>
+
+    <div style="font-size:10px;color:#6677aa;margin-bottom:16px;line-height:1.5">
+      Tap <kbd style="background:#222244;border:1px solid #444488;border-radius:3px;padding:1px 5px">Space</kbd> on every beat you <em>hear</em>.<br>
+      Adjust <strong>Audio Delay</strong> until the circle flashes in sync with each tap.<br>
+      Increase <strong>Video Delay</strong> if the flash feels late on screen.
+    </div>
+
+    <div style="display:flex;gap:10px">
+      <button id="vc-save" style="flex:1;background:#1e4a2a;color:#88ffaa;border:1px solid #3a8a4a;border-radius:6px;padding:7px;font-size:12px;cursor:pointer;font-weight:bold">✓ Save</button>
+      <button id="vc-cancel" style="flex:1;background:#2a1a1a;color:#ffaaaa;border:1px solid #6a3a3a;border-radius:6px;padding:7px;font-size:12px;cursor:pointer">✕ Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Donation modal -->
+<div id="modal-donate" class="modal" style="display:none">
+  <div class="modal-box donate-box">
+
+    <!-- Left: pitch + face -->
+    <div class="donate-left">
+      <div class="donate-avatar-wrap">
+        <img id="donate-avatar" class="donate-avatar" src="img/dev.jpg" alt="gamboiuwu"
+             onerror="this.style.display='none';document.getElementById('donate-avatar-fallback').style.display='flex'">
+        <div id="donate-avatar-fallback" class="donate-avatar-fallback" style="display:none">🎮</div>
+      </div>
+      <div class="donate-tagline">Hey, it's <strong>gamboiuwu</strong> 👋</div>
+      <p class="donate-pitch">
+        I've been building <strong>vibe-editr</strong> in my spare time — a fully free, browser-based
+        SDVX chart editor with no ads, no login, no paywall.
+      </p>
+      <p class="donate-pitch">
+        If this tool has saved you hours of work, or you just want to keep the lights on,
+        even a tiny contribution means the world. It helps me afford server costs, dev time,
+        and — most importantly — more coffee ☕
+      </p>
+      <p class="donate-pitch donate-pitch-bold">
+        Thank you for using vibe-editr. You're the reason I keep building. ♥
+      </p>
+    </div>
+
+    <!-- Right: payment options -->
+    <div class="donate-right">
+      <h3 class="donate-title">Support vibe-editr</h3>
+      <p class="donate-sub">Choose your preferred way to send love:</p>
+
+      <div class="donate-methods">
+
+        <a class="donate-method donate-venmo" href="https://venmo.com/u/gamboiuwu" target="_blank" rel="noopener">
+          <span class="dm-icon">V</span>
+          <span class="dm-label">Venmo</span>
+          <span class="dm-handle">@gamboiuwu</span>
+        </a>
+
+        <a class="donate-method donate-cashapp" href="https://cash.app/$gamboiuwu" target="_blank" rel="noopener">
+          <span class="dm-icon">$</span>
+          <span class="dm-label">Cash App</span>
+          <span class="dm-handle">$gamboiuwu</span>
+        </a>
+
+        <div class="donate-method donate-zelle" onclick="navigator.clipboard?.writeText('antstarrya@gmail.com');this.querySelector('.dm-copied').style.opacity=1;setTimeout(()=>this.querySelector('.dm-copied').style.opacity=0,2000)" style="cursor:pointer">
+          <span class="dm-icon">Z</span>
+          <span class="dm-label">Zelle</span>
+          <span class="dm-handle">antstarrya@gmail.com <span class="dm-copied" style="opacity:0;font-size:10px;color:#aaffaa;transition:.3s">✓ copied</span></span>
+        </div>
+
+        <a class="donate-method donate-paypal" href="https://paypal.me/gamboiuwu" target="_blank" rel="noopener">
+          <span class="dm-icon">P</span>
+          <span class="dm-label">PayPal</span>
+          <span class="dm-handle">paypal.me/gamboiuwu</span>
+        </a>
+
+        <a class="donate-method donate-stripe" href="https://buy.stripe.com/gamboiuwu" target="_blank" rel="noopener">
+          <span class="dm-icon">♡</span>
+          <span class="dm-label">Card / Stripe</span>
+          <span class="dm-handle">One-time or monthly</span>
+        </a>
+
+      </div>
+
+      <div class="donate-footer">
+        <label class="donate-no-prompt">
+          <input type="checkbox" id="donate-no-prompt"> Don't show this again
+        </label>
+        <button class="donate-close-btn" id="donate-close">Maybe later ✕</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Camera-event hover popup ─────────────────────────────────────── -->
+<div id="cam-hover-popup" role="tooltip"></div>
+
+<!-- FX hold click popup ──────────────────────────────────────────── -->
+<div id="fx-hold-popup" role="tooltip" style="display:none"></div>
+
+<script src="js/kson.js"></script>
+<script src="js/calibration.js"></script>
+<script src="js/i18n.js"></script>
+<script src="js/app.js?v=8"></script>
+<script src="js/dock.js?v=5"></script>
+<script src="js/tools.js?v=4"></script>
+<script src="js/radar.js?v=1"></script>
+<script src="js/handsim.js?v=1"></script>
+<script src="js/gameplay.js?v=3"></script>
+</body>
+</html>

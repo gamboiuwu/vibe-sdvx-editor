@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>vibe-editr — Documentation</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.7;
+    color: #1a1a2e;
+    background: #fff;
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 48px 40px;
+  }
+  @media print {
+    body { max-width: 100%; padding: 24px 32px; }
+    .no-print { display: none; }
+    h1 { page-break-after: avoid; }
+    h2 { page-break-after: avoid; }
+    section { page-break-inside: avoid; }
+  }
+  .cover {
+    text-align: center;
+    padding: 60px 0 48px;
+    border-bottom: 3px solid #00cfff;
+    margin-bottom: 48px;
+  }
+  .cover h1 {
+    font-size: 48px;
+    font-weight: 900;
+    letter-spacing: -1px;
+    color: #00a0cc;
+  }
+  .cover .subtitle {
+    font-size: 18px;
+    color: #6668a0;
+    margin-top: 8px;
+  }
+  .cover .version {
+    display: inline-block;
+    margin-top: 16px;
+    background: #0d0d22;
+    color: #00cfff;
+    padding: 4px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-family: monospace;
+    letter-spacing: 1px;
+  }
+  .toc {
+    background: #f4f7ff;
+    border: 1px solid #d0d8ff;
+    border-radius: 8px;
+    padding: 24px 28px;
+    margin-bottom: 48px;
+  }
+  .toc h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 1px; color: #6668a0; margin-bottom: 12px; }
+  .toc ol { padding-left: 20px; }
+  .toc li { margin-bottom: 6px; }
+  .toc a { color: #00a0cc; text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  h2 {
+    font-size: 22px;
+    font-weight: 800;
+    color: #0d0d22;
+    margin: 40px 0 12px;
+    padding-bottom: 6px;
+    border-bottom: 2px solid #e0e4ff;
+  }
+  h3 {
+    font-size: 16px;
+    font-weight: 700;
+    color: #3030a0;
+    margin: 24px 0 8px;
+  }
+  p { margin-bottom: 12px; color: #2a2a44; }
+  ul, ol { padding-left: 22px; margin-bottom: 14px; }
+  li { margin-bottom: 6px; color: #2a2a44; }
+  kbd {
+    display: inline-block;
+    background: #1a1a2e;
+    color: #00cfff;
+    border-radius: 4px;
+    padding: 1px 7px;
+    font-family: monospace;
+    font-size: 12px;
+    border: 1px solid #3040a0;
+  }
+  .shortcut-table { width: 100%; border-collapse: collapse; margin-bottom: 18px; }
+  .shortcut-table th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #6668a0; padding: 6px 10px; background: #f0f2ff; }
+  .shortcut-table td { padding: 7px 10px; border-bottom: 1px solid #eef; font-size: 13px; }
+  .shortcut-table tr:last-child td { border-bottom: none; }
+  .note-box {
+    background: #e8f4ff;
+    border-left: 4px solid #00a0cc;
+    border-radius: 0 6px 6px 0;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    color: #1a3a5a;
+  }
+  .warn-box {
+    background: #fff8e8;
+    border-left: 4px solid #ffaa00;
+    border-radius: 0 6px 6px 0;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    color: #5a3a00;
+  }
+  .color-chip {
+    display: inline-block;
+    width: 14px; height: 14px;
+    border-radius: 3px;
+    vertical-align: middle;
+    margin-right: 5px;
+  }
+  .print-btn {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: #00a0cc;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 12px 22px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 16px #00a0cc44;
+  }
+  .print-btn:hover { background: #0090bb; }
+  footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid #e0e4ff; color: #9090b0; font-size: 12px; text-align: center; }
+</style>
+</head>
+<body>
+
+<button class="print-btn no-print" onclick="window.print()">⬇ Save as PDF</button>
+
+<div class="cover">
+  <h1>vibe-editr</h1>
+  <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
+  <span class="version">v1.0 · 2025</span>
+</div>
+
+<div class="toc">
+  <h2>Table of Contents</h2>
+  <ol>
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#interface">Interface Layout</a></li>
+    <li><a href="#tabs">Tabs &amp; Files</a></li>
+    <li><a href="#tools">Editing Tools</a></li>
+    <li><a href="#notes">Note Types</a></li>
+    <li><a href="#lasers">Lasers (VOL)</a></li>
+    <li><a href="#selection">Selection &amp; Clipboard</a></li>
+    <li><a href="#playback">Playback &amp; Audio</a></li>
+    <li><a href="#view-modes">View Modes</a></li>
+    <li><a href="#history">History &amp; Undo</a></li>
+    <li><a href="#preferences">Preferences</a></li>
+    <li><a href="#export">Exporting</a></li>
+    <li><a href="#shortcuts">Full Keyboard Shortcut List</a></li>
+  </ol>
+</div>
+
+<!-- ── 1. Overview ── -->
+<section id="overview">
+<h2>1. Overview</h2>
+<p><strong>vibe-editr</strong> is a browser-based chart editor for the rhythm game format Sound Voltex (SDVX / KSH / KSON). It lets you create, edit, and export charts with a fully visual timeline, 3D game preview, and real-time audio playback.</p>
+<p>No installation is required — open <code>index.html</code> in any modern browser (Chrome, Edge, or Firefox recommended).</p>
+<div class="note-box">vibe-editr saves nothing to a server. All files stay on your computer. Autosave downloads a .ksh file locally on the interval you configure in Preferences.</div>
+</section>
+
+<!-- ── 2. Interface ── -->
+<section id="interface">
+<h2>2. Interface Layout</h2>
+<h3>Top Menu Bar</h3>
+<p>The menu bar at the top contains all primary menus: <strong>File · Edit · Chart · View · Settings · Window</strong>. Clicking any menu label opens its dropdown. Hovering moves between menus without clicking.</p>
+<p>The <strong>top-right corner</strong> always shows quick-access buttons:</p>
+<ul>
+  <li><kbd>✦ Edit</kbd> — Switch to Edit-only view</li>
+  <li><kbd>⧉ Split</kbd> — Side-by-side Edit + 3D Preview</li>
+  <li><kbd>▶ Preview</kbd> — Full-screen 3D Game Preview</li>
+  <li><kbd>▶ Play</kbd> — Play / Stop (turns red while playing)</li>
+  <li><strong>Error badge</strong> — Click to view any runtime errors</li>
+</ul>
+<h3>Tab Bar</h3>
+<p>Below the menu bar, open charts appear as Chrome-style draggable tabs. Click a tab to switch charts. Drag to reorder. Click <strong>✕</strong> to close. A <strong>+ New</strong> button opens a blank chart.</p>
+<h3>Toolbar</h3>
+<p>The tool palette sits below the tabs. Select a tool by clicking or pressing its keyboard shortcut.</p>
+<h3>Three-Panel Edit Layout</h3>
+<ul>
+  <li><strong>Left panel</strong> — Song metadata (title, artist, BPM, offset, jacket) and camera parameters</li>
+  <li><strong>Center</strong> — The main chart canvas. Notes scroll top-to-bottom, measures left-to-right in columns.</li>
+  <li><strong>Right panel</strong> — FX Chain, BPM/Time Sig events, and the keyboard shortcut reference</li>
+</ul>
+<h3>Status Bar</h3>
+<p>At the bottom of the chart canvas: current Tick, Measure, Beat, active Tool, selection range, and a reminder that <kbd>C</kbd> opens the context menu.</p>
+</section>
+
+<!-- ── 3. Tabs & Files ── -->
+<section id="tabs">
+<h2>3. Tabs &amp; Files</h2>
+<h3>Opening Files</h3>
+<ul>
+  <li><strong>File → New Chart</strong> — blank chart in a new tab</li>
+  <li><strong>File → Open .ksh…</strong> — import a KSH chart file</li>
+  <li><strong>File → Open .kson…</strong> — import a KSON chart file</li>
+  <li><strong>File → Open Folder…</strong> — open an entire chart folder; each chart gets its own tab</li>
+</ul>
+<h3>Exporting</h3>
+<ul>
+  <li><strong>File → Export KSH</strong> — download the chart as a .ksh file</li>
+  <li><strong>File → Export KSON</strong> — download as JSON-based .kson</li>
+  <li><kbd>Ctrl+S</kbd> — quick-export as KSH</li>
+</ul>
+<h3>Loading Audio</h3>
+<p>Go to <strong>Chart → Load Audio File…</strong> and choose an OGG, MP3, or WAV file. The audio stays attached to that tab. Audio playback is always at 1.0× speed regardless of HiSpeed setting.</p>
+</section>
+
+<!-- ── 4. Tools ── -->
+<section id="tools">
+<h2>4. Editing Tools</h2>
+<table class="shortcut-table">
+  <tr><th>Key</th><th>Tool</th><th>Behaviour</th></tr>
+  <tr><td><kbd>1</kbd></td><td>Select</td><td>Click to move the playhead. No notes are placed.</td></tr>
+  <tr><td><kbd>2</kbd></td><td>BT Note</td><td>Click to place a BT chip. Click + drag to place a BT hold.</td></tr>
+  <tr><td><kbd>3</kbd></td><td>FX Note</td><td>Click to place an FX chip. Drag for hold. Lanes are L (left half) / R (right half).</td></tr>
+  <tr><td><kbd>4</kbd></td><td>L-Laser</td><td>Click to start a left-laser (blue) section, drag to extend.</td></tr>
+  <tr><td><kbd>5</kbd></td><td>R-Laser</td><td>Click to start a right-laser (pink) section, drag to extend.</td></tr>
+  <tr><td><kbd>E</kbd></td><td>Erase</td><td>Click any note or laser point to delete it.</td></tr>
+  <tr><td><kbd>Tab</kbd></td><td>Cycle</td><td>Cycle forward through tools. <kbd>Shift+Tab</kbd> cycles backward.</td></tr>
+</table>
+<h3>Snap</h3>
+<p>The snap grid controls the resolution of note placement. Default is 1/16. Change with the Snap dropdown in the View menu, or keyboard:</p>
+<ul>
+  <li><kbd>[</kbd> — finer snap (1/32, 1/64…)</li>
+  <li><kbd>]</kbd> — coarser snap (1/8, 1/4…)</li>
+</ul>
+</section>
+
+<!-- ── 5. Note Types ── -->
+<section id="notes">
+<h2>5. Note Types</h2>
+<h3>BT (Button) Notes</h3>
+<p>Four lanes: <span class="color-chip" style="background:#fff"></span><strong>A B C D</strong> (left to right). Chip notes are short; hold notes are drawn as tall rectangles. In the KSH format: <code>1</code> = chip, <code>2</code> = hold-active, <code>0</code> = empty.</p>
+<h3>FX (Effect) Notes</h3>
+<p>Two wide lanes: <span class="color-chip" style="background:#ff8c00"></span><strong>FX-L</strong> (left) and <strong>FX-R</strong> (right). Each covers two BT-lane widths. Long FX holds show their assigned effect name. In KSH format: <code>2</code> = chip, <code>1</code> = hold-active.</p>
+<h3>FX Chain Effects</h3>
+<p>Use the right panel to assign audio effects to the FX-L and FX-R hold lanes. Click <strong>+ Add Effect</strong> and choose from: Retrigger, Gate, Flanger, PitchShift, BitCrusher, Phaser, Wobble, TapeStop, Echo, SideChain.</p>
+</section>
+
+<!-- ── 6. Lasers ── -->
+<section id="lasers">
+<h2>6. Lasers (VOL)</h2>
+<p>Lasers are continuous curves drawn across the lane. <span class="color-chip" style="background:#1244ee"></span><strong>Left laser</strong> = blue. <span class="color-chip" style="background:#dd00cc"></span><strong>Right laser</strong> = pink.</p>
+<h3>Placing Lasers</h3>
+<ol>
+  <li>Select the <kbd>4</kbd> or <kbd>5</kbd> laser tool.</li>
+  <li>Click on the chart to begin a new laser section at that position.</li>
+  <li>Drag to draw the laser path. Release to finish that segment.</li>
+</ol>
+<h3>Slams</h3>
+<p>A slam is a near-instant jump (≤ 6 ticks apart). It renders as a right-angle L-shape connecting two points. The audio "slam" sound triggers at these positions.</p>
+<h3>Wide Lasers</h3>
+<p>Enable <strong>Settings → 2× Wide Lasers</strong> to use the full-width laser mode (laserrange=2x in KSH).</p>
+</section>
+
+<!-- ── 7. Selection ── -->
+<section id="selection">
+<h2>7. Selection &amp; Clipboard</h2>
+<h3>Making a Selection</h3>
+<p><strong>Middle-mouse drag</strong> — drag across the chart to select a tick range. A cyan highlight appears. A single middle-mouse click (no drag) just moves the playhead.</p>
+<h3>Selection Operations</h3>
+<ul>
+  <li><kbd>Ctrl+C</kbd> — Copy all notes in the selection</li>
+  <li><kbd>Ctrl+X</kbd> — Cut (copy + delete)</li>
+  <li><kbd>Ctrl+V</kbd> — Paste at playhead position</li>
+  <li><kbd>Esc</kbd> — Clear selection</li>
+</ul>
+<h3>Context Menu (<kbd>C</kbd> or <kbd>Ctrl+RClick</kbd>)</h3>
+<p>Press <kbd>C</kbd> anywhere on the chart canvas to open the context menu. Available actions:</p>
+<ul>
+  <li>Cut / Copy / Paste</li>
+  <li><strong>Modify Style → Mirror</strong>: Mirror All, Mirror BT, Mirror FX, Mirror VOL</li>
+  <li><strong>Adjust Speed</strong>: ½× slower (expands tick positions) or 2× faster (compresses)</li>
+</ul>
+<h3>Playing a Selection</h3>
+<p>With a region selected, press <kbd>Space</kbd> to play only that range. Playback stops automatically at the end of the selection.</p>
+</section>
+
+<!-- ── 8. Playback ── -->
+<section id="playback">
+<h2>8. Playback &amp; Audio</h2>
+<ul>
+  <li><kbd>Space</kbd> — Play from cursor / Stop (or play selection if one is active)</li>
+  <li><kbd>Home</kbd> — Jump to measure 1</li>
+  <li><kbd>End</kbd> — Jump to end of chart</li>
+  <li><kbd>← →</kbd> — Scroll one column left/right</li>
+  <li><kbd>Ctrl+←→</kbd> — Scroll multiple columns</li>
+  <li><kbd>PgUp / PgDn</kbd> — Jump forward/backward by screen</li>
+</ul>
+<h3>HiSpeed</h3>
+<p>The HiSpeed slider (View menu) controls visual scroll density — how many measures fit on screen at once. Range: 0.2 – 10.00. Audio always plays at real tempo regardless of HiSpeed.</p>
+<h3>Tick Sound</h3>
+<p>Enable <strong>Settings → Enable Tick Sound</strong> to hear a click on every BT chip during playback.</p>
+</section>
+
+<!-- ── 9. View Modes ── -->
+<section id="view-modes">
+<h2>9. View Modes</h2>
+<h3>Edit View</h3>
+<p>Full-width top-down chart editor. Multiple columns of measures scroll horizontally.</p>
+<h3>Split View (default)</h3>
+<p>Edit canvas on the left, 3D Game Preview on the right simultaneously. Adjust the split ratio via <strong>Window → Split View Options</strong>. You can also change the number of visible lanes from that panel.</p>
+<h3>Game Preview</h3>
+<p>Full-screen 3D lane perspective — the same look as the actual game. The lane uses a trapezoidal perspective projection with scoring overlay (score, chain, grade).</p>
+<h3>Editing Inside the Preview</h3>
+<p>Right-click (or press <kbd>C</kbd>) on the Game Preview to open its context menu, then choose <strong>✏ Edit Chart in Preview</strong>. An edit toolbar appears at the top. Click on the 3D lane to place BT or FX chips directly. Choose <strong>✕ Exit Edit</strong> or <kbd>Esc</kbd> to return to preview-only mode.</p>
+</section>
+
+<!-- ── 10. History ── -->
+<section id="history">
+<h2>10. History &amp; Undo</h2>
+<h3>Undo / Redo</h3>
+<ul>
+  <li><kbd>Ctrl+Z</kbd> — Undo last action</li>
+  <li><kbd>Ctrl+Y</kbd> — Redo</li>
+</ul>
+<h3>History Panel</h3>
+<p>Open via <strong>Window → History &amp; Timeline</strong>. A floating, resizable, draggable panel lists every edit action with its measure number. The current state is highlighted in blue. Click any past state to jump directly to it (like Photoshop's History panel). Future (undone) states appear dimmed.</p>
+<p>The maximum number of history states is set in <strong>Preferences → History → Max history states</strong> (default: 100).</p>
+</section>
+
+<!-- ── 11. Preferences ── -->
+<section id="preferences">
+<h2>11. Preferences</h2>
+<p>Open via <strong>Settings → Preferences…</strong>. Preferences are saved to browser localStorage and persist between sessions.</p>
+<table class="shortcut-table">
+  <tr><th>Setting</th><th>Default</th><th>Description</th></tr>
+  <tr><td>Autosave every (seconds)</td><td>60</td><td>Downloads a _autosave.ksh file on this interval. Set to 0 to disable.</td></tr>
+  <tr><td>Save location</td><td>Downloads</td><td>Hint text only — actual save path depends on your browser's download setting.</td></tr>
+  <tr><td>Max history states</td><td>100</td><td>How many undo steps to remember (10–500).</td></tr>
+  <tr><td>Game preview FPS cap</td><td>60</td><td>Target frames-per-second for the 3D game preview canvas.</td></tr>
+</table>
+</section>
+
+<!-- ── 12. Exporting ── -->
+<section id="export">
+<h2>12. Exporting</h2>
+<h3>KSH Format</h3>
+<p>KSH is the text-based chart format used by KShootMania and most SDVX tools. It uses 192 ticks per measure (48 per beat). Export via <strong>File → Export KSH</strong> or <kbd>Ctrl+S</kbd>.</p>
+<h3>KSON Format</h3>
+<p>KSON is the modern JSON-based format with richer camera and effect data. Export via <strong>File → Export KSON</strong>.</p>
+<div class="warn-box">Always verify exported charts in KShootMania or USC before submitting. Laser timing, BPM changes, and hold edges should be spot-checked after export.</div>
+</section>
+
+<!-- ── 13. Shortcuts ── -->
+<section id="shortcuts">
+<h2>13. Full Keyboard Shortcut List</h2>
+<table class="shortcut-table">
+  <tr><th>Key</th><th>Action</th></tr>
+  <tr><td><kbd>1</kbd></td><td>Select tool</td></tr>
+  <tr><td><kbd>2</kbd></td><td>BT Note tool</td></tr>
+  <tr><td><kbd>3</kbd></td><td>FX Note tool</td></tr>
+  <tr><td><kbd>4</kbd></td><td>Left Laser tool</td></tr>
+  <tr><td><kbd>5</kbd></td><td>Right Laser tool</td></tr>
+  <tr><td><kbd>E</kbd></td><td>Erase tool</td></tr>
+  <tr><td><kbd>Tab</kbd></td><td>Cycle tools forward</td></tr>
+  <tr><td><kbd>Shift+Tab</kbd></td><td>Cycle tools backward</td></tr>
+  <tr><td><kbd>Space</kbd></td><td>Play / Stop (plays selection if selected)</td></tr>
+  <tr><td><kbd>Ctrl+Z</kbd></td><td>Undo</td></tr>
+  <tr><td><kbd>Ctrl+Y</kbd></td><td>Redo</td></tr>
+  <tr><td><kbd>Ctrl+S</kbd></td><td>Export KSH</td></tr>
+  <tr><td><kbd>Ctrl+C</kbd></td><td>Copy selection</td></tr>
+  <tr><td><kbd>Ctrl+X</kbd></td><td>Cut selection</td></tr>
+  <tr><td><kbd>Ctrl+V</kbd></td><td>Paste</td></tr>
+  <tr><td><kbd>C</kbd></td><td>Open context menu</td></tr>
+  <tr><td><kbd>Esc</kbd></td><td>Clear selection / close menus</td></tr>
+  <tr><td><kbd>Home</kbd></td><td>Go to start</td></tr>
+  <tr><td><kbd>End</kbd></td><td>Go to end</td></tr>
+  <tr><td><kbd>← →</kbd></td><td>Scroll chart columns</td></tr>
+  <tr><td><kbd>Ctrl+← →</kbd></td><td>Scroll multiple columns</td></tr>
+  <tr><td><kbd>PgUp / PgDn</kbd></td><td>Jump one page</td></tr>
+  <tr><td><kbd>[</kbd></td><td>Finer snap</td></tr>
+  <tr><td><kbd>]</kbd></td><td>Coarser snap</td></tr>
+  <tr><td><kbd>Ctrl + Scroll</kbd></td><td>Zoom in/out</td></tr>
+  <tr><td><kbd>Ctrl + = / –</kbd></td><td>Zoom in / out</td></tr>
+  <tr><td><kbd>Middle-mouse drag</kbd></td><td>Select tick region</td></tr>
+  <tr><td><kbd>Middle-mouse click</kbd></td><td>Move playhead to click position</td></tr>
+</table>
+</section>
+
+<footer>
+  vibe-editr — Sound Voltex Chart Editor · Open-source browser app · 2025
+</footer>
+
+</body>
+</html>

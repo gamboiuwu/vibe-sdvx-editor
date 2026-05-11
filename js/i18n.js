@@ -1,0 +1,657 @@
+'use strict';
+
+// ── Localization (i18n) ──────────────────────────────────────────────────────
+// Translation strings keyed by locale code. English is the master / fallback.
+// To add UI text to localization: give the element data-i18n="key.subkey".
+// For attribute text (placeholder, title): use data-i18n-attr="placeholder:key|title:key".
+
+const I18N = {
+  en: {
+    // ── Top-bar menus ──
+    'menu.file':         'File ▾',
+    'menu.edit':         'Edit ▾',
+    'menu.view':         'View ▾',
+    'menu.chart':        'Chart ▾',
+    'menu.settings':     'Settings ▾',
+    'menu.window':       'Window ▾',
+    'menu.help':         'Help ▾',
+    'menu.preferences':  'System Preferences…',
+
+    // ── System Preferences ──
+    'prefs.title':       'System Preferences',
+    'prefs.tab.audio':     '🔊 Audio',
+    'prefs.tab.video':     '🖥 Video',
+    'prefs.tab.general':   '⚙ General',
+    'prefs.tab.gameplay':  '🎮 Gameplay',
+    'prefs.tab.autosave':  '💾 Autosave',
+    'prefs.tab.shortcuts': '⌨ Shortcuts',
+    'prefs.save':        'Save',
+    'prefs.cancel':      'Cancel',
+
+    // ── Audio tab ──
+    'audio.timing':      'Timing',
+    'audio.audioDelay':  'Audio Delay',
+    'audio.audioDelayHint': 'Global offset for audio sync (positive = audio later)',
+    'audio.sfx':         'Sound Effects',
+    'audio.tickEnable':  'Enable Tick Sound',
+    'audio.tickHint':    '(on by default)',
+    'audio.volume':      'Volume',
+    'audio.master':      'Master:',
+    'audio.music':       'Music:',
+    'audio.slam':        'Slam:',
+    'audio.tick':        'Tick:',
+    'audio.tickRange':   '0 – 100% – 200%',
+
+    // ── Video tab ──
+    'video.timing':      'Timing',
+    'video.videoDelay':  'Video Delay',
+    'video.videoDelayHint': 'Display offset for monitor latency calibration',
+    'video.performance': 'Performance',
+    'video.fpsCap':      'Game preview FPS cap',
+    'video.glow':        'Glow / High Quality',
+    'video.glowHint':    'Shadow & glow effects — disable on low-end hardware',
+    'video.laserAppearance': 'Laser Appearance',
+    'video.showDir':     'Show L/R direction label',
+    'video.showDots':    'Show envelope points always',
+    'video.showDotsHint':'Show laser anchor dots when not editing',
+    'video.opacity':     'Opacity',
+    'video.quickPresets':'Quick presets (both sides)',
+
+    // ── General tab ──
+    'general.interface': 'Interface',
+    'general.language':  'Language',
+    'general.languageHint': 'Localization is in progress',
+    'general.reset':     'Reset',
+    'general.resetBtn':  'Reset All Preferences to Default',
+    'general.resetHint': 'No editor restart required.',
+
+    // ── Gameplay tab ──
+    'gameplay.preview':       'Preview',
+    'gameplay.autoplay':      'Autoplay (Game View)',
+    'gameplay.autoplayHint':  'Auto-play scoring chain in preview',
+    'gameplay.laserSlam':     'Laser / Slam',
+    'gameplay.slamThreshold': 'Slam threshold',
+    'gameplay.slamThresholdHint':
+      'Lower = only very tight slams; Higher = more segments treated as slams. Default: 6 (1/32 note).',
+    'gameplay.snap':          'Snap',
+    'gameplay.defaultSnap':   'Default snap divisor',
+
+    // ── Autosave tab ──
+    'autosave.section':   'Autosave',
+    'autosave.every':     'Save every',
+    'autosave.seconds':   'seconds',
+    'autosave.disabled':  '(0 = disabled)',
+    'autosave.savePath':  'Save location hint',
+    'autosave.history':   'History',
+    'autosave.maxUndo':   'Max undo states',
+    'autosave.recovery':  'Recovery',
+    'autosave.recoverBtn':'Recover Last Autosave…',
+    'autosave.recoveryHint':
+      'Autosaves are stored in IndexedDB and persist between sessions. Recovery loads the most recent autosave slot.',
+
+    // ── Shortcuts tab ──
+    'shortcuts.title':    'Keyboard Shortcuts',
+    'shortcuts.rebindHint':'Rebinding coming soon. Current shortcuts:',
+
+    // ── Settings dropdown (per-chart) ──
+    'settings.laser':       'Per-Chart Laser',
+    'settings.filter':      'Laser Filter:',
+    'settings.filterGain':  'Filter Gain:',
+    'settings.wideLaser':   '2× Wide Lasers',
+    'settings.quickVolume': 'Quick Volume',
+
+    // ── Toolbar / tools ──
+    'tool.select':       '⊹ Select',
+    'tool.bt':           '■ BT',
+    'tool.fx':           '■ FX',
+    'tool.laserL':       '~ L-Laser',
+    'tool.laserR':       '~ R-Laser',
+    'tool.erase':        '⌫ Erase',
+    'tool.play':         '▶ Play',
+    'tool.stop':         '⏹ Stop',
+
+    // ── Laser interpolation ──
+    'laser.interp.linear':  'Linear',
+    'laser.interp.bezier':  'Smooth',
+    'laser.interp.step':    'Step',
+    'laser.interp.title':   'Interpolation',
+
+    // ── View buttons ──
+    'view.edit':         '✦ Edit',
+    'view.split':        '⧉ Split',
+    'view.preview':      '▶ Preview',
+
+    // ── Preview controls ──
+    'preview.projection': 'Projection',
+    'preview.perspective':'Perspective',
+    'preview.hispeed':    'HiSpeed',
+    'preview.btWidth':    'BT Width',
+    'preview.ortho':      'Ortho',
+    'preview.sdvx':       'SDVX',
+    'preview.hybrid':     'Hybrid',
+
+    // ── Tool descriptions ──
+    'tool.desc.bpm-sync':       'Calculates note timing in ms and ticks at any BPM and subdivision. Helpful for verifying audio sync and planning precise placements.',
+    'tool.desc.validity':       'Scans the chart for overlapping notes, laser errors, and missing metadata that would block export.',
+    'tool.desc.laser-smooth':   'Applies curve algorithms (Chaikin, Moving Avg, Resample) to flatten jagged laser paths for a cleaner play feel.',
+    'tool.desc.density-heatmap':'Heat-map of note and laser activity across the chart. Pinpoints peak-density windows, quiet zones, and difficulty spikes by lane.',
+    'tool.desc.multi-sync':     'Compares BPM events and timing across multiple open chart tabs — useful for aligning charts in medleys.',
+    'tool.desc.vol-angle':      'Analyzes laser rotation speed and direction changes. Highlights fast rotations and the most demanding VOL passages.',
+    'tool.desc.fx-gen':         'Auto-generates FX hold patterns based on configurable density and type rules.',
+    'tool.desc.offset-finder':  'Calibrates chart offset against audio. Tap to the beat or reference audio transients to establish timing.',
+    'tool.desc.jacket-meta':    'View and edit jacket image path, song title, artist, effector, illustrator, and difficulty values.',
+    'tool.desc.hand-opt':       'Detects sequences where BT/FX placement forces awkward hand positioning and highlights stretch-penalty hotspots.',
+    'tool.desc.keysound':       'Map and preview per-note keysound samples assigned to BT/FX lanes.',
+    'tool.desc.scale':          'Suggests musical scales matching the chart key and BPM — useful when designing melodic laser or note patterns.',
+    'tool.desc.hold-render':    'Fine-tune hold note endpoints, split holds into segments, or merge adjacent holds in the same lane.',
+    'tool.desc.timing-window':  'Simulates SDVX scoring windows (S-CRITICAL / CRITICAL / NEAR) and analyzes chart timing against each grade boundary.',
+    'tool.desc.symmetry':       'Detects asymmetric note patterns that could feel unbalanced between left and right hands.',
+    'tool.desc.pattern-lib':    'Save, browse, and paste reusable note patterns (hand-trips, jacks, zigzags) into the current chart.',
+    'tool.desc.waveform-align': 'Overlays the audio waveform behind the chart to help visually line up notes with audio transients.',
+    'tool.desc.collision':      'Flags notes that overlap in screen space, causing visual glitches during gameplay rendering.',
+    'tool.desc.export-validate':'Pre-flight check for KSH/KSON export — catches missing fields, malformed events, and format violations.',
+
+    // ── Sub-section descriptions ──
+    'tool.subdesc.timing.preset':    'Pick a game version to load its official windows, or choose Custom to enter your own values.',
+    'tool.subdesc.timing.diagram':   'Visual zones centered on the perfect hit. Wider bands = more lenient timing; narrower = stricter.',
+    'tool.subdesc.timing.bpmtable':  'Shows how many ticks each judgment window occupies per BPM event in the chart.',
+    'tool.subdesc.timing.gaps':      'Fastest note intervals in the chart. Passages tighter than the NEAR window are flagged as ⚠ danger zones.',
+    'tool.subdesc.timing.fastest':   'Ranks measures by effective note density and speed. High scores indicate physically demanding segments.',
+    'tool.subdesc.timing.chords':    'Identifies simultaneous multi-lane hits (chords) and estimates their contribution to hand difficulty.',
+    'tool.subdesc.timing.snapshots': 'Mini chart renders at peak-density and key moments. Click any card to navigate the editor there.',
+    'tool.subdesc.timing.score':     'Estimates theoretical max score achievable given the timing windows and note count.',
+    'tool.subdesc.heatmap':          'Each column = one window of measures. Column height = activity level. Hover for exact values; scroll/zoom to explore.',
+    'tool.subdesc.heatmap.snapshots':'Chart previews at the peak and quietest measure. Click a card to jump to that position in the editor.',
+  },
+
+  // ── Español ──
+  es: {
+    'menu.file':         'Archivo ▾',
+    'menu.edit':         'Edición ▾',
+    'menu.view':         'Ver ▾',
+    'menu.chart':        'Gráfico ▾',
+    'menu.settings':     'Ajustes ▾',
+    'menu.window':       'Ventana ▾',
+    'menu.help':         'Ayuda ▾',
+    'menu.preferences':  'Preferencias del Sistema…',
+
+    'prefs.title':       'Preferencias del Sistema',
+    'prefs.tab.audio':     '🔊 Audio',
+    'prefs.tab.video':     '🖥 Vídeo',
+    'prefs.tab.general':   '⚙ General',
+    'prefs.tab.gameplay':  '🎮 Juego',
+    'prefs.tab.autosave':  '💾 Auto-guardado',
+    'prefs.tab.shortcuts': '⌨ Atajos',
+    'prefs.save':        'Guardar',
+    'prefs.cancel':      'Cancelar',
+
+    'audio.timing':      'Sincronización',
+    'audio.audioDelay':  'Retraso de audio',
+    'audio.audioDelayHint':'Compensación global para sincronización (positivo = audio más tarde)',
+    'audio.sfx':         'Efectos de sonido',
+    'audio.tickEnable':  'Activar sonido Tick',
+    'audio.tickHint':    '(activado por defecto)',
+    'audio.volume':      'Volumen',
+    'audio.master':      'Maestro:',
+    'audio.music':       'Música:',
+    'audio.slam':        'Slam:',
+    'audio.tick':        'Tick:',
+    'audio.tickRange':   '0 – 100 % – 200 %',
+
+    'video.timing':      'Sincronización',
+    'video.videoDelay':  'Retraso de vídeo',
+    'video.videoDelayHint':'Compensación de pantalla para latencia del monitor',
+    'video.performance': 'Rendimiento',
+    'video.fpsCap':      'Límite de FPS de la vista previa',
+    'video.glow':        'Resplandor / Alta calidad',
+    'video.glowHint':    'Sombras y resplandor — desactiva en hardware modesto',
+    'video.laserAppearance':'Apariencia del láser',
+    'video.showDir':     'Mostrar etiqueta L/R',
+    'video.showDots':    'Mostrar puntos siempre',
+    'video.showDotsHint':'Muestra anclas del láser fuera de edición',
+    'video.opacity':     'Opacidad',
+    'video.quickPresets':'Presets rápidos (ambos lados)',
+
+    'general.interface': 'Interfaz',
+    'general.language':  'Idioma',
+    'general.languageHint':'La localización está en progreso',
+    'general.reset':     'Restablecer',
+    'general.resetBtn':  'Restablecer preferencias',
+    'general.resetHint': 'No requiere reiniciar.',
+
+    'gameplay.preview':       'Vista previa',
+    'gameplay.autoplay':      'Reproducción automática',
+    'gameplay.autoplayHint':  'Cadena de puntuación automática en vista previa',
+    'gameplay.laserSlam':     'Láser / Slam',
+    'gameplay.slamThreshold': 'Umbral de slam',
+    'gameplay.slamThresholdHint':
+      'Menor = solo slams muy ajustados; Mayor = más segmentos como slams. Predeterminado: 6 (1/32).',
+    'gameplay.snap':          'Cuadrícula',
+    'gameplay.defaultSnap':   'Divisor de cuadrícula',
+
+    'autosave.section':   'Auto-guardado',
+    'autosave.every':     'Guardar cada',
+    'autosave.seconds':   'segundos',
+    'autosave.disabled':  '(0 = desactivado)',
+    'autosave.savePath':  'Carpeta sugerida',
+    'autosave.history':   'Historial',
+    'autosave.maxUndo':   'Máx. estados deshacer',
+    'autosave.recovery':  'Recuperación',
+    'autosave.recoverBtn':'Recuperar último auto-guardado…',
+    'autosave.recoveryHint':
+      'Los auto-guardados se almacenan en IndexedDB y persisten entre sesiones.',
+
+    'shortcuts.title':    'Atajos de teclado',
+    'shortcuts.rebindHint':'La reasignación pronto. Atajos actuales:',
+
+    'settings.laser':       'Láser por gráfico',
+    'settings.filter':      'Filtro láser:',
+    'settings.filterGain':  'Ganancia:',
+    'settings.wideLaser':   'Láseres anchos 2×',
+    'settings.quickVolume': 'Volumen rápido',
+
+    'tool.select':       '⊹ Seleccionar',
+    'tool.bt':           '■ BT',
+    'tool.fx':           '■ FX',
+    'tool.laserL':       '~ Láser-I',
+    'tool.laserR':       '~ Láser-D',
+    'tool.erase':        '⌫ Borrar',
+    'tool.play':         '▶ Reproducir',
+    'tool.stop':         '⏹ Detener',
+    'laser.interp.linear': 'Lineal', 'laser.interp.bezier': 'Suave', 'laser.interp.step': 'Escalón', 'laser.interp.title': 'Interpolación',
+
+    'view.edit':         '✦ Editar',
+    'view.split':        '⧉ Dividir',
+    'view.preview':      '▶ Vista previa',
+
+    'preview.projection': 'Proyección',
+    'preview.perspective':'Perspectiva',
+    'preview.hispeed':    'Velocidad',
+    'preview.btWidth':    'Ancho BT',
+    'preview.ortho':      'Orto',
+    'preview.sdvx':       'SDVX',
+    'preview.hybrid':     'Híbrida',
+
+    'tool.desc.bpm-sync':       'Calcula tiempos en ms y ticks para cualquier BPM y subdivisión. Útil para verificar la sincronía de audio y planificar colocaciones.',
+    'tool.desc.validity':       'Busca notas superpuestas, errores en láseres y metadatos faltantes que bloquearían la exportación.',
+    'tool.desc.laser-smooth':   'Aplica algoritmos (Chaikin, media móvil, resample) para suavizar trayectorias de láser irregulares.',
+    'tool.desc.density-heatmap':'Mapa de calor de actividad de notas y láseres. Identifica picos de densidad, zonas tranquilas y aumentos de dificultad por carril.',
+    'tool.desc.multi-sync':     'Compara eventos de BPM y temporización entre varias pestañas de gráficos abiertas.',
+    'tool.desc.vol-angle':      'Analiza velocidad de rotación del láser y cambios de dirección. Resalta las secciones VOL más exigentes.',
+    'tool.desc.fx-gen':         'Genera automáticamente patrones de FX sostenidos según reglas configurables.',
+    'tool.desc.offset-finder':  'Calibra el offset del gráfico respecto al audio. Golpea al ritmo o usa los transientes de audio.',
+    'tool.desc.jacket-meta':    'Visualiza y edita imagen de portada, título, artista, efector, ilustrador y valores de dificultad.',
+    'tool.desc.hand-opt':       'Detecta secuencias con posición de mano incómoda y señala puntos de penalización por estiramiento.',
+    'tool.desc.keysound':       'Asigna y previsualiza muestras de keysound por nota en los carriles BT/FX.',
+    'tool.desc.scale':          'Sugiere escalas musicales según la tonalidad y BPM del gráfico.',
+    'tool.desc.hold-render':    'Ajusta los endpoints de notas sostenidas, las divide en segmentos o fusiona las adyacentes.',
+    'tool.desc.timing-window':  'Simula las ventanas de puntuación SDVX (S-CRÍTICO, CRÍTICO, CERCA) y analiza el gráfico frente a cada límite.',
+    'tool.desc.symmetry':       'Detecta patrones de notas asimétricos que podrían sentirse desequilibrados entre manos.',
+    'tool.desc.pattern-lib':    'Guarda, navega y pega patrones de notas reutilizables (tripas, jacks, zigzags) en el gráfico.',
+    'tool.desc.waveform-align': 'Superpone la forma de onda de audio para alinear visualmente las notas con los transientes.',
+    'tool.desc.collision':      'Marca notas que se superponen en pantalla, causando glitches visuales durante el juego.',
+    'tool.desc.export-validate':'Verificación antes de exportar KSH/KSON — detecta campos faltantes, eventos mal formados y violaciones de formato.',
+
+    'tool.subdesc.timing.preset':    'Selecciona la versión del juego para cargar sus ventanas oficiales, o elige Personalizado.',
+    'tool.subdesc.timing.diagram':   'Zonas visuales centradas en el golpe perfecto. Bandas más anchas = más tolerante; más estrechas = más estricto.',
+    'tool.subdesc.timing.bpmtable':  'Muestra cuántos ticks ocupa cada ventana por evento BPM en el gráfico.',
+    'tool.subdesc.timing.gaps':      'Intervalos de notas más rápidos. Los más ajustados que CERCA se marcan como ⚠ zonas de peligro.',
+    'tool.subdesc.timing.fastest':   'Clasifica compases por densidad y velocidad efectiva de notas. Alto = segmentos físicamente exigentes.',
+    'tool.subdesc.timing.chords':    'Identifica golpes simultáneos en múltiples carriles y estima su dificultad para las manos.',
+    'tool.subdesc.timing.snapshots': 'Miniaturas del gráfico en momentos clave. Haz clic en una tarjeta para ir allí en el editor.',
+    'tool.subdesc.timing.score':     'Estima la puntuación máxima teórica dado el número de notas y las ventanas de temporización.',
+    'tool.subdesc.heatmap':          'Cada columna = una ventana de compases. Altura = nivel de actividad. Pasa el cursor para valores exactos.',
+    'tool.subdesc.heatmap.snapshots':'Vistas previas en el compás más activo y el más tranquilo. Clic para ir allí en el editor.',
+  },
+
+  // ── Français ──
+  fr: {
+    'menu.file': 'Fichier ▾', 'menu.edit': 'Édition ▾', 'menu.view': 'Vue ▾',
+    'menu.chart': 'Graphique ▾', 'menu.settings': 'Réglages ▾',
+    'menu.window': 'Fenêtre ▾', 'menu.help': 'Aide ▾',
+    'menu.preferences': 'Préférences Système…',
+
+    'prefs.title': 'Préférences Système',
+    'prefs.tab.audio': '🔊 Audio', 'prefs.tab.video': '🖥 Vidéo',
+    'prefs.tab.general': '⚙ Général', 'prefs.tab.gameplay': '🎮 Jeu',
+    'prefs.tab.autosave': '💾 Sauv. auto', 'prefs.tab.shortcuts': '⌨ Raccourcis',
+    'prefs.save': 'Enregistrer', 'prefs.cancel': 'Annuler',
+
+    'audio.timing': 'Synchro', 'audio.audioDelay': 'Délai audio',
+    'audio.audioDelayHint': 'Décalage audio global (positif = audio plus tard)',
+    'audio.sfx': 'Effets sonores', 'audio.tickEnable': 'Activer le son tick',
+    'audio.tickHint': '(activé par défaut)', 'audio.volume': 'Volume',
+    'audio.master': 'Maître :', 'audio.music': 'Musique :',
+    'audio.slam': 'Slam :', 'audio.tick': 'Tick :',
+    'audio.tickRange': '0 – 100 % – 200 %',
+
+    'video.timing': 'Synchro', 'video.videoDelay': 'Délai vidéo',
+    'video.videoDelayHint': 'Décalage pour latence d’écran',
+    'video.performance': 'Performance', 'video.fpsCap': 'Limite FPS aperçu',
+    'video.glow': 'Lueur / Haute qualité',
+    'video.glowHint': 'Désactivez sur matériel modeste',
+    'video.laserAppearance': 'Apparence du laser',
+    'video.showDir': 'Afficher étiquette L/R',
+    'video.showDots': 'Afficher les ancres en permanence',
+    'video.showDotsHint': 'Points d’ancrage hors édition',
+    'video.opacity': 'Opacité',
+    'video.quickPresets': 'Préréglages rapides',
+
+    'general.interface': 'Interface', 'general.language': 'Langue',
+    'general.languageHint': 'Localisation en cours',
+    'general.reset': 'Réinitialiser', 'general.resetBtn': 'Réinitialiser les préférences',
+    'general.resetHint': 'Pas de redémarrage nécessaire.',
+
+    'gameplay.preview': 'Aperçu',
+    'gameplay.autoplay': 'Lecture automatique',
+    'gameplay.autoplayHint': 'Chaîne de score auto en aperçu',
+    'gameplay.laserSlam': 'Laser / Slam',
+    'gameplay.slamThreshold': 'Seuil de slam',
+    'gameplay.slamThresholdHint':
+      'Plus bas = slams très serrés ; plus haut = plus de slams. Défaut : 6 (1/32).',
+    'gameplay.snap': 'Magnétisme', 'gameplay.defaultSnap': 'Diviseur par défaut',
+
+    'autosave.section': 'Sauvegarde auto', 'autosave.every': 'Enregistrer toutes les',
+    'autosave.seconds': 'secondes', 'autosave.disabled': '(0 = désactivé)',
+    'autosave.savePath': 'Dossier suggéré',
+    'autosave.history': 'Historique', 'autosave.maxUndo': 'Annulations max.',
+    'autosave.recovery': 'Récupération', 'autosave.recoverBtn': 'Récupérer la dernière sauv…',
+    'autosave.recoveryHint':
+      'Les sauvegardes sont stockées dans IndexedDB.',
+
+    'shortcuts.title': 'Raccourcis clavier',
+    'shortcuts.rebindHint': 'Réassignation bientôt. Raccourcis actuels :',
+
+    'settings.laser': 'Laser par graphique',
+    'settings.filter': 'Filtre laser :', 'settings.filterGain': 'Gain :',
+    'settings.wideLaser': 'Lasers larges 2×',
+    'settings.quickVolume': 'Volume rapide',
+
+    'tool.select': '⊹ Sélection', 'tool.bt': '■ BT', 'tool.fx': '■ FX',
+    'tool.laserL': '~ Laser-G', 'tool.laserR': '~ Laser-D',
+    'tool.erase': '⌫ Effacer',
+    'tool.play': '▶ Lecture', 'tool.stop': '⏹ Stop',
+    'laser.interp.linear': 'Linéaire', 'laser.interp.bezier': 'Lisse', 'laser.interp.step': 'Palier', 'laser.interp.title': 'Interpolation',
+
+    'view.edit': '✦ Édition', 'view.split': '⧉ Divisé', 'view.preview': '▶ Aperçu',
+
+    'preview.projection': 'Projection', 'preview.perspective': 'Perspective',
+    'preview.hispeed': 'Vitesse', 'preview.btWidth': 'Largeur BT',
+    'preview.ortho': 'Ortho', 'preview.sdvx': 'SDVX', 'preview.hybrid': 'Hybride',
+
+    'tool.desc.bpm-sync':       'Calcule les temps en ms et en ticks pour tout BPM et subdivision. Utile pour vérifier la synchro audio.',
+    'tool.desc.validity':       'Recherche les notes superposées, les erreurs de laser et les métadonnées manquantes bloquant l\'export.',
+    'tool.desc.laser-smooth':   'Applique des algorithmes (Chaikin, moy. mobile, rééchantillonnage) pour lisser les tracés laser irréguliers.',
+    'tool.desc.density-heatmap':'Carte thermique de l\'activité des notes et lasers. Repère les pics de densité, zones calmes et pics de difficulté par voie.',
+    'tool.desc.multi-sync':     'Compare les événements BPM et le timing entre plusieurs onglets de graphiques ouverts.',
+    'tool.desc.vol-angle':      'Analyse la vitesse de rotation laser et les changements de direction. Identifie les passages VOL les plus exigeants.',
+    'tool.desc.fx-gen':         'Génère automatiquement des motifs FX tenus selon des règles configurables de densité et de type.',
+    'tool.desc.offset-finder':  'Calibre l\'offset du graphique par rapport à l\'audio. Tapez dans le rythme ou référencez les transitoires.',
+    'tool.desc.jacket-meta':    'Affiche et édite l\'image de pochette, titre, artiste, effecteur, illustrateur et valeurs de difficulté.',
+    'tool.desc.hand-opt':       'Détecte les séquences forçant une position de main inconfortable et surligne les zones de pénalité.',
+    'tool.desc.keysound':       'Associe et prévisualise des échantillons keysound par note sur les voies BT/FX.',
+    'tool.desc.scale':          'Suggère des gammes musicales correspondant à la tonalité et au BPM du graphique.',
+    'tool.desc.hold-render':    'Affine les extrémités des notes longues, les fractionne ou fusionne les adjacentes sur la même voie.',
+    'tool.desc.timing-window':  'Simule les fenêtres de score SDVX (S-CRITIQUE, CRITIQUE, PRÈS) et analyse le graphique par rapport à chaque seuil.',
+    'tool.desc.symmetry':       'Détecte les motifs de notes asymétriques pouvant sembler déséquilibrés entre les deux mains.',
+    'tool.desc.pattern-lib':    'Enregistrez, parcourez et collez des motifs de notes réutilisables (mains, jacks, zigzags) dans le graphique.',
+    'tool.desc.waveform-align': 'Superpose la forme d\'onde audio pour aligner visuellement les notes sur les transitoires.',
+    'tool.desc.collision':      'Signale les notes se chevauchant à l\'écran, provoquant des artefacts visuels en jeu.',
+    'tool.desc.export-validate':'Vérification avant export KSH/KSON — détecte les champs manquants, événements mal formés et violations de format.',
+
+    'tool.subdesc.timing.preset':    'Choisissez la version du jeu pour ses fenêtres officielles, ou sélectionnez Personnalisé.',
+    'tool.subdesc.timing.diagram':   'Zones visuelles centrées sur la frappe parfaite. Bandes plus larges = plus de tolérance.',
+    'tool.subdesc.timing.bpmtable':  'Indique combien de ticks occupe chaque fenêtre par événement BPM dans le graphique.',
+    'tool.subdesc.timing.gaps':      'Intervalles de notes les plus rapides. Les plus serrés que PRÈS sont marqués ⚠ zones dangereuses.',
+    'tool.subdesc.timing.fastest':   'Classe les mesures par densité et vitesse effective des notes. Score élevé = segment physiquement exigeant.',
+    'tool.subdesc.timing.chords':    'Identifie les frappes simultanées sur plusieurs voies et estime leur difficulté pour les mains.',
+    'tool.subdesc.timing.snapshots': 'Miniatures du graphique aux moments clés. Cliquez pour naviguer dans l\'éditeur.',
+    'tool.subdesc.timing.score':     'Estime le score maximal théorique selon le nombre de notes et les fenêtres de timing.',
+    'tool.subdesc.heatmap':          'Chaque colonne = une fenêtre de mesures. Hauteur = niveau d\'activité. Survolez pour les valeurs exactes.',
+    'tool.subdesc.heatmap.snapshots':'Aperçus aux mesures les plus actives et calmes. Cliquez pour y aller dans l\'éditeur.',
+  },
+
+  // ── 日本語 ──
+  ja: {
+    'menu.file': 'ファイル ▾', 'menu.edit': '編集 ▾', 'menu.view': '表示 ▾',
+    'menu.chart': '譜面 ▾', 'menu.settings': '設定 ▾',
+    'menu.window': 'ウィンドウ ▾', 'menu.help': 'ヘルプ ▾',
+    'menu.preferences': 'システム環境設定…',
+
+    'prefs.title': 'システム環境設定',
+    'prefs.tab.audio': '🔊 オーディオ', 'prefs.tab.video': '🖥 ビデオ',
+    'prefs.tab.general': '⚙ 一般', 'prefs.tab.gameplay': '🎮 ゲームプレイ',
+    'prefs.tab.autosave': '💾 自動保存', 'prefs.tab.shortcuts': '⌨ ショートカット',
+    'prefs.save': '保存', 'prefs.cancel': 'キャンセル',
+
+    'audio.timing': 'タイミング', 'audio.audioDelay': 'オーディオ遅延',
+    'audio.audioDelayHint': '音声同期の補正値（正 = 音声を遅らせる）',
+    'audio.sfx': '効果音', 'audio.tickEnable': 'チック音を有効',
+    'audio.tickHint': '（デフォルトで有効）', 'audio.volume': '音量',
+    'audio.master': 'マスター:', 'audio.music': '音楽:',
+    'audio.slam': 'スラム:', 'audio.tick': 'チック:',
+    'audio.tickRange': '0 – 100% – 200%',
+
+    'video.timing': 'タイミング', 'video.videoDelay': 'ビデオ遅延',
+    'video.videoDelayHint': 'モニタ遅延補正',
+    'video.performance': 'パフォーマンス', 'video.fpsCap': 'プレビューのFPS上限',
+    'video.glow': 'グロー / 高品質',
+    'video.glowHint': '低スペック端末ではオフ推奨',
+    'video.laserAppearance': 'レーザー表示',
+    'video.showDir': 'L/R 表示', 'video.showDots': '常にアンカー表示',
+    'video.showDotsHint': '編集中以外でも表示', 'video.opacity': '不透明度',
+    'video.quickPresets': 'クイック プリセット',
+
+    'general.interface': 'インターフェース', 'general.language': '言語',
+    'general.languageHint': 'ローカライズ作業中',
+    'general.reset': 'リセット', 'general.resetBtn': '環境設定を初期化',
+    'general.resetHint': '再起動不要。',
+
+    'gameplay.preview': 'プレビュー',
+    'gameplay.autoplay': 'オートプレイ',
+    'gameplay.autoplayHint': 'プレビューでスコア チェーンを自動再生',
+    'gameplay.laserSlam': 'レーザー / スラム',
+    'gameplay.slamThreshold': 'スラム判定',
+    'gameplay.slamThresholdHint':
+      '小さいほど厳密、大きいほど多くがスラム扱い。標準: 6 (1/32)。',
+    'gameplay.snap': 'スナップ', 'gameplay.defaultSnap': '標準スナップ',
+
+    'autosave.section': '自動保存', 'autosave.every': '保存間隔',
+    'autosave.seconds': '秒', 'autosave.disabled': '(0 = 無効)',
+    'autosave.savePath': '保存先ヒント',
+    'autosave.history': '履歴', 'autosave.maxUndo': '最大取り消し数',
+    'autosave.recovery': '復元', 'autosave.recoverBtn': '最新の自動保存を復元…',
+    'autosave.recoveryHint': 'IndexedDB に保存されます。',
+
+    'shortcuts.title': 'キーボード ショートカット',
+    'shortcuts.rebindHint': '再割当て対応予定。現在のショートカット:',
+
+    'settings.laser': '譜面ごとのレーザー',
+    'settings.filter': 'フィルター:', 'settings.filterGain': 'ゲイン:',
+    'settings.wideLaser': 'ワイド レーザー 2×',
+    'settings.quickVolume': 'クイック音量',
+
+    'tool.select': '⊹ 選択', 'tool.bt': '■ BT', 'tool.fx': '■ FX',
+    'tool.laserL': '~ L レーザー', 'tool.laserR': '~ R レーザー',
+    'tool.erase': '⌫ 消去',
+    'tool.play': '▶ 再生', 'tool.stop': '⏹ 停止',
+    'laser.interp.linear': '直線', 'laser.interp.bezier': 'スムーズ', 'laser.interp.step': 'ステップ', 'laser.interp.title': '補間',
+
+    'view.edit': '✦ 編集', 'view.split': '⧉ 分割', 'view.preview': '▶ プレビュー',
+
+    'preview.projection': '投影', 'preview.perspective': '遠近',
+    'preview.hispeed': 'ハイスピード', 'preview.btWidth': 'BT 幅',
+    'preview.ortho': '正射', 'preview.sdvx': 'SDVX', 'preview.hybrid': 'ハイブリッド',
+
+    'tool.desc.bpm-sync':       '任意のBPMと細分でのノートタイミング（ms・tick）を計算します。オーディオ同期の確認や配置計画に便利。',
+    'tool.desc.validity':       '重複ノート、レーザーエラー、エクスポートをブロックするメタデータ不足をスキャンします。',
+    'tool.desc.laser-smooth':   'アルゴリズム（Chaikin・移動平均・リサンプル）で不規則なレーザーパスを滑らかにします。',
+    'tool.desc.density-heatmap':'ノートとレーザーのアクティビティを視覚化。密度ピーク・静かなゾーン・難易度スパイクをレーンごとに特定。',
+    'tool.desc.multi-sync':     '複数の譜面タブ間でBPMイベントとタイミングを比較します。メドレー譜面の調整に便利。',
+    'tool.desc.vol-angle':      'レーザー回転速度と方向変化を分析。最も要求が高いVOLパッセージを強調表示します。',
+    'tool.desc.fx-gen':         '設定可能な密度・タイプルールに基づき、FXホールドパターンを自動生成します。',
+    'tool.desc.offset-finder':  '音声に対する譜面オフセットを調整。ビートに合わせてタップするか、トランジェントを参照します。',
+    'tool.desc.jacket-meta':    'ジャケット画像パス、タイトル、アーティスト、エフェクター、イラストレーター、難易度を表示・編集します。',
+    'tool.desc.hand-opt':       'BT/FX配置が手に不自然な姿勢を強いるシーケンスを検出し、ストレッチペナルティ箇所を強調します。',
+    'tool.desc.keysound':       'BT/FXレーンのノートごとにキーサウンドサンプルをマッピング・プレビューします。',
+    'tool.desc.scale':          '譜面のキーとBPMに合う音楽スケールを提案します。メロディックなレーザーやノートパターン設計に役立ちます。',
+    'tool.desc.hold-render':    'ホールドノートのエンドポイント調整、分割、または隣接ホールドの結合を行います。',
+    'tool.desc.timing-window':  'SDVXスコアリングウィンドウ（Sクリティカル/クリティカル/ニア）をシミュレートし、各グレード境界で譜面を分析します。',
+    'tool.desc.symmetry':       '左右の手でバランスが取れていないと感じる可能性がある非対称なノートパターンを検出します。',
+    'tool.desc.pattern-lib':    '再利用可能なノートパターン（連符・ジャック・ジグザグ）を保存・閲覧・貼り付けします。',
+    'tool.desc.waveform-align': '音声波形を譜面の背後に重ね表示し、ノートとトランジェントの視覚的な位置合わせを支援します。',
+    'tool.desc.collision':      'スクリーン上で重なるノートにフラグを立てます（ゲームプレイ中の描画グリッチの原因）。',
+    'tool.desc.export-validate':'KSH/KSONエクスポート前チェック。必須フィールドの欠如・不正なイベント・フォーマット違反を検出します。',
+
+    'tool.subdesc.timing.preset':    'ゲームバージョンを選択して公式ウィンドウを読み込むか、カスタムで独自の値を入力します。',
+    'tool.subdesc.timing.diagram':   'パーフェクトヒットを中心とした視覚的ゾーン。バンドが広いほど判定が緩い、狭いほど厳しい。',
+    'tool.subdesc.timing.bpmtable':  '各BPMイベントでウィンドウが何ティックを占めるかを表示します。',
+    'tool.subdesc.timing.gaps':      '最速のノート間隔。NIARウィンドウより短い箇所は⚠危険ゾーンとして強調されます。',
+    'tool.subdesc.timing.fastest':   'ノートの密度と実効速度で小節をランク付けします。高スコア = 身体的に要求の高いセグメント。',
+    'tool.subdesc.timing.chords':    '複数レーンの同時ヒット（和音）を特定し、手の難易度への寄与を推定します。',
+    'tool.subdesc.timing.snapshots': '主要瞬間のミニ譜面レンダリング。カードをクリックするとエディタでその位置へ移動します。',
+    'tool.subdesc.timing.score':     'ノート数とタイミングウィンドウから理論上の最高スコアを推定します。',
+    'tool.subdesc.heatmap':          '各列 = 小節のウィンドウ。高さ = アクティビティレベル。ホバーで正確な値を確認。スクロール/ズームで探索。',
+    'tool.subdesc.heatmap.snapshots':'最も活発・静かな小節のプレビュー。カードをクリックしてエディタでそこへ移動。',
+  },
+
+  // ── 中文 (简体) ──
+  zh: {
+    'menu.file': '文件 ▾', 'menu.edit': '编辑 ▾', 'menu.view': '视图 ▾',
+    'menu.chart': '谱面 ▾', 'menu.settings': '设置 ▾',
+    'menu.window': '窗口 ▾', 'menu.help': '帮助 ▾',
+    'menu.preferences': '系统首选项…',
+
+    'prefs.title': '系统首选项',
+    'prefs.tab.audio': '🔊 音频', 'prefs.tab.video': '🖥 视频',
+    'prefs.tab.general': '⚙ 通用', 'prefs.tab.gameplay': '🎮 游戏',
+    'prefs.tab.autosave': '💾 自动保存', 'prefs.tab.shortcuts': '⌨ 快捷键',
+    'prefs.save': '保存', 'prefs.cancel': '取消',
+
+    'audio.timing': '同步', 'audio.audioDelay': '音频延迟',
+    'audio.audioDelayHint': '全局音频偏移（正值 = 音频延后）',
+    'audio.sfx': '音效', 'audio.tickEnable': '启用 Tick 声',
+    'audio.tickHint': '（默认开启）', 'audio.volume': '音量',
+    'audio.master': '主：', 'audio.music': '音乐：',
+    'audio.slam': '猛击：', 'audio.tick': 'Tick：',
+    'audio.tickRange': '0 – 100% – 200%',
+
+    'video.timing': '同步', 'video.videoDelay': '视频延迟',
+    'video.videoDelayHint': '显示器延迟校准',
+    'video.performance': '性能', 'video.fpsCap': '预览帧率上限',
+    'video.glow': '光晕 / 高品质',
+    'video.glowHint': '低端硬件建议关闭',
+    'video.laserAppearance': '激光外观',
+    'video.showDir': '显示 L/R 标签', 'video.showDots': '始终显示锚点',
+    'video.showDotsHint': '非编辑时显示激光锚点', 'video.opacity': '不透明度',
+    'video.quickPresets': '快速预设（双侧）',
+
+    'general.interface': '界面', 'general.language': '语言',
+    'general.languageHint': '本地化进行中',
+    'general.reset': '重置', 'general.resetBtn': '将所有首选项恢复默认',
+    'general.resetHint': '无需重启。',
+
+    'gameplay.preview': '预览',
+    'gameplay.autoplay': '自动播放',
+    'gameplay.autoplayHint': '在预览中自动播放计分连击',
+    'gameplay.laserSlam': '激光 / 猛击',
+    'gameplay.slamThreshold': '猛击阈值',
+    'gameplay.slamThresholdHint':
+      '更低 = 仅识别极紧凑的猛击；更高 = 更多片段视为猛击。默认: 6 (1/32)。',
+    'gameplay.snap': '吸附', 'gameplay.defaultSnap': '默认吸附分母',
+
+    'autosave.section': '自动保存', 'autosave.every': '每隔',
+    'autosave.seconds': '秒', 'autosave.disabled': '(0 = 关闭)',
+    'autosave.savePath': '保存位置提示',
+    'autosave.history': '历史', 'autosave.maxUndo': '最大撤销步数',
+    'autosave.recovery': '恢复', 'autosave.recoverBtn': '恢复最近的自动保存…',
+    'autosave.recoveryHint': '存储于 IndexedDB，会话间保留。',
+
+    'shortcuts.title': '键盘快捷键',
+    'shortcuts.rebindHint': '即将支持重映射。当前快捷键：',
+
+    'settings.laser': '谱面激光设置',
+    'settings.filter': '激光滤波器：', 'settings.filterGain': '滤波器增益：',
+    'settings.wideLaser': '2× 宽激光',
+    'settings.quickVolume': '快速音量',
+
+    'tool.select': '⊹ 选择', 'tool.bt': '■ BT', 'tool.fx': '■ FX',
+    'tool.laserL': '~ L 激光', 'tool.laserR': '~ R 激光',
+    'tool.erase': '⌫ 擦除',
+    'tool.play': '▶ 播放', 'tool.stop': '⏹ 停止',
+    'laser.interp.linear': '线性', 'laser.interp.bezier': '平滑', 'laser.interp.step': '阶梯', 'laser.interp.title': '插值',
+
+    'view.edit': '✦ 编辑', 'view.split': '⧉ 分屏', 'view.preview': '▶ 预览',
+
+    'preview.projection': '投影', 'preview.perspective': '透视',
+    'preview.hispeed': '速度', 'preview.btWidth': 'BT 宽度',
+    'preview.ortho': '正交', 'preview.sdvx': 'SDVX', 'preview.hybrid': '混合',
+
+    'tool.desc.bpm-sync':       '计算任意 BPM 和细分下的音符时值（ms 和 tick）。用于验证音频同步或规划精确放置。',
+    'tool.desc.validity':       '扫描谱面中的重叠音符、激光错误以及会阻止导出的缺失元数据。',
+    'tool.desc.laser-smooth':   '应用算法（Chaikin、移动均值、重采样）平滑不规则的激光路径。',
+    'tool.desc.density-heatmap':'音符和激光活动的热力图。按轨道定位密度峰值、静默区域和难度突增点。',
+    'tool.desc.multi-sync':     '跨多个打开的谱面标签比较 BPM 事件和时间线，适用于联动谱面对齐。',
+    'tool.desc.vol-angle':      '分析激光旋转速度和方向变化，突出显示最具挑战性的 VOL 段落。',
+    'tool.desc.fx-gen':         '根据可配置的密度和类型规则自动生成 FX 长按模式。',
+    'tool.desc.offset-finder':  '根据音频校准谱面偏移量。跟随节拍点击或参考音频瞬态进行定时。',
+    'tool.desc.jacket-meta':    '查看和编辑封面图路径、曲目标题、艺术家、效果师、画师及难度值。',
+    'tool.desc.hand-opt':       '检测 BT/FX 布局导致手部姿势不自然的序列，并高亮显示拉伸惩罚热区。',
+    'tool.desc.keysound':       '为 BT/FX 轨道上的每个音符映射并预览按键音样本。',
+    'tool.desc.scale':          '根据谱面调性和 BPM 推荐匹配的音阶，适用于设计旋律激光或音符模式。',
+    'tool.desc.hold-render':    '精调长按音符端点，将长按分割为段落，或合并同轨道中相邻的长按。',
+    'tool.desc.timing-window':  '模拟 SDVX 评分窗口（S-CRITICAL / CRITICAL / NEAR），并根据各等级边界分析谱面时间线。',
+    'tool.desc.symmetry':       '检测可能导致左右手不平衡感的不对称音符模式。',
+    'tool.desc.pattern-lib':    '保存、浏览并粘贴可复用的音符模式（连击、Jack、锯齿形）到当前谱面。',
+    'tool.desc.waveform-align': '在谱面背后叠加音频波形，帮助将音符与音频瞬态对齐。',
+    'tool.desc.collision':      '标记在屏幕空间中重叠的音符——这些音符会在游戏渲染时引发视觉异常。',
+    'tool.desc.export-validate':'KSH/KSON 导出前检查——捕获缺失字段、格式错误的事件和格式违规。',
+
+    'tool.subdesc.timing.preset':    '选择游戏版本以加载其官方窗口，或选择自定义输入您自己的值。',
+    'tool.subdesc.timing.diagram':   '以完美打击为中心的视觉区域。区带越宽 = 判定越宽松；越窄 = 越严格。',
+    'tool.subdesc.timing.bpmtable':  '显示每个 BPM 事件下各判定窗口占用的 tick 数。',
+    'tool.subdesc.timing.gaps':      '谱面中最快的音符间隔。比 NEAR 窗口更紧的段落标为 ⚠ 危险区。',
+    'tool.subdesc.timing.fastest':   '按有效音符密度和速度对小节排名。高分代表对体能要求高的段落。',
+    'tool.subdesc.timing.chords':    '识别多轨道同时触发的和弦，并估算其对手部难度的贡献。',
+    'tool.subdesc.timing.snapshots': '关键时刻的缩略谱面渲染。单击卡片即可在编辑器中跳转。',
+    'tool.subdesc.timing.score':     '根据音符数量和时间窗口估算理论上的最高得分。',
+    'tool.subdesc.heatmap':          '每列 = 一个小节窗口。高度 = 活动级别。悬停查看精确值；滚动/缩放以探索。',
+    'tool.subdesc.heatmap.snapshots':'最活跃和最平静小节的谱面预览。单击卡片跳转到该位置。',
+  },
+};
+
+let _currentLocale = 'en';
+
+function t(key) {
+  return I18N[_currentLocale]?.[key] ?? I18N.en[key] ?? key;
+}
+
+function applyLocalization(lang) {
+  _currentLocale = (lang && I18N[lang]) ? lang : 'en';
+  document.documentElement.lang = _currentLocale;
+
+  // Translate all elements with data-i18n
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    const txt = t(key);
+    // For input/button/option elements: update value/text appropriately
+    if (el.tagName === 'OPTION') el.textContent = txt;
+    else if (el.tagName === 'INPUT' && (el.type === 'button' || el.type === 'submit')) el.value = txt;
+    else el.textContent = txt;
+  });
+
+  // Translate attributes via data-i18n-attr="placeholder:key|title:key2"
+  document.querySelectorAll('[data-i18n-attr]').forEach(el => {
+    el.getAttribute('data-i18n-attr').split('|').forEach(pair => {
+      const [attr, key] = pair.split(':');
+      if (attr && key) el.setAttribute(attr, t(key));
+    });
+  });
+
+  // Live-update any tool description / sub-description banners currently in the DOM
+  // (they store their i18n key in data-i18n-key so we can re-translate without a reload)
+  document.querySelectorAll('.tool-desc[data-i18n-key], .tool-subdesc[data-i18n-key]').forEach(el => {
+    const key = el.getAttribute('data-i18n-key');
+    if (key) el.textContent = t(key);
+  });
+}
