@@ -583,13 +583,10 @@ function playFrame(now) {
       _lastGameFrameTime = now;
     }
   }
-  // Multi-chart preview — advance and redraw each slot
+  // Multi-chart preview — advance and redraw each slot (no throttle — runs every frame)
   if (_multiMode && _multiViews.length) {
-    const minInterval = 1000 / (prefs.fpsCap || 60);
-    if (!_lastGameFrameTime || now - _lastGameFrameTime >= minInterval) {
-      _multiSyncSettings();
-      _multiDraw();
-    }
+    _multiSyncSettings();
+    _multiDraw();
   }
   // Update radar every playback frame regardless of view mode
   if (typeof updateRadar === 'function') updateRadar();
@@ -1382,7 +1379,7 @@ function _multiRebuild() {
   const area = document.getElementById('multi-preview-area');
   if (!area) return;
   // Tear down old views
-  for (const mv of _multiViews) { mv.gv = null; }
+  for (const mv of _multiViews) { mv._ro?.disconnect(); mv.gv = null; }
   _multiViews = [];
   area.innerHTML = '';
 
@@ -1489,15 +1486,20 @@ function _multiRebuild() {
       }
     });
 
-    // Size & first draw after layout
-    requestAnimationFrame(() => { gv.resize(); gv.draw(); });
+    // Use ResizeObserver so the canvas is sized correctly once the flex layout settles
+    const ro = new ResizeObserver(() => {
+      gv.resize();
+      if (!playing) gv.draw();
+    });
+    ro.observe(wrap);
+    mv._ro = ro; // keep reference so we can disconnect if needed
   }
 }
 
-// Apply / remove horizontal mirror to a multi-view slot's GameView.
-// We set a flag on the GameView and intercept draw with a ctx flip.
+// Apply / remove horizontal mirror to a multi-view slot via CSS transform.
+// This avoids breaking GameView.draw()'s internal clearRect.
 function _multiApplyMirror(mv) {
-  mv.gv._mirrorH = mv.mirrored;
+  mv.canvas.style.transform = mv.mirrored ? 'scaleX(-1)' : '';
 }
 
 // Draw all active multi-views (called from render() and playFrame())
@@ -1507,24 +1509,22 @@ function _multiDraw() {
     if (!mv.gv) continue;
     const offsetTick = _multiSync ? renderer.playTick + mv.tickOffset : mv.gv.playTick;
     mv.gv.playTick = Math.max(0, offsetTick);
-    if (mv.gv._mirrorH) {
-      const ctx = mv.canvas.getContext('2d');
-      ctx.save();
-      ctx.translate(mv.canvas.width, 0);
-      ctx.scale(-1, 1);
-      mv.gv.draw();
-      ctx.restore();
-    } else {
-      mv.gv.draw();
-    }
+    mv.gv.draw();
   }
 }
 
 // Sync settings from the main gameView to all multi-views (projection, btWidth, judgeY)
+// Also refreshes gv.chart in case a file was loaded into a tab after the rebuild.
 function _multiSyncSettings() {
   if (!gameView) return;
   for (const mv of _multiViews) {
     if (!mv.gv) continue;
+    // Keep chart reference fresh — file loads replace tabs[i].chart with a new object
+    const freshChart = tabs[mv.tabIdx]?.chart;
+    if (freshChart && mv.gv.chart !== freshChart) {
+      mv.gv.chart = freshChart;
+      mv.gv._totalWeight = 0; // force recompute
+    }
     mv.gv.btWidthScale   = gameView.btWidthScale;
     mv.gv.projMode       = gameView.projMode;
     mv.gv.perspIntensity = gameView.perspIntensity;

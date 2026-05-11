@@ -797,7 +797,7 @@ class GameView {
 
     // Laser position indicators at judgment line
     for (let side = 0; side < 2; side++) {
-      const lv = getLaserPosAt ? getLaserPosAt(side, tick) : null;
+      const lv = this._getLaserPosAt(side, tick);
       if (lv === null) continue;
       const sx = this._laserX(lv, p.judgeY, p);
       const col = side === 0 ? laserColors.L : laserColors.R;
@@ -1158,6 +1158,27 @@ class GameView {
     }
 
     ctx.restore();
+  }
+
+  // ── Per-chart laser position query ───────────────────────────────────────
+  // Uses this.chart so each GameView instance reads its own chart's lasers,
+  // rather than the global getLaserPosAt which always reads the active tab.
+  _getLaserPosAt(side, tick) {
+    if (!this.chart) return null;
+    for (const sec of this.chart.lasers[side]) {
+      if (tick < sec.y) continue;
+      const pts = sec.points;
+      for (let pi = 0; pi < pts.length - 1; pi++) {
+        const t0 = sec.y + pts[pi].ry, t1 = sec.y + pts[pi + 1].ry;
+        if (tick >= t0 && tick <= t1) {
+          const ratio = t1 === t0 ? 0 : (tick - t0) / (t1 - t0);
+          return pts[pi].v + (pts[pi + 1].v - pts[pi].v) * ratio;
+        }
+      }
+      const last = pts[pts.length - 1];
+      if (last && sec.y + last.ry >= tick) return last.v;
+    }
+    return null;
   }
 
   // ── Slam flash API ────────────────────────────────────────────────────────
