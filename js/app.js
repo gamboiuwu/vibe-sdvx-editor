@@ -3154,8 +3154,19 @@ function onMouseDown(e) {
     }
   }
 
-  // Middle mouse = start selection drag
+  // Middle mouse = start selection drag (single) or open range editor (double)
   if (e.button === 1) {
+    const now = performance.now();
+    const DBLCLICK_MS = 300;
+    if (now - (onMouseDown._lastMiddleT ?? 0) < DBLCLICK_MS) {
+      // Double middle-click — open selection range editor popup
+      onMouseDown._lastMiddleT = 0; // reset so a 3rd click doesn't re-trigger
+      sel.dragging = false;
+      render();
+      openSeekbarSelectionPopup(e.clientX, e.clientY);
+      return;
+    }
+    onMouseDown._lastMiddleT = now;
     const h = getHit(e);
     sel.dragging = true;
     sel._dragStartX = e.clientX;
