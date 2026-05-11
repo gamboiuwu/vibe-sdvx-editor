@@ -5132,8 +5132,8 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 // ── Visual Calibration Window ─────────────────────────────────────────────────
-// A simple metronome circle that blinks at the set BPM.
-// The user adjusts Audio/Video delay until the blink aligns with what they hear.
+// Metronome circle that blinks + plays metro_A (beat 1) / metro_B (beats 2-4).
+// The user adjusts Audio/Video delay until blink and click are in sync.
 
 (function initVisualCalib() {
   const modal    = document.getElementById('modal-visual-calib');
@@ -5146,57 +5146,162 @@ window.addEventListener('DOMContentLoaded', () => {
   const vidInput = document.getElementById('vc-video-delay');
   if (!modal || !vcCanvas) return;
 
-  const ctx2  = vcCanvas.getContext('2d');
+  const ctx2 = vcCanvas.getContext('2d');
   const W = vcCanvas.width, H = vcCanvas.height;
-  let _rafId  = null;
-  let _startT = null;
 
-  // Tap tracking for tap-tempo + sync feedback
-  let _lastTapT   = null;
-  let _tapPhaseMs = 0;
+  // ── Audio ──────────────────────────────────────────────────────────────────
+  let _vcAcCtx    = null;   // own AudioContext so it can't be blocked by the main one
+  let _metroA     = null;   // AudioBuffer for beat 1
+  let _metroB     = null;   // AudioBuffer for beats 2-4
+  let _loadedBufs = false;
 
-  function _bpm()       { return Math.max(40, Math.min(400, +bpmInput.value || 120)); }
-  function _beatMs()    { return 60000 / _bpm(); }
+  async function _ensureAudio() {
+    if (_loadedBufs) return;
+    if (!_vcAcCtx) _vcAcCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
+    if (_vcAcCtx.state === 'suspended') await _vcAcCtx.resume();
+    const load = async url => {
+      const res = await fetch(url);
+      const ab  = await res.arrayBuffer();
+      return _vcAcCtx.decodeAudioData(ab);
+    };
+    try {
+      [_metroA, _metroB] = await Promise.all([load('sounds/metro_A.mp3'), load('sounds/metro_B.mp3')]);
+      _loadedBufs = true;
+    } catch(e) {
+      console.warn('[VisualCalib] Could not load metro sounds:', e);
+    }
+  }
+
+  function _fireClick(isDownbeat, acTime) {
+    if (!_vcAcCtx) return;
+    const buf = isDownbeat ? _metroA : _metroB;
+    if (!buf) return;
+    const src = _vcAcCtx.createBufferSource();
+    src.buffer = buf;
+    src.connect(_vcAcCtx.destination);
+    src.start(acTime);
+  }
+
+  // ── Scheduler ──────────────────────────────────────────────────────────────
+  // We schedule audio slightly ahead (LOOKAHEAD_S) so clicks never glitch.
+  // The visual blink is driven by performance.now() and is kept in sync with
+  // _scheduleStart (the performance.now() timestamp when beat-0 fired).
+  const LOOKAHEAD_S = 0.08; // seconds of audio lookahead
+  let _schedStart   = null; // performance.now() of beat-0 (set on open / tap)
+  let _nextBeat     = 0;    // index of next beat to schedule (0-based, mod 4 = measure position)
+  let _schedTimer   = null;
+
+  function _bpm()    { return Math.max(40, Math.min(400, +bpmInput.value || 120)); }
+  function _beatMs() { return 60000 / _bpm(); }
+
+  function _resetScheduler() {
+    if (_schedTimer) { clearInterval(_schedTimer); _schedTimer = null; }
+    _schedStart = performance.now();
+    _nextBeat   = 0;
+    // Immediately fire beat-0 (downbeat)
+    if (_vcAcCtx) {
+      if (_vcAcCtx.state === 'suspended') _vcAcCtx.resume();
+      _fireClick(true, _vcAcCtx.currentTime);
+    }
+    // Schedule ahead every LOOKAHEAD_S / 2
+    _schedTimer = setInterval(_scheduleTick, (LOOKAHEAD_S / 2) * 1000);
+    _scheduleTick(); // fill the first window immediately
+  }
+
+  function _scheduleTick() {
+    if (!_vcAcCtx || _schedStart === null) return;
+    const beatMs  = _beatMs();
+    const acNow   = _vcAcCtx.currentTime;
+    const perfNow = performance.now();
+
+    // How far ahead to schedule (in ms)
+    const windowMs = LOOKAHEAD_S * 1000;
+
+    while (true) {
+      // performance.now() of next beat
+      const beatPerfMs = _schedStart + _nextBeat * beatMs;
+      // Already more than LOOKAHEAD ahead of now? Stop for this tick
+      if (beatPerfMs > perfNow + windowMs) break;
+      // Skip beats already in the past (can happen after a tab wake-up)
+      if (beatPerfMs < perfNow - beatMs) { _nextBeat++; continue; }
+
+      // Map performance.now() → AudioContext time
+      const acFire = acNow + (beatPerfMs - perfNow) / 1000;
+      if (acFire >= acNow - 0.005) {            // don't fire into the past
+        const isDown = (_nextBeat % 4) === 0;   // beat 1 of each group of 4
+        _fireClick(isDown, Math.max(acNow, acFire));
+      }
+      _nextBeat++;
+    }
+  }
+
+  function _stopScheduler() {
+    if (_schedTimer) { clearInterval(_schedTimer); _schedTimer = null; }
+    _schedStart = null;
+    _nextBeat   = 0;
+  }
+
+  // ── Visuals ────────────────────────────────────────────────────────────────
+  let _rafId    = null;
+  let _lastTapT = null;
 
   function _draw(now) {
-    if (!_startT) _startT = now;
-    const elapsed = now - _startT;
-    const beatMs  = _beatMs();
+    if (_schedStart === null) { _rafId = requestAnimationFrame(_draw); return; }
 
-    // Phase within beat: 0 = on beat, 1 = just before next beat
-    const phase   = (elapsed % beatMs) / beatMs;
-    // Flash: 0 = bright, 1 = dark;  fast attack, slow decay
-    const flash   = Math.pow(1 - phase, 3);
+    const beatMs = _beatMs();
+    const elapsed = now - _schedStart;
+    // Phase 0 = on beat, approaches 1 just before next beat
+    const phase = ((elapsed % beatMs) + beatMs) % beatMs / beatMs;
+    // Which beat of the measure (0–3) are we on?
+    const beatIdx = Math.floor(elapsed / beatMs) % 4;
+    // Flash: sharp attack, exponential decay
+    const flash = Math.pow(1 - phase, 2.5);
+    const isDown = beatIdx === 0;
 
-    // Background
+    // Colors: gold for downbeat, blue for subdivisions
+    const flashR = isDown ? 255 : 80;
+    const flashG = isDown ? 210 : 150;
+    const flashB = isDown ? 80  : 255;
+
     ctx2.clearRect(0, 0, W, H);
     ctx2.fillStyle = '#0a0a1a';
     ctx2.fillRect(0, 0, W, H);
 
-    // Outer ring (always dim)
+    // Outer ring
     ctx2.beginPath();
     ctx2.arc(W/2, H/2, 80, 0, Math.PI * 2);
     ctx2.strokeStyle = '#333366';
     ctx2.lineWidth   = 3;
     ctx2.stroke();
 
-    // Beat-progress arc
+    // Beat-progress sweep arc
     ctx2.beginPath();
     ctx2.arc(W/2, H/2, 80, -Math.PI/2, -Math.PI/2 + phase * Math.PI * 2);
-    ctx2.strokeStyle = '#4488ff88';
+    ctx2.strokeStyle = isDown ? '#ffcc0088' : '#4488ff88';
     ctx2.lineWidth   = 3;
     ctx2.stroke();
 
-    // Main circle — flashes white/blue on beat
-    const r = 54 + flash * 10;
+    // Beat-position pips (4 dots around the ring)
+    for (let i = 0; i < 4; i++) {
+      const ang = -Math.PI/2 + i * Math.PI / 2;
+      const px = W/2 + Math.cos(ang) * 80;
+      const py = H/2 + Math.sin(ang) * 80;
+      ctx2.beginPath();
+      ctx2.arc(px, py, i === 0 ? 5 : 3, 0, Math.PI * 2);
+      ctx2.fillStyle = i === beatIdx ? (isDown ? '#ffdd44' : '#88aaff') : '#1a1a44';
+      ctx2.fill();
+    }
+
+    // Main flash circle
+    const r = 52 + flash * 12;
     const grd = ctx2.createRadialGradient(W/2, H/2, 0, W/2, H/2, r);
-    if (flash > 0.05) {
-      grd.addColorStop(0,   `rgba(220,240,255,${0.3 + flash * 0.7})`);
-      grd.addColorStop(0.5, `rgba(80,150,255,${0.4 + flash * 0.5})`);
-      grd.addColorStop(1,   `rgba(20,80,200,0)`);
+    if (flash > 0.03) {
+      grd.addColorStop(0,   `rgba(${flashR},${flashG},${flashB},${0.25 + flash * 0.75})`);
+      grd.addColorStop(0.55,`rgba(${flashR},${flashG},${flashB},${0.15 + flash * 0.45})`);
+      grd.addColorStop(1,   `rgba(${flashR},${flashG},${flashB},0)`);
     } else {
-      grd.addColorStop(0,   '#223366');
-      grd.addColorStop(1,   '#0a1a33');
+      grd.addColorStop(0,   '#1a1a44');
+      grd.addColorStop(1,   '#0a0a1a');
     }
     ctx2.beginPath();
     ctx2.arc(W/2, H/2, r, 0, Math.PI * 2);
@@ -5205,52 +5310,61 @@ window.addEventListener('DOMContentLoaded', () => {
 
     // Center dot
     ctx2.beginPath();
-    ctx2.arc(W/2, H/2, 8 + flash * 4, 0, Math.PI * 2);
-    ctx2.fillStyle = flash > 0.05 ? `rgba(255,255,255,${0.5 + flash * 0.5})` : '#334477';
+    ctx2.arc(W/2, H/2, 7 + flash * 5, 0, Math.PI * 2);
+    ctx2.fillStyle = flash > 0.03
+      ? `rgba(${flashR},${flashG},${flashB},${0.6 + flash * 0.4})`
+      : '#223355';
     ctx2.fill();
 
+    // Beat counter label (e.g. "2")
+    ctx2.fillStyle   = flash > 0.1 ? `rgba(255,255,255,${flash})` : '#334477';
+    ctx2.font        = `bold 22px monospace`;
+    ctx2.textAlign   = 'center';
+    ctx2.textBaseline= 'middle';
+    ctx2.fillText(beatIdx + 1, W/2, H/2);
+
     // BPM label
-    ctx2.fillStyle = '#5566aa';
-    ctx2.font      = 'bold 12px monospace';
-    ctx2.textAlign = 'center';
-    ctx2.textBaseline = 'bottom';
+    ctx2.fillStyle   = '#5566aa';
+    ctx2.font        = 'bold 11px monospace';
+    ctx2.textBaseline= 'bottom';
     ctx2.fillText(_bpm() + ' BPM', W/2, H - 10);
 
-    // Tap-phase indicator (small indicator below center)
+    // Tap feedback
     if (_lastTapT !== null) {
       const tapAge = (performance.now() - _lastTapT) / 1000;
-      if (tapAge < 2) {
-        ctx2.fillStyle = `rgba(100,255,150,${Math.max(0, 1 - tapAge / 2)})`;
-        ctx2.font = '10px monospace';
-        ctx2.textBaseline = 'top';
-        ctx2.fillText('TAP ✓', W/2, H/2 + 24);
+      if (tapAge < 1.5) {
+        ctx2.fillStyle   = `rgba(100,255,150,${Math.max(0, 1 - tapAge / 1.5)})`;
+        ctx2.font        = '10px monospace';
+        ctx2.textBaseline= 'top';
+        ctx2.fillText('TAP ✓', W/2, H/2 + 26);
       }
     }
 
     _rafId = requestAnimationFrame(_draw);
   }
 
-  function _open() {
-    // Populate from current prefs
+  // ── Open / Close ───────────────────────────────────────────────────────────
+  async function _open() {
     bpmInput.value = chart?.bpmEvents?.[0]?.bpm?.toFixed(0) ?? 120;
     const saved = JSON.parse(localStorage.getItem('vibe-editr-prefs') || '{}');
     audInput.value = saved.audioDelay ?? (document.getElementById('pref-audio-delay')?.value ?? 0);
     vidInput.value = saved.videoDelay ?? (document.getElementById('pref-video-delay')?.value ?? 0);
     modal.style.display = 'flex';
-    _startT = null;
     _lastTapT = null;
-    _rafId = requestAnimationFrame(_draw);
+    await _ensureAudio();
+    _resetScheduler();
+    if (!_rafId) _rafId = requestAnimationFrame(_draw);
   }
 
   function _close() {
     modal.style.display = 'none';
+    _stopScheduler();
     if (_rafId) { cancelAnimationFrame(_rafId); _rafId = null; }
   }
 
   function _save() {
     const ad = +audInput.value;
     const vd = +vidInput.value;
-    // Apply to the preferences inputs
     const adEl = document.getElementById('pref-audio-delay');
     const vdEl = document.getElementById('pref-video-delay');
     if (adEl) { adEl.value = ad; adEl.dispatchEvent(new Event('input')); }
@@ -5258,23 +5372,24 @@ window.addEventListener('DOMContentLoaded', () => {
     _close();
   }
 
-  // Space key = tap (reset phase to zero → restart circle)
   function _onKey(e) {
     if (!modal || modal.style.display === 'none') return;
     if (e.code === 'Space') {
       e.preventDefault();
-      _startT   = performance.now();
       _lastTapT = performance.now();
+      // Restart from this moment so beat-1 fires now
+      _stopScheduler();
+      _resetScheduler();
     }
-    if (e.code === 'Escape') { _close(); }
+    if (e.code === 'Escape') _close();
   }
 
   btnOpen?.addEventListener('click', _open);
   btnSave?.addEventListener('click', _save);
   btnCancel?.addEventListener('click', _close);
-  // Click outside modal closes it
   modal.addEventListener('click', e => { if (e.target === modal) _close(); });
   document.addEventListener('keydown', _onKey);
-  // Re-sync on BPM change
-  bpmInput?.addEventListener('change', () => { _startT = null; });
+  // Re-sync scheduler when BPM changes
+  bpmInput?.addEventListener('change', () => { if (_schedStart !== null) _resetScheduler(); });
+  bpmInput?.addEventListener('input',  () => { if (_schedStart !== null) _resetScheduler(); });
 })();
