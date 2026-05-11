@@ -3756,6 +3756,10 @@ function onKeyDown(e) {
       }
       break;
 
+    case 'd': case 'D':
+      if (ctrl) { e.preventDefault(); sel.active = false; sel.dragging = false; updateSelStatus(); render(); }
+      break;
+
     case 'c': case 'C':
       if (ctrl) { e.preventDefault(); selCopy(); }
       else { e.preventDefault(); openContextMenuCenter(); }
