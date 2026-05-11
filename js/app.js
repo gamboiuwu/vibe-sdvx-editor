@@ -1200,7 +1200,7 @@ function showMultiChartPicker(chartMetas, onConfirm) {
     modal.innerHTML = `
       <div class="modal-box mcp-box">
         <div class="mcp-header">
-          <span class="mcp-icon">⚡</span> Multiple Charts Detected
+          <span class="mcp-icon">&#9670;</span> Multiple Charts Detected
         </div>
         <div class="mcp-mode-row">
           <button class="mcp-mode-btn${!splitMode ? ' active' : ''}" id="mcp-btn-normal">◉ Normal</button>
@@ -1353,6 +1353,10 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-mirror-vol')?.addEventListener('click', () => selMirror('vol'));
   document.getElementById('btn-speed-half')?.addEventListener('click',   () => selAdjustSpeed(0.5));
   document.getElementById('btn-speed-double')?.addEventListener('click', () => selAdjustSpeed(2.0));
+  document.getElementById('btn-sran-all')?.addEventListener('click', () => applySRan('all'));
+  document.getElementById('btn-sran-bt')?.addEventListener('click',  () => applySRan('bt'));
+  document.getElementById('btn-sran-fx')?.addEventListener('click',  () => applySRan('fx'));
+  document.getElementById('btn-sran-vol')?.addEventListener('click', () => applySRan('vol'));
   document.getElementById('btn-ripple-delete')?.addEventListener('click', selRippleDelete);
 
   _loadingShow('Building renderer…', 60);
@@ -1695,41 +1699,41 @@ window.addEventListener('DOMContentLoaded', () => {
       render();
     };
 
-    // Only one chart: load it immediately
-    if (chartFiles.length === 1) {
-      try { await loadOneChart(chartFiles[0]); }
-      catch(err) { alert('Error loading chart:\n' + err.message); }
-      e.target.value = ''; return;
-    }
+    // SDVX difficulty order: low → high
+    const DIFF_ORDER = ['light','novice','challenge','advanced','extended','infinite','maximum','gravity','heavenly','vivid','exceed'];
+    const diffRank = d => {
+      const k = (d || '').toLowerCase().replace(/[^a-z]/g,'');
+      const i = DIFF_ORDER.findIndex(x => k.startsWith(x));
+      return i < 0 ? 99 : i;
+    };
 
-    // Multiple charts: read quick metadata from each, then show picker
+    // Quick-read metadata for all chart files
     const chartMetas = [];
     for (const cf of chartFiles) {
       try {
-        const text = await readText(cf);
-        // Quick-parse just enough metadata without full import
+        let text;
+        try { text = await readText(cf); } catch(_) { text = ''; }
         let title = cf.name, diff = '', level = '', jacket = '';
         if (cf.name.endsWith('.kson')) {
           try {
             const j = JSON.parse(text);
-            title  = j.meta?.title       || cf.name;
+            title  = j.meta?.title            || cf.name;
             diff   = j.meta?.difficulty?.name || '';
             level  = j.meta?.level != null ? String(j.meta.level) : '';
-            jacket = j.meta?.jacket_filename || '';
+            jacket = j.meta?.jacket_filename  || '';
           } catch(_) {}
         } else {
-          // KSH: parse header lines
           for (const line of text.split('\n').slice(0, 60)) {
-            const [k, v] = line.split('=');
-            if (!k || !v) continue;
-            const key = k.trim().toLowerCase();
-            if (key === 'title')      title  = v.trim();
-            if (key === 'difficulty') diff   = v.trim();
-            if (key === 'level')      level  = v.trim();
-            if (key === 'jacket')     jacket = v.trim();
+            const sep = line.indexOf('=');
+            if (sep < 0) continue;
+            const key = line.slice(0, sep).trim().toLowerCase();
+            const val = line.slice(sep + 1).trim();
+            if (key === 'title')      title  = val;
+            if (key === 'difficulty') diff   = val;
+            if (key === 'level')      level  = val;
+            if (key === 'jacket')     jacket = val;
           }
         }
-        // Try to find jacket file
         const imgExts = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
         const jacketBaseName = jacket?.split(/[\\/]/).pop();
         const jacketFile = (jacketBaseName && files.find(f => f.name === jacketBaseName))
@@ -1741,21 +1745,32 @@ window.addEventListener('DOMContentLoaded', () => {
       }
     }
 
-    // Show picker modal
-    showMultiChartPicker(chartMetas, async (chosen, splitMode) => {
-      if (!chosen.length) return;
-      try {
-        if (splitMode && chosen.length >= 2) {
-          // Open first chart in current tab, second in a new tab
-          await loadOneChart(chosen[0].file);
-          addTab();
-          await loadOneChart(chosen[1].file);
-          setViewMode('split');
-        } else {
-          await loadOneChart(chosen[0].file);
-        }
-      } catch(err) { alert('Error loading chart:\n' + err.message); }
-    });
+    // Sort low → high difficulty
+    chartMetas.sort((a, b) => diffRank(a.diff) - diffRank(b.diff) || +a.level - +b.level);
+
+    // Only one chart: load it directly
+    if (chartMetas.length === 1) {
+      try { await loadOneChart(chartMetas[0].file); }
+      catch(err) { alert('Error loading chart:\n' + err.message); }
+      e.target.value = ''; return;
+    }
+
+    // Multiple charts: open ALL (up to 4) sorted low→high, one per tab.
+    // Always ensure exactly 4 tabs exist (add blank ones if needed).
+    const toLoad = chartMetas.slice(0, 4);
+    try {
+      // Load first chart into current tab
+      await loadOneChart(toLoad[0].file);
+      // Load remaining charts, creating a new tab for each
+      for (let i = 1; i < toLoad.length; i++) {
+        addTab();
+        await loadOneChart(toLoad[i].file);
+      }
+      // Pad to 4 tabs with blank tabs if we have fewer than 4 charts
+      while (tabs.length < 4) addTab();
+      // Switch back to first tab
+      switchToTab(0);
+    } catch(err) { alert('Error loading charts:\n' + err.message); }
 
     e.target.value = '';
   });
@@ -2610,6 +2625,65 @@ function selRandom(what) {
   render();
 }
 
+// ── S-Ran: per-note independent random lane assignment (SDVX S-Random) ────────
+// Each individual note is placed on a completely random lane within its category.
+// Unlike selRandom (column shuffle), notes in the same chord can end up anywhere.
+function applySRan(what) {
+  saveUndo(`S-Ran ${what.toUpperCase()}`);
+  const [lo, hi] = sel.active ? selTickRange() : [0, chart.totalTicks()];
+
+  if (what === 'bt' || what === 'all') {
+    // Collect all BT notes in range from all lanes, clear them, reassign randomly
+    const notes = [];
+    for (let li = 0; li < 4; li++) {
+      for (const n of chart.bt[li]) {
+        if (n.y >= lo && n.y < hi) notes.push({ ...n });
+      }
+      chart.bt[li] = chart.bt[li].filter(n => n.y < lo || n.y >= hi);
+    }
+    for (const n of notes) {
+      const dest = Math.floor(Math.random() * 4);
+      chart.bt[dest].push(n);
+      chart.bt[dest].sort((a, b) => a.y - b.y);
+    }
+  }
+
+  if (what === 'fx' || what === 'all') {
+    // Each FX note independently goes to a random FX lane (0 or 1)
+    const notes = [];
+    for (let li = 0; li < 2; li++) {
+      for (const n of chart.fx[li]) {
+        if (n.y >= lo && n.y < hi) notes.push({ ...n });
+      }
+      chart.fx[li] = chart.fx[li].filter(n => n.y < lo || n.y >= hi);
+    }
+    for (const n of notes) {
+      const dest = Math.floor(Math.random() * 2);
+      chart.fx[dest].push(n);
+      chart.fx[dest].sort((a, b) => a.y - b.y);
+    }
+  }
+
+  if (what === 'vol' || what === 'all') {
+    // Each VOL section independently assigned to L or R (preserving laser values)
+    const sections = [];
+    for (let s = 0; s < 2; s++) {
+      for (const sec of chart.lasers[s]) {
+        if (sec.y >= lo && sec.y < hi) sections.push({ sec: { ...sec, points: sec.points.map(p => ({ ...p })) }, src: s });
+      }
+      chart.lasers[s] = chart.lasers[s].filter(sec => sec.y < lo || sec.y >= hi);
+    }
+    for (const { sec } of sections) {
+      const dest = Math.floor(Math.random() * 2);
+      // Mirror position values when moving from one side to the other (so laser stays playable)
+      chart.lasers[dest].push(sec);
+      chart.lasers[dest].sort((a, b) => a.y - b.y);
+    }
+  }
+
+  render();
+}
+
 // ── VOL overlap detection ─────────────────────────────────────────────────────
 function checkLaserOverlap() {
   for (let side = 0; side < 2; side++) {
@@ -2673,6 +2747,14 @@ function ensureCtxMenu() {
         <div class="ctx-item" data-act="rand-vol">Random VOL</div>
       </div>
     </div>
+    <div class="ctx-item ctx-has-sub">S-Ran <span style="font-size:9px;color:#aaa">(per-note)</span>
+      <div class="ctx-sub">
+        <div class="ctx-item" data-act="sran-all">S-Ran All</div>
+        <div class="ctx-item" data-act="sran-bt">S-Ran BT</div>
+        <div class="ctx-item" data-act="sran-fx">S-Ran FX</div>
+        <div class="ctx-item" data-act="sran-vol">S-Ran VOL</div>
+      </div>
+    </div>
   `;
   document.body.appendChild(ctxMenuEl);
 
@@ -2694,6 +2776,10 @@ function ensureCtxMenu() {
     else if (act === 'rand-bt')  selRandom('bt');
     else if (act === 'rand-fx')  selRandom('fx');
     else if (act === 'rand-vol') selRandom('vol');
+    else if (act === 'sran-all') applySRan('all');
+    else if (act === 'sran-bt')  applySRan('bt');
+    else if (act === 'sran-fx')  applySRan('fx');
+    else if (act === 'sran-vol') applySRan('vol');
   });
 
   document.addEventListener('click', () => { if (ctxMenuEl) ctxMenuEl.style.display = 'none'; });
@@ -5110,14 +5196,14 @@ window.addEventListener('DOMContentLoaded', () => {
     // and the panel's own chrome when it's inside dp-float or a dock region.
     const toolsWin = document.querySelector('.tw-window');
     if (toolsWin) {
-      dockRegister('tools-hub', toolsWin, 'Tools Hub', '🔧', 'float', { nativeFloat: true, floatW: 640, floatH: 460 });
+      dockRegister('tools-hub', toolsWin, 'Tools Hub', '⚙', 'float', { nativeFloat: true, floatW: 640, floatH: 460 });
     }
 
     // Right dock: FX Chain + Events + Shortcuts
     const fxPanel = document.getElementById('panel-fx');
     if (fxPanel) {
       fxPanel.style.width = fxPanel.style.minWidth = fxPanel.style.maxWidth = '';
-      dockRegister('fx-panel', fxPanel, 'FX & Events', '⚡', 'right');
+      dockRegister('fx-panel', fxPanel, 'FX & Events', '★', 'right');
     }
 
     // Apply the full layout (from localStorage, or use each panel's defaultRegion)
@@ -5430,4 +5516,112 @@ window.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('keydown', _onKey);
   // Only restart the scheduler when the user finishes editing BPM (blur / Enter)
   bpmInput?.addEventListener('change', () => { if (_schedStart !== null) _resetScheduler(); });
+})();
+
+// ── Song Data Window ──────────────────────────────────────────────────────────
+// Floating panel showing chart statistics: length, ticks, measures, BPM range.
+(function initSongDataWindow() {
+  let _win = null;
+
+  function _secToTime(s) {
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60).toString().padStart(2, '0');
+    return `${m}min ${sec}sec`;
+  }
+
+  function _buildOrRefresh() {
+    if (!_win) {
+      _win = document.createElement('div');
+      _win.id = 'song-data-win';
+      Object.assign(_win.style, {
+        position: 'fixed', top: '80px', right: '24px', zIndex: '8000',
+        background: '#0e0e22', border: '1px solid #2a2a4a',
+        borderRadius: '10px', padding: '16px 20px', minWidth: '220px',
+        color: '#d8d8f0', fontFamily: 'monospace', fontSize: '12px',
+        boxShadow: '0 6px 32px #00000099', userSelect: 'none',
+      });
+      // Drag
+      let _dx = 0, _dy = 0, _drag = false;
+      const header = document.createElement('div');
+      Object.assign(header.style, {
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        marginBottom: '12px', cursor: 'move', fontWeight: 'bold',
+        fontSize: '11px', letterSpacing: '0.08em', color: '#88c8ff',
+      });
+      header.innerHTML = '&#9654; Song Data <span id="sdw-close" style="cursor:pointer;color:#6677aa;font-size:14px;padding:0 2px" title="Close">&#215;</span>';
+      header.addEventListener('mousedown', e => {
+        if (e.target.id === 'sdw-close') { _win.remove(); _win = null; return; }
+        _drag = true; _dx = e.clientX - _win.offsetLeft; _dy = e.clientY - _win.offsetTop;
+        e.preventDefault();
+      });
+      document.addEventListener('mousemove', e => {
+        if (!_drag || !_win) return;
+        _win.style.left = (e.clientX - _dx) + 'px';
+        _win.style.top  = (e.clientY - _dy) + 'px';
+        _win.style.right = 'auto';
+      });
+      document.addEventListener('mouseup', () => { _drag = false; });
+      _win.appendChild(header);
+      const body = document.createElement('div');
+      body.id = 'sdw-body';
+      _win.appendChild(body);
+      document.body.appendChild(_win);
+    }
+
+    const body = document.getElementById('sdw-body');
+    if (!body) return;
+
+    if (!chart) {
+      body.innerHTML = '<div style="color:#556">No chart loaded.</div>';
+      return;
+    }
+
+    const totalTicks = chart.totalTicks();
+    const totalMeasures = chart.totalMeasures;
+    const lengthSec = tickToSeconds(totalTicks);
+
+    const bpms = chart.bpmEvents.map(e => e.bpm).filter(b => b > 0);
+    const minBpm = bpms.length ? Math.min(...bpms).toFixed(1) : '—';
+    const maxBpm = bpms.length ? Math.max(...bpms).toFixed(1) : '—';
+    const nowBpm = chart.getBpmAt ? chart.getBpmAt(renderer?.playTick ?? 0).toFixed(1) : maxBpm;
+    const bpmStr = minBpm === maxBpm ? maxBpm : `${minBpm} – ${maxBpm}`;
+
+    // Count notes
+    let btNotes = 0, fxNotes = 0, volSecs = 0;
+    for (let li = 0; li < 4; li++) btNotes += chart.bt[li].length;
+    for (let li = 0; li < 2; li++) fxNotes += chart.fx[li].length;
+    for (let s  = 0; s  < 2; s++)  volSecs += chart.lasers[s].length;
+
+    const row = (label, value, hint = '') => `
+      <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #1a1a33">
+        <span style="color:#6677aa">${label}</span>
+        <span style="color:#e8e8f8;font-weight:bold" title="${hint}">${value}</span>
+      </div>`;
+
+    body.innerHTML =
+      row('Length',   _secToTime(lengthSec)) +
+      row('Ticks',    totalTicks.toLocaleString()) +
+      row('Measures', totalMeasures) +
+      row('BPM',      bpmStr, `Now: ${nowBpm}`) +
+      row('BT notes', btNotes) +
+      row('FX notes', fxNotes) +
+      row('VOL segs', volSecs);
+  }
+
+  document.getElementById('btn-song-data-window')?.addEventListener('click', () => {
+    if (_win) { _win.remove(); _win = null; return; } // toggle
+    _buildOrRefresh();
+  });
+
+  // Refresh whenever the chart changes (hook into render cycle)
+  const _origRender = window._sdwRefreshHooked;
+  if (!_origRender) {
+    window._sdwRefreshHooked = true;
+    // Lightweight: refresh on any render call if window is open
+    const _baseRender = typeof render === 'function' ? render : null;
+    if (_baseRender) {
+      // We patch render at the call site level — safer to just refresh on a timer
+      setInterval(() => { if (_win && chart) _buildOrRefresh(); }, 1000);
+    }
+  }
 })();

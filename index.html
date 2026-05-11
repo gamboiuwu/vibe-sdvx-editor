@@ -56,6 +56,15 @@
           </div>
         </div>
         <div class="menu-sep"></div>
+        <div class="menu-item menu-has-sub">Modify ▸
+          <div class="menu-sub">
+            <button class="menu-item" id="btn-sran-all" title="Randomly shuffle BT lanes, FX lanes and VOL sides">S-Ran (All)</button>
+            <button class="menu-item" id="btn-sran-bt"  title="Randomly shuffle BT note lanes only">S-Ran BT</button>
+            <button class="menu-item" id="btn-sran-fx"  title="Randomly swap FX lanes">S-Ran FX</button>
+            <button class="menu-item" id="btn-sran-vol" title="Randomly swap VOL laser sides">S-Ran VOL</button>
+          </div>
+        </div>
+        <div class="menu-sep"></div>
         <button class="menu-item danger-item" id="btn-ripple-delete">Delete &amp; Shift  <kbd>Shift+Del</kbd></button>
       </div>
     </div>
@@ -175,10 +184,12 @@
         <button class="menu-item" id="btn-history-panel">History &amp; Timeline</button>
         <button class="menu-item" id="btn-split-opts">Split View Options</button>
         <div class="menu-sep"></div>
-        <button class="menu-item" id="btn-gameplay-panel">🎮 Gameplay…</button>
-        <button class="menu-item accent" id="btn-tools-window">🔧 Tools Hub…</button>
-        <button class="menu-item" id="btn-radar-window">⬡ Pattern Radar…</button>
-        <button class="menu-item" id="btn-handsim-window">✋ Hand Simulator…</button>
+        <button class="menu-item" id="btn-song-data-window">&#9654; Song Data…</button>
+        <div class="menu-sep"></div>
+        <button class="menu-item" id="btn-gameplay-panel">&#9654; Gameplay…</button>
+        <button class="menu-item accent" id="btn-tools-window">&#9965; Tools Hub…</button>
+        <button class="menu-item" id="btn-radar-window">&#11042; Pattern Radar…</button>
+        <button class="menu-item" id="btn-handsim-window">&#9758; Hand Simulator…</button>
       </div>
     </div>
   </div>
@@ -478,7 +489,7 @@
       <span id="pvc-judge-y-label" class="pvc-val">73%</span>
     </div>
     <div class="pvc-section" style="border-top:1px solid #ffffff18;padding-top:6px;margin-top:2px">
-      <button id="pvc-save-config" title="Save current Projection, HiSpeed, BT Width and Judge Y as defaults" style="flex:1;background:#1e3a5f;color:#88c8ff;border:1px solid #3a6aaa;border-radius:5px;padding:4px 8px;font-size:10px;cursor:pointer;letter-spacing:0.04em">💾 Save Config</button>
+      <button id="pvc-save-config" title="Save current Projection, HiSpeed, BT Width and Judge Y as defaults" style="flex:1;background:#1e3a5f;color:#88c8ff;border:1px solid #3a6aaa;border-radius:5px;padding:4px 8px;font-size:10px;cursor:pointer;letter-spacing:0.04em">&#9632; Save Config</button>
       <span id="pvc-save-config-label" class="pvc-val" style="color:#66bb66;opacity:0;transition:opacity 0.4s">Saved!</span>
     </div>
   </div>
@@ -582,12 +593,12 @@
       <!-- ── Left sidebar ── -->
       <div class="sysprefs-sidebar">
         <div class="sysprefs-title" data-i18n="prefs.title">System Preferences</div>
-        <button class="sysprefs-tab active" data-tab="audio"     data-i18n="prefs.tab.audio">🔊 Audio</button>
-        <button class="sysprefs-tab"        data-tab="video"     data-i18n="prefs.tab.video">🖥 Video</button>
-        <button class="sysprefs-tab"        data-tab="general"   data-i18n="prefs.tab.general">⚙ General</button>
-        <button class="sysprefs-tab"        data-tab="gameplay"  data-i18n="prefs.tab.gameplay">🎮 Gameplay</button>
-        <button class="sysprefs-tab"        data-tab="autosave"  data-i18n="prefs.tab.autosave">💾 Autosave</button>
-        <button class="sysprefs-tab"        data-tab="shortcuts" data-i18n="prefs.tab.shortcuts">⌨ Shortcuts</button>
+        <button class="sysprefs-tab active" data-tab="audio"     data-i18n="prefs.tab.audio">&#9834; Audio</button>
+        <button class="sysprefs-tab"        data-tab="video"     data-i18n="prefs.tab.video">&#9641; Video</button>
+        <button class="sysprefs-tab"        data-tab="general"   data-i18n="prefs.tab.general">&#9965; General</button>
+        <button class="sysprefs-tab"        data-tab="gameplay"  data-i18n="prefs.tab.gameplay">&#9654; Gameplay</button>
+        <button class="sysprefs-tab"        data-tab="autosave"  data-i18n="prefs.tab.autosave">&#9632; Autosave</button>
+        <button class="sysprefs-tab"        data-tab="shortcuts" data-i18n="prefs.tab.shortcuts">&#8963; Shortcuts</button>
       </div>
 
       <!-- ── Right content panels ── -->
@@ -644,7 +655,7 @@
             <span class="pref-hint" data-i18n="video.videoDelayHint">Display offset for monitor latency calibration</span>
           </div>
           <div class="pref-group" style="margin-top:6px">
-            <button id="pref-open-visual-calib" style="background:#1e3a5f;color:#88c8ff;border:1px solid #3a6aaa;border-radius:5px;padding:5px 12px;font-size:11px;cursor:pointer">🎯 Visual Calibration…</button>
+            <button id="pref-open-visual-calib" style="background:#1e3a5f;color:#88c8ff;border:1px solid #3a6aaa;border-radius:5px;padding:5px 12px;font-size:11px;cursor:pointer">&#9678; Visual Calibration…</button>
             <span class="pref-hint">Blink-circle metronome to measure audio/video offset</span>
           </div>
 
@@ -979,7 +990,7 @@
 <!-- Visual Calibration modal -->
 <div id="modal-visual-calib" style="display:none;position:fixed;inset:0;background:#00000099;z-index:9000;align-items:center;justify-content:center">
   <div style="background:#14142a;border:1px solid #3a3a6a;border-radius:12px;padding:28px 32px;width:380px;box-shadow:0 8px 40px #00000088;color:#e8e8f8;font-family:monospace">
-    <div style="font-size:15px;font-weight:bold;letter-spacing:0.07em;margin-bottom:18px;color:#88c8ff">🎯 Visual Calibration</div>
+    <div style="font-size:15px;font-weight:bold;letter-spacing:0.07em;margin-bottom:18px;color:#88c8ff">&#9678; Visual Calibration</div>
 
     <!-- Metronome canvas -->
     <div style="display:flex;justify-content:center;margin-bottom:18px">
