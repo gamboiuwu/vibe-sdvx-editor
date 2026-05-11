@@ -255,6 +255,7 @@ function switchToTab(idx) {
   pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList(); updateStopEventList();
   renderFxChain(0); renderFxChain(1);
   renderTabBar();
+  _multiUpdateTabButtons();
   render();
   updateSeekbar(renderer ? renderer.playTick : 0);
 }
@@ -262,10 +263,17 @@ function switchToTab(idx) {
 function addTab() {
   tabs.push({ name: `Chart ${tabs.length + 1}`, chart: new ChartData(), audioBuffer: null });
   switchToTab(tabs.length - 1);
+  _multiUpdateTabButtons();
 }
 
 function closeTab(idx) {
   if (tabs.length <= 1) return; // can't close last tab
+  // Remove from multi mask if present
+  _multiTabMask.delete(idx);
+  // Shift indices above idx down by 1
+  const newMask = new Set();
+  for (const i of _multiTabMask) newMask.add(i > idx ? i - 1 : i);
+  _multiTabMask.clear(); for (const i of newMask) _multiTabMask.add(i);
   tabs.splice(idx, 1);
   const newIdx = Math.max(0, Math.min(idx, tabs.length - 1));
   // Don't use switchToTab which tries to save the current (now removed) tab
@@ -277,6 +285,8 @@ function closeTab(idx) {
   pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList(); updateStopEventList();
   renderFxChain(0); renderFxChain(1);
   renderTabBar();
+  _multiUpdateTabButtons();
+  if (_multiMode) _multiRebuild();
   render();
 }
 
@@ -340,7 +350,7 @@ function renderTabBar() {
 
 function renameTab(idx) {
   const name = prompt('Tab name:', tabs[idx].name);
-  if (name) { tabs[idx].name = name; renderTabBar(); }
+  if (name) { tabs[idx].name = name; renderTabBar(); _multiUpdateTabButtons(); }
 }
 
 // ── Tick / Second conversion (uses chartSpeed) ───────────────────────────────
@@ -571,6 +581,14 @@ function playFrame(now) {
       _pruneAnnotations();
       gameView.drawAnnotations?.(_chartAnnotations, _annAlpha);
       _lastGameFrameTime = now;
+    }
+  }
+  // Multi-chart preview — advance and redraw each slot
+  if (_multiMode && _multiViews.length) {
+    const minInterval = 1000 / (prefs.fpsCap || 60);
+    if (!_lastGameFrameTime || now - _lastGameFrameTime >= minInterval) {
+      _multiSyncSettings();
+      _multiDraw();
     }
   }
   // Update radar every playback frame regardless of view mode
@@ -1334,8 +1352,271 @@ function setViewMode(mode) {
     editWrap.style.flex = '1'; gameWrap.style.flex = '1';
     requestAnimationFrame(() => { renderer?.resize(); render(); });
   }
+  // Respect multi-mode canvas visibility
+  if (mode !== 'edit') {
+    const singleCanvas = document.getElementById('game-canvas');
+    const multiArea    = document.getElementById('multi-preview-area');
+    if (singleCanvas) singleCanvas.style.display = _multiMode ? 'none' : '';
+    if (multiArea)    multiArea.style.display     = _multiMode ? 'flex' : 'none';
+    if (_multiMode) {
+      requestAnimationFrame(() => {
+        for (const mv of _multiViews) { mv.gv?.resize(); mv.gv?.draw(); }
+      });
+    }
+  }
   if (gameView) { gameView.resize(); gameView.draw(); }
   document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === mode));
+}
+
+// ── Multi-chart preview ───────────────────────────────────────────────────────
+// State
+let _multiMode   = false;
+let _multiViews  = [];      // [{ wrap, canvas, gv, tabIdx, mirrored, tickOffset, hsScale }]
+let _multiLayout = 'row';   // 'row' | 'col'
+let _multiGap    = 4;
+let _multiSync   = true;
+const _multiTabMask = new Set(); // which tab indices to show
+
+// Build / re-build all slot canvases from scratch
+function _multiRebuild() {
+  const area = document.getElementById('multi-preview-area');
+  if (!area) return;
+  // Tear down old views
+  for (const mv of _multiViews) { mv.gv = null; }
+  _multiViews = [];
+  area.innerHTML = '';
+
+  area.style.display   = _multiMode ? 'flex' : 'none';
+  area.style.flexDirection = _multiLayout === 'row' ? 'row' : 'column';
+  area.style.gap       = _multiGap + 'px';
+
+  // Determine which tabs to show (mask, or all if none selected)
+  let idxList = [..._multiTabMask].filter(i => i < tabs.length);
+  if (!idxList.length) idxList = tabs.map((_, i) => i);
+
+  const gvRef = gameView; // current single-chart view for settings inheritance
+
+  for (const tabIdx of idxList) {
+    const tab = tabs[tabIdx];
+
+    // Slot wrapper
+    const wrap = document.createElement('div');
+    wrap.className = 'multi-chart-slot';
+
+    // Header bar
+    const header = document.createElement('div');
+    header.className = 'multi-chart-header';
+
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'mch-name';
+    nameSpan.textContent = tab.name || `Chart ${tabIdx + 1}`;
+    header.appendChild(nameSpan);
+
+    // HiSpeed mini-slider
+    const hsLabel = document.createElement('span');
+    hsLabel.className = 'mch-hs-label';
+    hsLabel.textContent = 'HS';
+    header.appendChild(hsLabel);
+
+    const hsSlider = document.createElement('input');
+    hsSlider.type = 'range'; hsSlider.min = '0.2'; hsSlider.max = '10'; hsSlider.step = '0.1';
+    hsSlider.value = gvRef ? gvRef.hispeed : 1;
+    hsSlider.title = 'HiSpeed for this chart';
+    header.appendChild(hsSlider);
+
+    const hsVal = document.createElement('span');
+    hsVal.className = 'mch-hs-label';
+    hsVal.textContent = parseFloat(hsSlider.value).toFixed(1) + '×';
+    header.appendChild(hsVal);
+
+    // Mirror button
+    const mirrorBtn = document.createElement('button');
+    mirrorBtn.textContent = '⇄ Mirror';
+    mirrorBtn.title = 'Mirror this chart horizontally';
+    header.appendChild(mirrorBtn);
+
+    // Offset control (tick offset relative to other charts)
+    const offBtn = document.createElement('button');
+    offBtn.textContent = '⏱ +0';
+    offBtn.title = 'Tick offset — shifts this chart forward/backward in time relative to others';
+    header.appendChild(offBtn);
+
+    wrap.appendChild(header);
+
+    // Canvas
+    const canvas = document.createElement('canvas');
+    wrap.appendChild(canvas);
+    area.appendChild(wrap);
+
+    // GameView
+    const gv = new GameView(canvas);
+    gv.chart          = tab.chart;
+    gv.hispeed        = gvRef ? gvRef.hispeed        : 1.0;
+    gv.btWidthScale   = gvRef ? gvRef.btWidthScale   : 1.0;
+    gv.projMode       = gvRef ? gvRef.projMode       : 'sdvx';
+    gv.perspIntensity = gvRef ? gvRef.perspIntensity : 65;
+    gv.judgeYFrac     = gvRef ? gvRef.judgeYFrac     : 0.73;
+    gv.playTick       = renderer.playTick;
+
+    const mv = { wrap, canvas, gv, tabIdx, mirrored: false, tickOffset: 0, hsSlider, hsVal };
+    _multiViews.push(mv);
+
+    // HiSpeed slider wiring
+    hsSlider.addEventListener('input', () => {
+      const v = +hsSlider.value;
+      hsVal.textContent = v.toFixed(1) + '×';
+      mv.gv.hispeed = v;
+      if (!playing) mv.gv.draw();
+    });
+
+    // Mirror button wiring — flips the chart's laser/BT layout visually
+    mirrorBtn.addEventListener('click', () => {
+      mv.mirrored = !mv.mirrored;
+      mirrorBtn.classList.toggle('active', mv.mirrored);
+      _multiApplyMirror(mv);
+      if (!playing) mv.gv.draw();
+    });
+
+    // Offset popup
+    offBtn.addEventListener('click', () => {
+      const raw = prompt('Tick offset for "' + (tab.name || `Chart ${tabIdx+1}`) + '" (negative = earlier):', mv.tickOffset);
+      if (raw === null) return;
+      const n = parseInt(raw, 10);
+      if (!isNaN(n)) {
+        mv.tickOffset = n;
+        offBtn.textContent = '⏱ ' + (n >= 0 ? '+' : '') + n;
+        if (!playing) _multiDraw();
+      }
+    });
+
+    // Size & first draw after layout
+    requestAnimationFrame(() => { gv.resize(); gv.draw(); });
+  }
+}
+
+// Apply / remove horizontal mirror to a multi-view slot's GameView.
+// We set a flag on the GameView and intercept draw with a ctx flip.
+function _multiApplyMirror(mv) {
+  mv.gv._mirrorH = mv.mirrored;
+}
+
+// Draw all active multi-views (called from render() and playFrame())
+function _multiDraw() {
+  if (!_multiMode) return;
+  for (const mv of _multiViews) {
+    if (!mv.gv) continue;
+    const offsetTick = _multiSync ? renderer.playTick + mv.tickOffset : mv.gv.playTick;
+    mv.gv.playTick = Math.max(0, offsetTick);
+    if (mv.gv._mirrorH) {
+      const ctx = mv.canvas.getContext('2d');
+      ctx.save();
+      ctx.translate(mv.canvas.width, 0);
+      ctx.scale(-1, 1);
+      mv.gv.draw();
+      ctx.restore();
+    } else {
+      mv.gv.draw();
+    }
+  }
+}
+
+// Sync settings from the main gameView to all multi-views (projection, btWidth, judgeY)
+function _multiSyncSettings() {
+  if (!gameView) return;
+  for (const mv of _multiViews) {
+    if (!mv.gv) continue;
+    mv.gv.btWidthScale   = gameView.btWidthScale;
+    mv.gv.projMode       = gameView.projMode;
+    mv.gv.perspIntensity = gameView.perspIntensity;
+    mv.gv.judgeYFrac     = gameView.judgeYFrac;
+  }
+}
+
+// Toggle multi mode on/off
+function _multiToggle() {
+  _multiMode = !_multiMode;
+  const singleCanvas = document.getElementById('game-canvas');
+  const area = document.getElementById('multi-preview-area');
+  if (singleCanvas) singleCanvas.style.display = _multiMode ? 'none' : '';
+  const sub = document.getElementById('pvc-multi-controls');
+  if (sub) sub.style.display = _multiMode ? 'block' : 'none';
+  const btn = document.getElementById('pvc-multi-toggle');
+  if (btn) {
+    btn.classList.toggle('active', _multiMode);
+    btn.textContent = _multiMode ? '⊞ On' : '⊟ Off';
+  }
+  if (_multiMode) {
+    if (!_multiTabMask.size) {
+      // Default: show all tabs
+      tabs.forEach((_, i) => _multiTabMask.add(i));
+    }
+    _multiRebuild();
+  } else {
+    if (area) { area.style.display = 'none'; area.innerHTML = ''; }
+    _multiViews = [];
+  }
+  _multiUpdateTabButtons();
+}
+
+// Rebuild the tab-selector buttons in the controls panel
+function _multiUpdateTabButtons() {
+  const container = document.getElementById('pvc-multi-tabs');
+  if (!container) return;
+  container.innerHTML = '';
+  tabs.forEach((t, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'pvc-multi-tab-btn' + (_multiTabMask.has(i) ? ' active' : '');
+    btn.title = t.name || `Chart ${i + 1}`;
+    btn.textContent = (t.name || `Chart ${i + 1}`).slice(0, 10);
+    btn.addEventListener('click', () => {
+      if (_multiTabMask.has(i)) _multiTabMask.delete(i);
+      else _multiTabMask.add(i);
+      btn.classList.toggle('active', _multiTabMask.has(i));
+      if (_multiMode) _multiRebuild();
+    });
+    container.appendChild(btn);
+  });
+}
+
+// Wire up all multi-preview control events (called once after DOM ready)
+function _multiInitControls() {
+  document.getElementById('pvc-multi-toggle')?.addEventListener('click', _multiToggle);
+
+  // Layout buttons
+  document.querySelectorAll('.pvc-multi-layout-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      _multiLayout = btn.dataset.layout;
+      document.querySelectorAll('.pvc-multi-layout-btn').forEach(b =>
+        b.classList.toggle('active', b.dataset.layout === _multiLayout));
+      if (_multiMode) _multiRebuild();
+    });
+  });
+
+  // Gap slider
+  const gapSlider = document.getElementById('pvc-multi-gap');
+  const gapLabel  = document.getElementById('pvc-multi-gap-label');
+  gapSlider?.addEventListener('input', () => {
+    _multiGap = +gapSlider.value;
+    if (gapLabel) gapLabel.textContent = _multiGap + 'px';
+    if (_multiMode && document.getElementById('multi-preview-area')) {
+      document.getElementById('multi-preview-area').style.gap = _multiGap + 'px';
+    }
+  });
+
+  // Sync toggle
+  document.getElementById('pvc-multi-sync')?.addEventListener('change', e => {
+    _multiSync = e.target.checked;
+  });
+
+  // Handle window resize — re-size all GameViews
+  window.addEventListener('resize', () => {
+    if (!_multiMode) return;
+    for (const mv of _multiViews) {
+      if (!mv.gv) continue;
+      mv.gv.resize();
+      mv.gv.draw();
+    }
+  });
 }
 
 // ── Multiple-chart picker modal ────────────────────────────────────────────────
@@ -1511,6 +1792,9 @@ window.addEventListener('DOMContentLoaded', () => {
     });
   }
   if (gameView) gameView.btWidthScale = 1.0;
+
+  // ── Multi-chart preview ───────────────────────────────────────────────────
+  _multiInitControls();
 
   // View mode buttons (toolbar + menu items share same logic)
   document.querySelectorAll('[data-view]').forEach(btn => {
@@ -2447,6 +2731,8 @@ function render() {
     renderer?.drawAnnotations(_chartAnnotations, _annAlpha);
     // Keep the SDVX preview in sync with every chart edit
     if (gameView && viewMode !== 'edit') gameView.draw();
+    // Multi-chart preview
+    if (_multiMode) { _multiSyncSettings(); _multiDraw(); }
     // Update pattern radar (live, no-op if window is hidden)
     if (typeof updateRadar === 'function') updateRadar();
   });

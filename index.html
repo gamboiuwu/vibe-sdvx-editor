@@ -492,8 +492,42 @@
       <button id="pvc-save-config" title="Save current Projection, HiSpeed, BT Width and Judge Y as defaults" style="flex:1;background:#1e3a5f;color:#88c8ff;border:1px solid #3a6aaa;border-radius:5px;padding:4px 8px;font-size:10px;cursor:pointer;letter-spacing:0.04em">&#9632; Save Config</button>
       <span id="pvc-save-config-label" class="pvc-val" style="color:#66bb66;opacity:0;transition:opacity 0.4s">Saved!</span>
     </div>
+
+    <!-- Multi-Chart Mode -->
+    <div class="pvc-section" style="border-top:1px solid #ffffff18;padding-top:6px;margin-top:2px">
+      <span class="pvc-label">Multi Chart</span>
+      <button id="pvc-multi-toggle" title="Show multiple charts side by side in the preview" style="flex:1;background:#1e2a3f;color:#aabbdd;border:1px solid #3a5a8a;border-radius:5px;padding:4px 8px;font-size:10px;cursor:pointer;letter-spacing:0.04em">&#9638; Off</button>
+    </div>
+
+    <!-- Multi sub-panel (hidden until active) -->
+    <div id="pvc-multi-controls" style="display:none">
+      <div class="pvc-section">
+        <span class="pvc-label" style="flex-shrink:0">Charts</span>
+        <div id="pvc-multi-tabs" style="display:flex;flex-wrap:wrap;gap:3px;flex:1"></div>
+      </div>
+      <div class="pvc-section">
+        <span class="pvc-label" style="flex-shrink:0">Layout</span>
+        <button class="pvc-multi-layout-btn active" data-layout="row"  style="flex:1">&#8596; Row</button>
+        <button class="pvc-multi-layout-btn"        data-layout="col"  style="flex:1">&#8597; Stack</button>
+      </div>
+      <div class="pvc-section">
+        <span class="pvc-label">Gap</span>
+        <input type="range" id="pvc-multi-gap" min="0" max="24" step="2" value="4">
+        <span id="pvc-multi-gap-label" class="pvc-val">4px</span>
+      </div>
+      <div class="pvc-section">
+        <span class="pvc-label">Sync</span>
+        <label style="display:flex;align-items:center;gap:4px;font-size:10px;color:#aabbdd;cursor:pointer">
+          <input type="checkbox" id="pvc-multi-sync" checked style="cursor:pointer"> Playback
+        </label>
+      </div>
+    </div>
   </div>
+
+  <!-- Single-chart canvas (hidden in multi mode) -->
   <canvas id="game-canvas"></canvas>
+  <!-- Multi-chart canvas area (shown in multi mode) -->
+  <div id="multi-preview-area" style="display:none;flex:1;min-height:0;overflow:hidden"></div>
   <!-- Seek / scrub bar -->
   <div id="game-seekbar" title="Click or drag to seek">
     <div id="game-seekbar-track">

@@ -308,6 +308,74 @@ html, body {
 #game-canvas { display: block; width: 100%; flex: 1; min-height: 0; }
 .view-btn.active { background: var(--bg3); border-color: var(--accent); color: var(--accent); }
 
+/* ── Multi-chart preview ── */
+#multi-preview-area {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: #020308;
+}
+.multi-chart-slot {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+  border: 1px solid #1a1a3a;
+}
+.multi-chart-slot canvas {
+  display: block;
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+}
+.multi-chart-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  background: #08091e;
+  border-bottom: 1px solid #1a1a3a;
+  flex-shrink: 0;
+  font-size: 9px;
+  color: #7799bb;
+  overflow: hidden;
+}
+.multi-chart-header .mch-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: bold;
+  color: #aaccee;
+}
+.multi-chart-header .mch-hs-label { color: #556688; font-size:8px; white-space:nowrap; }
+.multi-chart-header input[type="range"] { width: 52px; accent-color: #4488cc; }
+.multi-chart-header button {
+  background: none; border: 1px solid #2a3a5a; border-radius: 3px;
+  color: #6688aa; font-size: 8px; padding: 1px 4px; cursor: pointer;
+  white-space: nowrap; flex-shrink: 0;
+}
+.multi-chart-header button:hover { background: #1a2a4a; color: #aaccee; }
+.multi-chart-header button.active { background: #1e3050; color: #88c8ff; border-color: #4488cc; }
+
+/* Tab selector buttons in multi controls */
+.pvc-multi-tab-btn {
+  background: #101828; border: 1px solid #2a3a5a; border-radius: 4px;
+  color: #556688; font-size: 9px; padding: 2px 6px; cursor: pointer;
+  white-space: nowrap; max-width: 72px; overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pvc-multi-tab-btn.active { background: #1e3050; color: #88c8ff; border-color: #4488cc; }
+.pvc-multi-layout-btn {
+  background: #101828; border: 1px solid #2a3a5a; border-radius: 4px;
+  color: #556688; font-size: 9px; padding: 2px 5px; cursor: pointer;
+}
+.pvc-multi-layout-btn.active { background: #1e3050; color: #88c8ff; border-color: #4488cc; }
+#pvc-multi-toggle.active { background: #1e3a50; color: #66ddff; border-color: #33aacc; }
+
 /* ── PANELS ── */
 /* Metadata panel hidden — editing via Chart > Song Metadata… modal */
 #panel-meta { display: none !important; }
