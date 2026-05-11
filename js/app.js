@@ -5376,10 +5376,8 @@ window.addEventListener('DOMContentLoaded', () => {
     if (!modal || modal.style.display === 'none') return;
     if (e.code === 'Space') {
       e.preventDefault();
+      // Just mark the tap time for visual feedback — don't restart audio
       _lastTapT = performance.now();
-      // Restart from this moment so beat-1 fires now
-      _stopScheduler();
-      _resetScheduler();
     }
     if (e.code === 'Escape') _close();
   }
@@ -5389,7 +5387,6 @@ window.addEventListener('DOMContentLoaded', () => {
   btnCancel?.addEventListener('click', _close);
   modal.addEventListener('click', e => { if (e.target === modal) _close(); });
   document.addEventListener('keydown', _onKey);
-  // Re-sync scheduler when BPM changes
+  // Only restart the scheduler when the user finishes editing BPM (blur / Enter)
   bpmInput?.addEventListener('change', () => { if (_schedStart !== null) _resetScheduler(); });
-  bpmInput?.addEventListener('input',  () => { if (_schedStart !== null) _resetScheduler(); });
 })();
