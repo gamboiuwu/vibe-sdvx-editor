@@ -5241,24 +5241,55 @@ window.addEventListener('DOMContentLoaded', () => {
     _nextBeat   = 0;
   }
 
+  // ── Tap measurement ────────────────────────────────────────────────────────
+  // Each Space tap records how far off the user is from the nearest beat.
+  // Positive offset = they tapped AFTER the flash (audio feels late to them).
+  // We collect up to 8 taps and apply the rolling average to audInput.
+  let _tapOffsets = [];   // ms offsets, positive = late
+  let _lastTapT   = null;
+  let _avgOffset  = null; // null = not enough taps yet
+
+  const TAP_NEEDED = 3;   // taps before we start correcting
+  const TAP_MAX    = 8;   // rolling window size
+
+  function _recordTap() {
+    if (_schedStart === null) return;
+    const tapT   = performance.now();
+    const beatMs = _beatMs();
+    const elapsed = tapT - _schedStart;
+    // Phase within nearest beat (-beatMs/2 … +beatMs/2)
+    let phaseMs = ((elapsed % beatMs) + beatMs) % beatMs;
+    if (phaseMs > beatMs / 2) phaseMs -= beatMs;
+    // phaseMs > 0 → tapped after beat (audio sounds late) → reduce audio delay
+    _tapOffsets.push(phaseMs);
+    if (_tapOffsets.length > TAP_MAX) _tapOffsets.shift();
+    _lastTapT = tapT;
+
+    if (_tapOffsets.length >= TAP_NEEDED) {
+      _avgOffset = _tapOffsets.reduce((a, b) => a + b, 0) / _tapOffsets.length;
+      // Apply correction: if tapped late (+), audio is late → subtract from delay
+      const correction = -Math.round(_avgOffset);
+      const cur = +audInput.value || 0;
+      audInput.value = Math.max(-500, Math.min(500, cur + correction));
+      // Reset so next batch starts fresh (don't keep compounding)
+      _tapOffsets = [];
+    }
+  }
+
   // ── Visuals ────────────────────────────────────────────────────────────────
-  let _rafId    = null;
-  let _lastTapT = null;
+  let _rafId = null;
 
   function _draw(now) {
     if (_schedStart === null) { _rafId = requestAnimationFrame(_draw); return; }
 
-    const beatMs = _beatMs();
+    const beatMs  = _beatMs();
     const elapsed = now - _schedStart;
-    // Phase 0 = on beat, approaches 1 just before next beat
-    const phase = ((elapsed % beatMs) + beatMs) % beatMs / beatMs;
-    // Which beat of the measure (0–3) are we on?
+    const phase   = ((elapsed % beatMs) + beatMs) % beatMs / beatMs;
     const beatIdx = Math.floor(elapsed / beatMs) % 4;
-    // Flash: sharp attack, exponential decay
-    const flash = Math.pow(1 - phase, 2.5);
-    const isDown = beatIdx === 0;
+    const flash   = Math.pow(1 - phase, 2.5);
+    const isDown  = beatIdx === 0;
 
-    // Colors: gold for downbeat, blue for subdivisions
+    // Gold for beat 1, blue for 2-4
     const flashR = isDown ? 255 : 80;
     const flashG = isDown ? 210 : 150;
     const flashB = isDown ? 80  : 255;
@@ -5274,14 +5305,14 @@ window.addEventListener('DOMContentLoaded', () => {
     ctx2.lineWidth   = 3;
     ctx2.stroke();
 
-    // Beat-progress sweep arc
+    // Sweep arc
     ctx2.beginPath();
     ctx2.arc(W/2, H/2, 80, -Math.PI/2, -Math.PI/2 + phase * Math.PI * 2);
     ctx2.strokeStyle = isDown ? '#ffcc0088' : '#4488ff88';
     ctx2.lineWidth   = 3;
     ctx2.stroke();
 
-    // Beat-position pips (4 dots around the ring)
+    // Beat pips
     for (let i = 0; i < 4; i++) {
       const ang = -Math.PI/2 + i * Math.PI / 2;
       const px = W/2 + Math.cos(ang) * 80;
@@ -5300,44 +5331,53 @@ window.addEventListener('DOMContentLoaded', () => {
       grd.addColorStop(0.55,`rgba(${flashR},${flashG},${flashB},${0.15 + flash * 0.45})`);
       grd.addColorStop(1,   `rgba(${flashR},${flashG},${flashB},0)`);
     } else {
-      grd.addColorStop(0,   '#1a1a44');
-      grd.addColorStop(1,   '#0a0a1a');
+      grd.addColorStop(0, '#1a1a44'); grd.addColorStop(1, '#0a0a1a');
     }
     ctx2.beginPath();
     ctx2.arc(W/2, H/2, r, 0, Math.PI * 2);
-    ctx2.fillStyle = grd;
-    ctx2.fill();
+    ctx2.fillStyle = grd; ctx2.fill();
 
     // Center dot
     ctx2.beginPath();
     ctx2.arc(W/2, H/2, 7 + flash * 5, 0, Math.PI * 2);
     ctx2.fillStyle = flash > 0.03
-      ? `rgba(${flashR},${flashG},${flashB},${0.6 + flash * 0.4})`
-      : '#223355';
+      ? `rgba(${flashR},${flashG},${flashB},${0.6 + flash * 0.4})` : '#223355';
     ctx2.fill();
 
-    // Beat counter label (e.g. "2")
-    ctx2.fillStyle   = flash > 0.1 ? `rgba(255,255,255,${flash})` : '#334477';
-    ctx2.font        = `bold 22px monospace`;
-    ctx2.textAlign   = 'center';
-    ctx2.textBaseline= 'middle';
+    // Beat number
+    ctx2.fillStyle    = flash > 0.1 ? `rgba(255,255,255,${flash})` : '#334477';
+    ctx2.font         = 'bold 22px monospace';
+    ctx2.textAlign    = 'center';
+    ctx2.textBaseline = 'middle';
     ctx2.fillText(beatIdx + 1, W/2, H/2);
 
     // BPM label
-    ctx2.fillStyle   = '#5566aa';
-    ctx2.font        = 'bold 11px monospace';
-    ctx2.textBaseline= 'bottom';
+    ctx2.fillStyle    = '#5566aa';
+    ctx2.font         = 'bold 11px monospace';
+    ctx2.textBaseline = 'bottom';
     ctx2.fillText(_bpm() + ' BPM', W/2, H - 10);
 
-    // Tap feedback
+    // Tap progress / feedback area (below circle)
+    const tapsLeft = TAP_NEEDED - _tapOffsets.length;
+    ctx2.textBaseline = 'top';
+    ctx2.textAlign    = 'center';
+    ctx2.font         = '10px monospace';
     if (_lastTapT !== null) {
       const tapAge = (performance.now() - _lastTapT) / 1000;
-      if (tapAge < 1.5) {
-        ctx2.fillStyle   = `rgba(100,255,150,${Math.max(0, 1 - tapAge / 1.5)})`;
-        ctx2.font        = '10px monospace';
-        ctx2.textBaseline= 'top';
-        ctx2.fillText('TAP ✓', W/2, H/2 + 26);
+      if (tapAge < 2 && _tapOffsets.length === 0) {
+        // Just applied a correction — show it
+        const corrMs = _avgOffset !== null ? -Math.round(_avgOffset) : 0;
+        const sign   = corrMs >= 0 ? '+' : '';
+        ctx2.fillStyle = `rgba(100,255,150,${Math.max(0, 1 - tapAge / 2)})`;
+        ctx2.fillText(`Applied ${sign}${corrMs} ms → Audio Delay`, W/2, H/2 + 28);
+      } else if (_tapOffsets.length > 0) {
+        // Collecting — show progress dots
+        ctx2.fillStyle = '#88aaff';
+        ctx2.fillText(`Tap ${TAP_NEEDED - _tapOffsets.length} more…`, W/2, H/2 + 28);
       }
+    } else {
+      ctx2.fillStyle = '#445566';
+      ctx2.fillText('Press Space on every beat you hear', W/2, H/2 + 28);
     }
 
     _rafId = requestAnimationFrame(_draw);
@@ -5350,7 +5390,9 @@ window.addEventListener('DOMContentLoaded', () => {
     audInput.value = saved.audioDelay ?? (document.getElementById('pref-audio-delay')?.value ?? 0);
     vidInput.value = saved.videoDelay ?? (document.getElementById('pref-video-delay')?.value ?? 0);
     modal.style.display = 'flex';
-    _lastTapT = null;
+    _lastTapT  = null;
+    _tapOffsets = [];
+    _avgOffset  = null;
     await _ensureAudio();
     _resetScheduler();
     if (!_rafId) _rafId = requestAnimationFrame(_draw);
@@ -5376,8 +5418,7 @@ window.addEventListener('DOMContentLoaded', () => {
     if (!modal || modal.style.display === 'none') return;
     if (e.code === 'Space') {
       e.preventDefault();
-      // Just mark the tap time for visual feedback — don't restart audio
-      _lastTapT = performance.now();
+      _recordTap();
     }
     if (e.code === 'Escape') _close();
   }
