@@ -372,10 +372,28 @@ function secondsToTick(sec) {
   return t;
 }
 
+// ── Stop-aware audio time ─────────────────────────────────────────────────────
+// Returns the total elapsed audio-file time (in seconds) when the chart has
+// visually reached `tick`, accounting for stop-event pause durations.
+// The audio recording plays linearly; stop events only freeze the lane.
+// stopDurSec for each stop before `tick` must be added to get the correct seek.
+function tickToAudioSec(tick) {
+  let sec = tickToSeconds(tick);
+  const stops = [...(chart.stopEvents ?? [])].sort((a, b) => a.y - b.y);
+  for (const stop of stops) {
+    if (stop.y >= tick) break;
+    const bpmAtStop = chart.getBpmAt(stop.y);
+    sec += stop.len / TICKS_PER_BEAT * (60 / bpmAtStop);
+  }
+  return sec;
+}
+
 // ── Stop-aware visual tick ────────────────────────────────────────────────────
 // During a stop event the visual tick freezes at stop.y while audio (and real
 // time) continue to advance.  This function converts elapsed seconds → visual
 // tick, skipping over any stop durations that have been consumed.
+// NOTE: `elapsedSec` must be in stop-aware audio seconds (from tickToAudioSec),
+// not BPM-only seconds (from tickToSeconds).
 function computeVisualTickWithStops(elapsedSec) {
   if (!chart?.stopEvents?.length) return secondsToTick(elapsedSec);
 
@@ -425,7 +443,10 @@ function startPlay(stopAtTick = -1) {
   playStartTickV    = renderer.playTick;
   prevPlayTick      = renderer.playTick;
 
-  const chartSec = tickToSeconds(renderer.playTick);
+  // BPM-only seconds: used to seek the audio FILE (which plays linearly, no stops)
+  const chartSecBpm  = tickToSeconds(renderer.playTick);
+  // Stop-aware seconds: used for computeVisualTickWithStops() in playFrame
+  const chartSecAware = tickToAudioSec(renderer.playTick);
   const offset   = (+(chart.meta.offset) || 0) / 1000; // guard NaN from bad metadata
 
   if (audioBuffer) {
@@ -437,11 +458,14 @@ function startPlay(stopAtTick = -1) {
 
     // Add user-calibrated global audio delay (System Preferences > Audio)
     const userDelay      = (prefs.audioDelay ?? 0) / 1000;
-    const rawSeek        = chartSec + offset + userDelay;
+    // Seek the audio file using BPM-only time (audio recording has no stop gaps)
+    const rawSeek        = chartSecBpm + offset + userDelay;
     // Guard: NaN / ±Infinity from bad BPM/offset data must not reach the AudioNode
     const audioSeek      = isFinite(rawSeek) ? rawSeek : 0;
     audioStartAcTime     = audioCtx.currentTime;
-    audioStartChartSec   = isFinite(chartSec) ? chartSec : 0;
+    // Store stop-aware chart time so computeVisualTickWithStops() works correctly
+    // when starting playback from a position that follows stop events.
+    audioStartChartSec   = isFinite(chartSecAware) ? chartSecAware : 0;
 
     if (audioSeek >= 0) {
       audioSource.start(audioCtx.currentTime, audioSeek);
