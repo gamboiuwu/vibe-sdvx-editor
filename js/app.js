@@ -2409,8 +2409,14 @@ function setTool(t) {
     if (!renderer.showLaserDots) {
       renderer.activeLaserSec     = null;
       renderer.selectedLaserPoint = null;
+      renderer._laserPreview      = null;
       _laserSel = null;
     }
+  }
+  // Finish any in-progress pen-tool laser section when switching tools
+  if (_activeLaserSec) {
+    _activeLaserSec = null;
+    if (renderer) { renderer.activeLaserSec = null; renderer._laserPreview = null; }
   }
   // Show/hide cam-event subpanel
   const camSub = document.getElementById('cam-subpanel');
@@ -2989,6 +2995,10 @@ function openContextMenuCenter() {
 // Track which anchor point is currently selected for interpolation editing.
 let _laserSel = null; // { side, sec, ptIndex }
 
+// Pen-tool laser state — the section currently being built point-by-point.
+// Null when no laser is being drawn.  Press Esc or switch tool to finish.
+let _activeLaserSec = null; // { sec, side } or null
+
 // Bezier handle drag state — set when user grabs a diamond handle
 let _curveDrag = null; // { sec, ptIndex, t0, t1, colIdx, colLen }
 
@@ -3271,17 +3281,41 @@ function onMouseDown(e) {
       }
     }
 
-    // ── Default: draw a new laser section / add point ─────────────────────
-    const v       = renderer.localXToLaserPos(localX, wide);
-    const freehand = e.shiftKey;
-    const newSec  = { y: tick, points: [{ ry: 0, v, slam: false, interp: 'linear', curve: 0.5 }], wide };
-    chart.lasers[side].push(newSec);
-    chart.lasers[side].sort((a, b) => a.y - b.y);
-    // Deselect previous selection
+    // ── Pen tool: place one point at a time (Illustrator-style) ───────────
+    const v = renderer.localXToLaserPos(localX, wide);
+
+    if (_activeLaserSec && _activeLaserSec.side === side) {
+      // Extend the active section with a new point
+      const sec    = _activeLaserSec.sec;
+      const ry     = Math.round(tick) - sec.y;
+      const lastRy = sec.points[sec.points.length - 1]?.ry ?? -1;
+      if (ry > lastRy) {
+        sec.points.push({ ry, v, slam: false, interp: 'linear', curve: 0.5 });
+      } else {
+        // Clicked at or before the last point — finish current section, start new
+        _activeLaserSec = null;
+        if (renderer) { renderer.activeLaserSec = null; renderer._laserPreview = null; }
+        const newSec = { y: tick, points: [{ ry: 0, v, slam: false, interp: 'linear', curve: 0.5 }], wide };
+        chart.lasers[side].push(newSec);
+        chart.lasers[side].sort((a, b) => a.y - b.y);
+        _activeLaserSec = { sec: newSec, side };
+        if (renderer) renderer.activeLaserSec = newSec;
+      }
+    } else {
+      // No active section (or switched side) — start a new one
+      if (_activeLaserSec) {
+        _activeLaserSec = null;
+        if (renderer) { renderer.activeLaserSec = null; renderer._laserPreview = null; }
+      }
+      const newSec = { y: tick, points: [{ ry: 0, v, slam: false, interp: 'linear', curve: 0.5 }], wide };
+      chart.lasers[side].push(newSec);
+      chart.lasers[side].sort((a, b) => a.y - b.y);
+      _activeLaserSec = { sec: newSec, side };
+      if (renderer) renderer.activeLaserSec = newSec;
+    }
+
     _laserSel = null;
     if (renderer) renderer.selectedLaserPoint = null;
-    Object.assign(drag, { active: true, lane: laneIdx, laneType: 'laser', side, startTick: tick, laserSec: newSec, freehand });
-    if (renderer) renderer.activeLaserSec = newSec;
     render(); return;
   }
 
@@ -3324,11 +3358,29 @@ function onMouseMove(e) {
       const side = tool === 'laser-l' ? 0 : 1;
       const handleHit = renderer.getBezierHandleAt(e.offsetX, e.offsetY, side);
       const canvas = document.getElementById('chart-canvas');
-      if (canvas) canvas.style.cursor = handleHit ? 'grab' : '';
+      if (canvas) canvas.style.cursor = handleHit ? 'grab' : (_activeLaserSec ? 'crosshair' : '');
       const prev = renderer.activeBezierHandle;
       renderer.activeBezierHandle = handleHit
         ? { sec: handleHit.sec, ptIndex: handleHit.ptIndex }
         : null;
+      // Update pen-tool preview line — ghost from last placed point to cursor
+      if (_activeLaserSec && _activeLaserSec.side === side && !handleHit) {
+        const h2 = getHit(e);
+        const wide = _activeLaserSec.sec.wide || laserWideMode;
+        const pv = renderer.localXToLaserPos(h2.localX, wide);
+        renderer._laserPreview = {
+          side,
+          sec:  _activeLaserSec.sec,
+          tick: Math.round(h2.tick),
+          v:    pv,
+        };
+        render();
+        return;
+      } else if (!_activeLaserSec && renderer._laserPreview) {
+        renderer._laserPreview = null;
+        render();
+        return;
+      }
       // Only re-render if highlight state changed
       if (!!prev !== !!renderer.activeBezierHandle ||
           (prev && renderer.activeBezierHandle &&
@@ -3370,19 +3422,6 @@ function onMouseMove(e) {
     const st  = Math.min(drag.startTick, tick);
     const len = Math.abs(tick - drag.startTick);
     chart.addFxNote(drag.lane, st, len);
-  } else if (drag.laneType === 'laser' && drag.laserSec) {
-    const wide = drag.laserSec.wide || laserWideMode;
-    const v  = renderer.localXToLaserPos(localX, wide);
-    const ry = Math.round(tick) - drag.laserSec.y;
-    const lastRy = drag.laserSec.points[drag.laserSec.points.length - 1]?.ry ?? -1;
-    if (drag.freehand) {
-      // Freehand mode (Shift held): sample every point for smoothing on mouseUp
-      if (ry > lastRy) drag.laserSec.points.push({ ry, v });
-      else if (ry === lastRy) drag.laserSec.points[drag.laserSec.points.length - 1].v = v;
-    } else {
-      if (ry > lastRy) drag.laserSec.points.push({ ry, v });
-      else if (ry === lastRy) drag.laserSec.points[drag.laserSec.points.length - 1].v = v;
-    }
   }
   render();
   updateStatusFromEvent(e);
@@ -3437,15 +3476,11 @@ function onMouseUp(e) {
     return;
   }
 
-  // Apply RDP simplification if freehand laser was drawn
-  if (drag.freehand && drag.laserSec && drag.laserSec.points.length > 3) {
-    drag.laserSec.points = _rdpSimplify(drag.laserSec.points, 0.04);
-    render();
-  }
-  drag.active = false;
+  drag.active   = false;
   drag.freehand = false;
   drag.laserSec = null;
-  if (renderer) renderer.activeLaserSec = null;
+  // NOTE: do NOT clear renderer.activeLaserSec here — the pen tool keeps the
+  // active section alive across mouse-up events until Esc or tool switch.
 }
 
 // ── Double-click: laser anchor X-position editor (sketch item 14) ────────────
@@ -3795,6 +3830,10 @@ function onKeyDown(e) {
 
     case 'Escape':
       sel.active = false; sel.dragging = false;
+      if (_activeLaserSec) {
+        _activeLaserSec = null;
+        if (renderer) { renderer.activeLaserSec = null; renderer._laserPreview = null; }
+      }
       updateSelStatus(); render(); break;
 
     // Column navigation

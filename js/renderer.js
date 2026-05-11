@@ -120,6 +120,9 @@ class Renderer {
     this.activeLaserSec = null;
     // selectedLaserPoint: the currently selected anchor { side, sec, ptIndex } or null
     this.selectedLaserPoint = null;
+    // _laserPreview: pen-tool ghost line from last placed point to cursor
+    // { side, sec, tick, v }  or null
+    this._laserPreview = null;
 
     // Camera event pill hover state — set by app.js from mouse coords.
     // _camPillHitZones: rebuilt every draw(); each entry is a canvas-space rect
@@ -1100,6 +1103,46 @@ class Renderer {
           }
           ctx.globalAlpha = 1;
           ctx.restore();
+        }
+      }
+
+      // ── Pen-tool preview line ───────────────────────────────────────────────
+      // Dashed ghost from the last placed point to the cursor so the user can
+      // see where the next click will go.  Only drawn for the matching side.
+      const prev = this._laserPreview;
+      if (prev && prev.side === side && prev.sec) {
+        const sec  = prev.sec;
+        const pts  = sec.points;
+        if (pts.length > 0) {
+          const lastPt   = pts[pts.length - 1];
+          const lastTick = sec.y + lastPt.ry;
+          const color    = side === 0 ? laserColors.L : laserColors.R;
+          const wide     = sec.wide || laserWideMode;
+          const pxAt     = (v) => this._laserVtoX(ox, v, wide);
+          const pyAt     = (t) => this.colH - (t - startY) * this.zoom;
+          const prevTick = prev.tick;
+          const inCol = (lastTick >= startY && lastTick <= endY) ||
+                        (prevTick  >= startY && prevTick  <= endY);
+          if (inCol) {
+            const x0 = pxAt(lastPt.v), y0 = pyAt(lastTick);
+            const x1 = pxAt(prev.v),   y1 = pyAt(prevTick);
+            ctx.save();
+            ctx.globalAlpha = 0.55;
+            ctx.strokeStyle = color;
+            ctx.lineWidth   = 2;
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            ctx.moveTo(x0, y0);
+            ctx.lineTo(x1, y1);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.globalAlpha = 0.7;
+            ctx.fillStyle   = color;
+            ctx.beginPath();
+            ctx.arc(x1, y1, 4, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+          }
         }
       }
     }

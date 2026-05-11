@@ -336,46 +336,17 @@ function _computeRadarScores(ch, centerTick, windowM) {
   });
 }
 
-// ── Smooth closed bezier polygon (Catmull-Rom → cubic bezier) ────────────────
+// ── Straight-line closed polygon ──────────────────────────────────────────────
 /**
  * Given an array of {x, y} points forming a CLOSED polygon,
- * draw a smooth bezier curve through all of them.
+ * draw straight lines between them (matching the SDVX effect-radar style).
  */
 function _smoothClosedPolygon(ctx, pts) {
   const n = pts.length;
   if (n < 2) return;
-  if (n === 2) {
-    ctx.moveTo(pts[0].x, pts[0].y);
-    ctx.lineTo(pts[1].x, pts[1].y);
-    ctx.closePath();
-    return;
-  }
-
-  // Compute Catmull-Rom control points with tension 0.4
-  const tension = 0.4;
-  const cp1 = [], cp2 = [];
-  for (let i = 0; i < n; i++) {
-    const prev = pts[(i - 1 + n) % n];
-    const cur  = pts[i];
-    const next = pts[(i + 1) % n];
-    const next2= pts[(i + 2) % n];
-    // cp2 for segment i→i+1: outgoing tangent of cur
-    cp2.push({
-      x: cur.x + (next.x - prev.x) * tension,
-      y: cur.y + (next.y - prev.y) * tension,
-    });
-    // cp1 for segment i→i+1: incoming tangent of next
-    cp1.push({
-      x: next.x - (next2.x - cur.x) * tension,
-      y: next.y - (next2.y - cur.y) * tension,
-    });
-  }
-
   ctx.moveTo(pts[0].x, pts[0].y);
-  for (let i = 0; i < n; i++) {
-    const nxt = pts[(i + 1) % n];
-    ctx.bezierCurveTo(cp2[i].x, cp2[i].y, cp1[i].x, cp1[i].y, nxt.x, nxt.y);
-  }
+  for (let i = 1; i < n; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.closePath();
 }
 
 // ── Draw radar ────────────────────────────────────────────────────────────────
