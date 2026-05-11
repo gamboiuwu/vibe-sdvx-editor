@@ -1138,8 +1138,160 @@ function initSeekbar() {
     _seekWasPlaying = false;
   });
 
+  // Double-click → open selection range editor popup
+  track.addEventListener('dblclick', e => {
+    e.preventDefault();
+    openSeekbarSelectionPopup(e.clientX, e.clientY);
+  });
+
   // Initial render
   updateSeekbar(renderer ? renderer.playTick : 0);
+}
+
+// ── Seekbar double-click: selection range editor ───────────────────────────────
+function openSeekbarSelectionPopup(clientX, clientY) {
+  // Remove any existing popup
+  document.getElementById('sel-range-popup')?.remove();
+  document.getElementById('sel-range-overlay')?.remove();
+
+  const totalTicks = chart ? chart.totalTicks() : 0;
+
+  // Helper: tick → "M{measure} B{beat} T{subbeat}" display string
+  function tickToLabel(tick) {
+    const t  = Math.max(0, Math.round(tick));
+    const m  = Math.floor(t / TICKS_PER_MEASURE) + 1;
+    const b  = Math.floor((t % TICKS_PER_MEASURE) / TICKS_PER_BEAT) + 1;
+    const sub = t % TICKS_PER_BEAT;
+    return sub > 0 ? `M${m} B${b}+${sub}` : `M${m} B${b}`;
+  }
+
+  // Helper: parse "M{m} B{b}" or plain tick integer string → tick
+  function parseTickInput(str) {
+    str = str.trim();
+    // "M3 B2" or "M3B2" or "3 2" shorthand
+    const mb = str.match(/[Mm](\d+)\s*[Bb](\d+)(?:\+(\d+))?/);
+    if (mb) {
+      const m   = Math.max(1, parseInt(mb[1], 10)) - 1;
+      const b   = Math.max(1, parseInt(mb[2], 10)) - 1;
+      const sub = mb[3] ? parseInt(mb[3], 10) : 0;
+      return m * TICKS_PER_MEASURE + b * TICKS_PER_BEAT + sub;
+    }
+    // plain tick number
+    const n = parseInt(str, 10);
+    return isNaN(n) ? null : n;
+  }
+
+  // Current selection range (fall back to full chart if no active selection)
+  const lo = sel.active ? Math.min(sel.startTick, sel.endTick) : 0;
+  const hi = sel.active ? Math.max(sel.startTick, sel.endTick) : totalTicks;
+
+  // ── Overlay ──────────────────────────────────────────────────────────────
+  const overlay = document.createElement('div');
+  overlay.id = 'sel-range-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:99997';
+
+  // ── Popup ─────────────────────────────────────────────────────────────────
+  const pop = document.createElement('div');
+  pop.id = 'sel-range-popup';
+  pop.style.cssText =
+    'position:fixed;z-index:99998;background:#0c0c20;border:1.5px solid #3344aa;' +
+    'border-radius:8px;padding:14px 16px;box-shadow:0 6px 24px #000c;' +
+    'display:flex;flex-direction:column;gap:10px;min-width:230px;' +
+    'font-family:inherit;color:#e0e8ff;font-size:12px';
+
+  const inputStyle =
+    'background:#161630;border:1px solid #3344aa;border-radius:4px;' +
+    'color:#e0e8ff;font-size:12px;padding:4px 8px;outline:none;width:100%;box-sizing:border-box;' +
+    'font-family:monospace';
+
+  pop.innerHTML = `
+    <div style="font-weight:bold;color:#7799ff;letter-spacing:0.06em;display:flex;justify-content:space-between;align-items:center">
+      <span>&#9646;&#9646; Selection Range</span>
+      <span id="srp-close" style="cursor:pointer;color:#445588;font-size:15px;padding:0 2px" title="Close">&#215;</span>
+    </div>
+    <div style="color:#445588;font-size:10px;line-height:1.5">
+      Enter measure/beat as <span style="color:#8899cc">M# B#</span> or a raw tick number.<br>
+      Leave blank to keep current value.
+    </div>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <label style="color:#8899cc;font-size:11px">Start</label>
+      <input id="srp-start" type="text" placeholder="${tickToLabel(lo)}" value="${tickToLabel(lo)}" style="${inputStyle}">
+      <div style="color:#445588;font-size:10px;margin-top:-2px">Tick: <span id="srp-start-tick" style="color:#6677aa">${lo}</span></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <label style="color:#8899cc;font-size:11px">End</label>
+      <input id="srp-end" type="text" placeholder="${tickToLabel(hi)}" value="${tickToLabel(hi)}" style="${inputStyle}">
+      <div style="color:#445588;font-size:10px;margin-top:-2px">Tick: <span id="srp-end-tick" style="color:#6677aa">${hi}</span></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:2px">
+      <button id="srp-ok"     style="flex:1;background:#2233aa;color:#e0e8ff;border:1px solid #3344cc;border-radius:4px;padding:6px;cursor:pointer;font-size:11px">Apply</button>
+      <button id="srp-clear"  style="flex:1;background:#1a1a30;color:#6677aa;border:1px solid #2a2a55;border-radius:4px;padding:6px;cursor:pointer;font-size:11px">Clear Sel.</button>
+      <button id="srp-cancel" style="flex:1;background:#0c0c20;color:#556;border:1px solid #1e1e3a;border-radius:4px;padding:6px;cursor:pointer;font-size:11px">Cancel</button>
+    </div>`;
+
+  // Position: anchor below the seekbar (or near cursor, keep on-screen)
+  const vw = window.innerWidth, vh = window.innerHeight;
+  let px = Math.min(clientX - 115, vw - 250);
+  let py = clientY + 16;
+  if (py + 280 > vh) py = clientY - 290;
+  pop.style.left = Math.max(8, px) + 'px';
+  pop.style.top  = py + 'px';
+
+  document.body.appendChild(overlay);
+  document.body.appendChild(pop);
+
+  const close = () => { overlay.remove(); pop.remove(); };
+
+  // Live preview: update "Tick:" readout as user types
+  const livePreview = (inputId, tickSpanId) => {
+    const input = pop.querySelector('#' + inputId);
+    const span  = pop.querySelector('#' + tickSpanId);
+    input.addEventListener('input', () => {
+      const t = parseTickInput(input.value);
+      span.textContent = t !== null ? Math.max(0, Math.min(totalTicks, t)) : '—';
+      span.style.color = t !== null ? '#88aaff' : '#aa4444';
+    });
+  };
+  livePreview('srp-start', 'srp-start-tick');
+  livePreview('srp-end',   'srp-end-tick');
+
+  // Apply button
+  pop.querySelector('#srp-ok').addEventListener('click', () => {
+    const rawStart = parseTickInput(pop.querySelector('#srp-start').value);
+    const rawEnd   = parseTickInput(pop.querySelector('#srp-end').value);
+    const newLo = rawStart !== null ? Math.max(0, Math.min(totalTicks, rawStart)) : lo;
+    const newHi = rawEnd   !== null ? Math.max(0, Math.min(totalTicks, rawEnd))   : hi;
+    if (newLo !== newHi) {
+      sel.active    = true;
+      sel.startTick = Math.min(newLo, newHi);
+      sel.endTick   = Math.max(newLo, newHi);
+      render();
+    }
+    close();
+  });
+
+  // Clear selection
+  pop.querySelector('#srp-clear').addEventListener('click', () => {
+    sel.active = false;
+    render();
+    close();
+  });
+
+  pop.querySelector('#srp-cancel').addEventListener('click', close);
+  pop.querySelector('#srp-close').addEventListener('click', close);
+  overlay.addEventListener('click', close);
+
+  // Keyboard: Enter = apply, Escape = cancel
+  pop.addEventListener('keydown', ev => {
+    if (ev.key === 'Enter')  { ev.preventDefault(); pop.querySelector('#srp-ok').click(); }
+    if (ev.key === 'Escape') { ev.preventDefault(); close(); }
+  });
+
+  // Focus start input
+  setTimeout(() => {
+    const si = pop.querySelector('#srp-start');
+    si?.focus(); si?.select();
+  }, 10);
 }
 
 // ── View mode ─────────────────────────────────────────────────────────────────
