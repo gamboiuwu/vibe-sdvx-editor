@@ -425,7 +425,7 @@
     <h3 style="margin-top:12px">Stop Events</h3>
     <div id="stop-event-list" style="font-size:10px; max-height:60px; overflow-y:auto;"></div>
 
-    <h3 style="margin-top:12px">Chart Velocity Events</h3>
+    <h3 style="margin-top:12px">Chart Velocity Events <span style="font-size:10px;color:#888">(KSON only)</span></h3>
     <div id="scroll-speed-event-list" style="font-size:10px; max-height:80px; overflow-y:auto;"></div>
 
     <h3 style="margin-top:18px">Keyboard Shortcuts</h3>
@@ -615,7 +615,7 @@
     <div class="form-group"><label>Measure</label><input type="number" id="ss-ev-measure" min="1" value="1"></div>
     <div class="form-group"><label>Beat</label><input type="number" id="ss-ev-beat" min="1" value="1"></div>
     <div class="form-group"><label>Speed (1.0 = normal)</label><input type="number" id="ss-ev-speed" min="0.1" max="4" step="0.1" value="1.0"></div>
-    <div style="font-size:10px;color:#888;margin:8px 0">Notes before this point maintain normal speed. Notes after run at the new speed.</div>
+    <div style="font-size:10px;color:#888;margin:8px 0">Notes before this point maintain normal speed. Notes after run at the new speed. <b>Saved in KSON format only.</b></div>
     <div class="modal-buttons">
       <button id="ss-ev-ok">Add</button>
       <button id="ss-ev-cancel">Cancel</button>
