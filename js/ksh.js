@@ -545,29 +545,34 @@ function downloadText(filename, text) {
     a.style.display = 'none';
 
     console.log(`[Download] Creating download: ${filename}, blob size: ${blob.size} bytes`);
-    console.log(`[Download] Object URL: ${url.substring(0, 50)}...`);
-    console.log(`[Download] Anchor in DOM: ${document.body.contains(a)}`);
+    console.log(`[Download] Object URL created: ${url.substring(0, 50)}...`);
 
     document.body.appendChild(a);
-    console.log(`[Download] After append, anchor in DOM: ${document.body.contains(a)}`);
+    console.log(`[Download] Anchor appended to DOM`);
 
-    // Trigger the download
-    a.click();
-    console.log(`[Download] click() invoked on anchor element`);
-
-    // Cleanup on delay
-    setTimeout(() => {
+    // Small delay to ensure DOM is updated before click
+    requestAnimationFrame(() => {
       try {
-        document.body.removeChild(a);
-        console.log(`[Download] Removed anchor from DOM`);
-      } catch (e) {
-        console.warn(`[Download] Could not remove anchor:`, e);
+        a.click();
+        console.log(`[Download] click() invoked successfully`);
+      } catch (clickErr) {
+        console.error(`[Download] click() failed:`, clickErr);
       }
-      URL.revokeObjectURL(url);
-      console.log(`[Download] Revoked object URL`);
-    }, 4000);
 
-    console.log(`[Download] Download initiated successfully: ${filename}`);
+      // Cleanup on delay
+      setTimeout(() => {
+        try {
+          document.body.removeChild(a);
+          console.log(`[Download] Anchor removed from DOM`);
+        } catch (removeErr) {
+          console.warn(`[Download] Could not remove anchor:`, removeErr);
+        }
+        URL.revokeObjectURL(url);
+        console.log(`[Download] Object URL revoked`);
+      }, 4000);
+    });
+
+    console.log(`[Download] Download sequence initiated: ${filename}`);
   } catch (err) {
     console.error(`[Download] Fatal error:`, err);
     alert(`Download failed: ${err.message}`);
