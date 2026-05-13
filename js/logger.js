@@ -14,7 +14,16 @@ class ErrorLogger {
       this.push(e.message, e.filename?.split('/').pop() || '', e.lineno);
     });
     window.addEventListener('unhandledrejection', e => {
-      this.push(String(e.reason?.message ?? e.reason), 'Promise', 0);
+      const msg = String(e.reason?.message ?? e.reason);
+      // Suppress: harmless AudioContext.close() race when a context the
+      // browser already auto-closed (suspended too long, tab visibility
+      // change, etc.) gets a stray close() call. The state guard catches
+      // most paths; this swallows the rest so the badge stays quiet.
+      if (/Cannot close a closed AudioContext/i.test(msg)) {
+        e.preventDefault?.();
+        return;
+      }
+      this.push(msg, 'Promise', 0);
     });
   }
 
