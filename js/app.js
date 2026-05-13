@@ -1943,10 +1943,26 @@ window.addEventListener('DOMContentLoaded', () => {
 
   // Export
   document.getElementById('btn-export-ksh').addEventListener('click', () => {
-    downloadText((chart.meta.title.replace(/[^a-zA-Z0-9_]/g, '_') || 'chart') + '.ksh', exportKsh(chart));
+    try {
+      const base = (chart.meta.title.replace(/[^a-zA-Z0-9_]/g, '_') || 'chart');
+      const diff = (chart.meta.difficulty || '').toLowerCase();
+      const suffix = diff ? `_${diff}` : '';
+      downloadText(base + suffix + '.ksh', exportKsh(chart));
+    } catch (err) {
+      console.error('KSH export failed:', err);
+      alert('Failed to export KSH:\n' + (err?.message || err));
+    }
   });
   document.getElementById('btn-export-kson').addEventListener('click', () => {
-    downloadText((chart.meta.title.replace(/[^a-zA-Z0-9_]/g, '_') || 'chart') + '.kson', exportKson(chart));
+    try {
+      const base = (chart.meta.title.replace(/[^a-zA-Z0-9_]/g, '_') || 'chart');
+      const diff = (chart.meta.difficulty || '').toLowerCase();
+      const suffix = diff ? `_${diff}` : '';
+      downloadText(base + suffix + '.kson', exportKson(chart));
+    } catch (err) {
+      console.error('KSON export failed:', err);
+      alert('Failed to export KSON:\n' + (err?.message || err));
+    }
   });
 
   // Open file

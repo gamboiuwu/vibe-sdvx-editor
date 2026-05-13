@@ -61,6 +61,65 @@ class ChartData {
 
     // Stop events: [{ y, len }]  len in ticks
     this.stopEvents = [];
+
+    // Chart Velocity (visual scroll speed multiplier).
+    // Affects how fast notes/lasers travel down the lane in the 3D preview;
+    // does NOT change BPM or chart timing. Multiplier of 1.0 = default speed,
+    // 2.0 = twice as fast, 0.5 = half speed. Notes BEFORE a velocity-change
+    // event keep their previous speed; notes after run at the new speed.
+    this.scrollSpeedEvents = [{ y: 0, speed: 1.0 }];
+  }
+
+  getScrollSpeedAt(y) {
+    const evs = this.scrollSpeedEvents;
+    let s = evs?.[0]?.speed ?? 1.0;
+    if (!evs) return s;
+    for (const ev of evs) {
+      if (ev.y <= y) s = ev.speed;
+      else break;
+    }
+    return s;
+  }
+
+  // Integrated visual scroll distance from tick 0 to y.
+  // Result is in "virtual tick" units that the game preview consumes as
+  // dt.  Pure ticks if no velocity events have been added.
+  scrollDistanceTo(y) {
+    const evs = this.scrollSpeedEvents;
+    if (!evs || evs.length === 0) return y;
+    let dist  = 0;
+    let lastY = evs[0].y;
+    let speed = evs[0].speed;
+    for (let i = 1; i < evs.length; i++) {
+      const ev = evs[i];
+      if (ev.y >= y) break;
+      dist  += (ev.y - lastY) * speed;
+      lastY  = ev.y;
+      speed  = ev.speed;
+    }
+    dist += (y - lastY) * speed;
+    return dist;
+  }
+
+  // dt-equivalent distance from `from` (default playhead) to `to`.
+  scrollDistanceBetween(to, from) {
+    return this.scrollDistanceTo(to) - this.scrollDistanceTo(from);
+  }
+
+  addScrollSpeedEvent(y, speed) {
+    if (!Number.isFinite(speed) || speed <= 0) return;
+    if (!Array.isArray(this.scrollSpeedEvents)) this.scrollSpeedEvents = [];
+    this.scrollSpeedEvents = this.scrollSpeedEvents.filter(e => e.y !== y);
+    this.scrollSpeedEvents.push({ y, speed });
+    this.scrollSpeedEvents.sort((a, b) => a.y - b.y);
+    if (!this.scrollSpeedEvents.length || this.scrollSpeedEvents[0].y !== 0) {
+      this.scrollSpeedEvents.unshift({ y: 0, speed: 1.0 });
+    }
+  }
+
+  removeScrollSpeedEvent(y) {
+    if (y === 0) return; // anchor event at tick 0 is required
+    this.scrollSpeedEvents = (this.scrollSpeedEvents || []).filter(e => e.y !== y);
   }
 
   // Convert measure+beat (0-indexed) to tick
