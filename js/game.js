@@ -182,13 +182,15 @@ class GameView {
   // In SDVX the VOL (laser) lanes extend outside the BT/FX lane boundary.
   // This constant controls the size of the visible VOL panel painting
   // (the dark side-rails left and right of the BT lanes).
-  static get LASER_LANE_OFFSET() { return 0.13; }
+  // Matches LASER_HALF_FRAC × 2 so the panel exactly contains the laser
+  // ribbon at v=0 / v=1.
+  static get LASER_LANE_OFFSET() { return 0.25; }
 
   // Laser ribbon half-width as a fraction of the BT-lane normalised range.
-  // 0.056 ≈ 0.45 BT-lane wide (arcade-accurate slim ribbon).
+  // 0.125 = full ribbon width 0.25 = one BT lane wide (user-tuned).
   // This is also the offset used by _laserNorm so that the ribbon's outer
   // edge lands exactly on the BT lane boundary at v=0 / v=1.
-  static get LASER_HALF_FRAC() { return 0.056; }
+  static get LASER_HALF_FRAC() { return 0.125; }
 
   // Map laser position v ∈ [0, 1] to normalised track coordinate.
   // Default rest positions:
@@ -603,9 +605,9 @@ class GameView {
       const edgeCol = side === 0 ? laserColors.Le : laserColors.Re;
       const glowCol = side === 0 ? laserColors.Lg : laserColors.Rg;
       // Laser ribbon half-width as fraction of lane half-width.
-      // SDVX arcade: laser ≈ 0.45 BT-lane wide.  4 BT in norm [0,1] → each BT=0.25.
-      // 0.45 BT = 0.1125 norm → half = 0.05625.  Use 0.056 for a clean slim ribbon.
-      const LASER_FRAC = 0.056; // ≈ 0.45 BT-lane wide (slim, arcade-accurate)
+      // Sourced from the GameView static so the position/width pair stays in
+      // sync: ribbon's outer edge lands on the BT lane boundary at v=0/v=1.
+      const LASER_FRAC = GameView.LASER_HALF_FRAC; // 0.125 → one BT lane wide
 
       for (const sec of chart.lasers[side]) {
         if (!sec.points.length) continue;
@@ -848,9 +850,12 @@ class GameView {
 
     // Laser position indicators at judgment line
     for (let side = 0; side < 2; side++) {
-      const lv = this._getLaserPosAt(side, tick);
-      if (lv === null) continue;
-      const sx = this._laserX(lv, p.judgeY, p);
+      const lp = this._getLaserPosAt(side, tick);
+      if (lp === null) continue;
+      // Pass `wide` so the indicator's X matches the ribbon's X for wide
+      // laser sections — previously they desynced because _laserX defaulted
+      // to non-wide.
+      const sx = this._laserX(lp.v, p.judgeY, p, lp.wide);
       const col = side === 0 ? laserColors.L : laserColors.R;
       const hw  = this._halfW(p.judgeY, p) * 0.105 * 2;
       ctx.save();
@@ -1214,6 +1219,9 @@ class GameView {
   // ── Per-chart laser position query ───────────────────────────────────────
   // Uses this.chart so each GameView instance reads its own chart's lasers,
   // rather than the global getLaserPosAt which always reads the active tab.
+  // Returns { v, wide } of the laser at `tick` for `side`, or null if no
+  // section is active. `wide` flag is needed so callers can pass it to
+  // _laserX() — wide sections use a different v→X mapping.
   _getLaserPosAt(side, tick) {
     if (!this.chart) return null;
     for (const sec of this.chart.lasers[side]) {
@@ -1223,11 +1231,16 @@ class GameView {
         const t0 = sec.y + pts[pi].ry, t1 = sec.y + pts[pi + 1].ry;
         if (tick >= t0 && tick <= t1) {
           const ratio = t1 === t0 ? 0 : (tick - t0) / (t1 - t0);
-          return pts[pi].v + (pts[pi + 1].v - pts[pi].v) * ratio;
+          return {
+            v: pts[pi].v + (pts[pi + 1].v - pts[pi].v) * ratio,
+            wide: !!sec.wide,
+          };
         }
       }
       const last = pts[pts.length - 1];
-      if (last && sec.y + last.ry >= tick) return last.v;
+      if (last && sec.y + last.ry >= tick) {
+        return { v: last.v, wide: !!sec.wide };
+      }
     }
     return null;
   }

@@ -1959,13 +1959,54 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('file-input').addEventListener('change', e => {
     const file = e.target.files[0];
     if (!file) return;
+    const isPack = !!e.target.dataset.bundle || file.name.endsWith('.ksonpack');
+    delete e.target.dataset.bundle;
     const reader = new FileReader();
     reader.onload = ev => {
       _loadingShow(`Parsing ${file.name}…`, 30);
       try {
+        const result = ev.target.result;
+
+        // ── .ksonpack bundle: explode into one tab per chart ─────────────
+        if (isPack) {
+          const { charts: packCharts, meta: packMeta } = importKsonPack(result);
+          if (!packCharts.length) throw new Error('Pack contains no charts.');
+          // First chart goes into the active tab (replacing only if it's
+          // the empty default), the rest get their own new tabs.
+          const startIdx = activeTabIdx;
+          for (let i = 0; i < packCharts.length; i++) {
+            const c = packCharts[i];
+            const slot = (i === 0) ? startIdx : (tabs.push({
+              name: c.meta.title || `Chart ${tabs.length + 1}`,
+              chart: c, audioBuffer: null,
+            }) - 1);
+            tabs[slot].chart = c;
+            if (c.meta.title) {
+              const d = c.meta.difficulty ? c.meta.difficulty.toUpperCase() : '';
+              tabs[slot].name = d ? `${c.meta.title} - ${d}` : c.meta.title;
+            }
+          }
+          switchToTab(startIdx);
+          chart = tabs[startIdx].chart;
+          renderer.chart = chart; renderer.scrollCol = 0; renderer.playTick = 0;
+          if (gameView) { gameView.chart = chart; gameView._liveCamera = null; }
+          fxChipSEBuffers = [null, null];
+          pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList(); updateStopEventList();
+          renderFxChain(0); renderFxChain(1);
+          renderTabBar();
+          render();
+          updateSeekbar(0);
+          _loadingDone();
+          _idbAutosave();
+          // Friendly confirmation
+          if (packMeta?.title) {
+            console.log(`Loaded pack "${packMeta.title}" — ${packCharts.length} charts.`);
+          }
+          return;
+        }
+
         // KSH files may be Shift-JIS encoded — pass ArrayBuffer so importKsh
         // can auto-detect. KSON is always UTF-8 JSON → read as text.
-        const result = ev.target.result;
         chart = file.name.endsWith('.kson') ? importKson(result) : importKsh(result);
         tabs[activeTabIdx].chart = chart;
         // Set tab name to "Title - DIFFICULTY" format (sketch item 17)
@@ -1988,8 +2029,8 @@ window.addEventListener('DOMContentLoaded', () => {
         _idbAutosave(); // immediately persist imported chart
       } catch(err) { _loadingDone(); alert('Error loading file:\n' + err.message); }
     };
-    // Use ArrayBuffer for KSH (Shift-JIS auto-detect); text for KSON
-    if (file.name.endsWith('.kson')) {
+    // Bundles + KSON are JSON text. KSH is ArrayBuffer (Shift-JIS auto-detect).
+    if (isPack || file.name.endsWith('.kson')) {
       reader.readAsText(file);
     } else {
       reader.readAsArrayBuffer(file);
@@ -2008,6 +2049,43 @@ window.addEventListener('DOMContentLoaded', () => {
     pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList(); updateStopEventList();
     renderFxChain(0); renderFxChain(1); render();
     updateSeekbar(0);
+  });
+
+  // New chart in NEW tab — additive, never replaces current
+  document.getElementById('btn-new-tab')?.addEventListener('click', () => {
+    addTab(); // creates fresh ChartData and switches to it
+  });
+
+  // Open .ksh / .kson in a NEW tab — same loader, just adds a tab first
+  document.getElementById('btn-open-ksh-new-tab')?.addEventListener('click', () => {
+    addTab();
+    const fi = document.getElementById('file-input'); fi.accept = '.ksh'; fi.click();
+  });
+  document.getElementById('btn-open-kson-new-tab')?.addEventListener('click', () => {
+    addTab();
+    const fi = document.getElementById('file-input'); fi.accept = '.kson'; fi.click();
+  });
+
+  // ── ksonpack bundle: open / export ─────────────────────────────────────
+  document.getElementById('btn-open-ksonpack')?.addEventListener('click', () => {
+    const fi = document.getElementById('file-input'); fi.accept = '.ksonpack,.json'; fi.dataset.bundle = '1'; fi.click();
+  });
+
+  document.getElementById('btn-export-ksonpack')?.addEventListener('click', () => {
+    if (!tabs.length) return;
+    const charts = tabs.map(t => t.chart).filter(Boolean);
+    if (!charts.length) { alert('No charts to export.'); return; }
+    const packName = (charts[0].meta.title || 'pack').replace(/[^a-zA-Z0-9_]/g, '_');
+    const packMeta = {
+      title:       charts[0].meta.title || 'Untitled Pack',
+      artist:      charts[0].meta.artist || '',
+      description: `${charts.length} chart${charts.length === 1 ? '' : 's'} bundled from vibe-editr.`,
+    };
+    try {
+      downloadText(packName + '.ksonpack', exportKsonPack(charts, packMeta));
+    } catch(err) {
+      alert('Failed to export pack:\n' + err.message);
+    }
   });
 
   // FX chain
@@ -2496,11 +2574,19 @@ function _encodeToOgg(decoded) {
     src.buffer   = decoded;
     src.connect(dest);
 
+    // AudioContext.close() returns a Promise that REJECTS if the context is
+    // already closed. Always guard by state and swallow the rejection so it
+    // doesn't surface as an unhandled-rejection in the error log.
+    const _closeEnc = () => {
+      if (!encCtx || encCtx.state === 'closed') return;
+      try { encCtx.close().catch(() => {}); } catch(_) {}
+    };
+
     let recorder;
     try {
       recorder = new MediaRecorder(dest.stream, { mimeType: mime });
     } catch (e) {
-      encCtx.close();
+      _closeEnc();
       reject(new Error('MediaRecorder not supported in this browser: ' + e.message));
       return;
     }
@@ -2516,7 +2602,7 @@ function _encodeToOgg(decoded) {
       clearInterval(progressTimer);
       try { if (recorder.state !== 'inactive') recorder.stop(); } catch(_) {}
       try { src.disconnect(); } catch(_) {}
-      try { encCtx.close(); } catch(_) {}
+      _closeEnc();
       _encodeStop = null;
       reject(new Error('Import cancelled'));
     };
@@ -2533,7 +2619,7 @@ function _encodeToOgg(decoded) {
     recorder.onstop = () => {
       clearInterval(progressTimer);
       _encodeStop = null;
-      try { encCtx.close(); } catch(_) {}
+      _closeEnc();
       if (cancelled) return; // reject already called by _encodeStop
       if (chunks.length === 0) { reject(new Error('MediaRecorder produced no data.')); return; }
       resolve(new Blob(chunks, { type: mime }));
@@ -2541,7 +2627,7 @@ function _encodeToOgg(decoded) {
     recorder.onerror = e => {
       clearInterval(progressTimer);
       _encodeStop = null;
-      try { encCtx.close(); } catch(_) {}
+      _closeEnc();
       if (cancelled) return;
       reject(e.error || new Error('MediaRecorder error'));
     };
@@ -4147,6 +4233,11 @@ function onKeyDown(e) {
 
     case 'd': case 'D':
       if (ctrl) { e.preventDefault(); sel.active = false; sel.dragging = false; updateSelStatus(); render(); }
+      break;
+
+    case 't': case 'T':
+      // Ctrl+T → open a new blank chart in a new tab.
+      if (ctrl) { e.preventDefault(); addTab(); }
       break;
 
     case 'c': case 'C':

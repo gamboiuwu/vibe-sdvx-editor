@@ -4,131 +4,189 @@
 const KSON_TPB = 240;
 const KSH_TO_KSON = KSON_TPB / TICKS_PER_BEAT; // 5x
 
+// ── Export ──────────────────────────────────────────────────────────────────
+//
+// KSON v0.8.0 reference: https://github.com/kshootmania/ksm-chart-format
+//
+// IMPORTANT FORMAT NOTES (these were getting written as objects before, which
+// is why other readers couldn't parse FX/laser/bpm correctly):
+//
+//  • ByPulse<T>      → JSON array [y, v]            (NOT {y: ..., v: ...})
+//  • ByMeasureIdx<T> → JSON array [idx, v]
+//  • LaserSection    → JSON array [y, points[], w]
+//  • GraphSectionPoint
+//                    → [ry, v]            for a regular point
+//                    → [ry, [v_in, v_out]] for a slam (GraphValue form)
+//                    → optional [a, b]    curve as third element
+//  • DefKeyValuePair → [name, def]                  (NOT {name, ...})
+//  • meta.difficulty → uint                         (NOT an object)
+//
+// A slam in our internal model is two adjacent points where the second has
+// slam=true. In KSON it's ONE point at the slam's target pulse with v in
+// GraphValue form [v_in, v_out]. exportKson merges the pair; importKson
+// splits it back.
+
 function exportKson(chart) {
   const m = chart.meta;
+
+  const DIFF_TABLE = ['light', 'challenge', 'extended', 'infinite'];
+  const diffIdx = Math.max(0, DIFF_TABLE.indexOf(m.difficulty));
+
+  // ── Lasers: convert each section to [y, points[], w] form ───────────────
+  // Slam pairs are merged into a single GraphValue point per the spec.
+  const buildLaserSections = (sections) => sections.map(sec => {
+    const pts = sec.points || [];
+    const out = [];
+    for (let i = 0; i < pts.length; i++) {
+      const pt = pts[i];
+      const prev = i > 0 ? pts[i - 1] : null;
+      const ry = Math.round(pt.ry * KSH_TO_KSON);
+      let v;
+      if (pt.slam === true && prev) {
+        // Slam at this pulse: laser jumps from prev.v to pt.v
+        v = [prev.v, pt.v];
+      } else {
+        v = pt.v;
+      }
+      const point = [ry, v];
+      // Curve element [a, b]. Spec default is [0, 0]. We use it to encode
+      // bezier curvature; readers that don't understand the value treat it
+      // as a normal interpolation hint.
+      if (pt.interp === 'bezier') {
+        const c = pt.curve ?? 0.5;
+        point.push([c, c]);
+      } else if (pt.interp === 'step') {
+        // 'step' isn't part of standard KSON. Use [1, 0] (max bias) as a
+        // hint; we ALSO write a sibling _interp field so vibe-editr can
+        // recover the exact mode on round-trip.
+        point.push([1.0, 0.0]);
+      }
+      out.push(point);
+    }
+    return [Math.round(sec.y * KSH_TO_KSON), out, sec.wide ? 2 : 1];
+  });
+
+  // ── FX effects: def + long_event for per-hold attachment ─────────────────
+  // Per the spec, fxChains aren't tied to individual notes — they're attached
+  // to long FX notes via audio_effect.fx.long_event[<def_name>] = [[y, 0 or
+  // params_dict], ...].  Default mapping: every long FX note on lane L gets
+  // every effect in chart.fxChains[0]; same for R.
+  const fxDef = [];
+  const longEvent = {};
+  for (let side = 0; side < 2; side++) {
+    const chain = chart.fxChains[side] || [];
+    if (!chain.length) continue;
+    const sideKey = side === 0 ? 'l' : 'r';
+    const longNotes = chart.fx[side].filter(n => n.len > 0);
+    for (let i = 0; i < chain.length; i++) {
+      const inst = chain[i];
+      const defName = `fx_${sideKey}_${i}`;
+      // Param values are spec'd as strings; stringify cleanly.
+      const vDict = {};
+      for (const [k, val] of Object.entries(inst.params || {})) {
+        vDict[k] = String(val);
+      }
+      fxDef.push([defName, { type: inst.type, v: vDict }]);
+      if (longNotes.length) {
+        longEvent[defName] = longNotes.map(n => [
+          Math.round(n.y * KSH_TO_KSON),
+          0, // 0 = invoke with the def's default params
+        ]);
+      }
+    }
+  }
 
   const kson = {
     version: '0.8.0',
     meta: {
-      title:      m.title,
-      artist:     m.artist,
-      chart_author: m.effect,
-      difficulty: {
-        name:  m.difficulty.toUpperCase(),
-        short_name: m.difficulty.slice(0, 3).toUpperCase(),
-        idx:   ['light','challenge','extended','infinite'].indexOf(m.difficulty),
-      },
-      level:      m.level,
-      disp_bpm:   String(m.bpm),
-      std_bpm:    m.bpm,
+      title:           m.title,
+      artist:          m.artist,
+      chart_author:    m.effect,
+      difficulty:      diffIdx,           // spec: uint, NOT an object
+      level:           m.level,
+      disp_bpm:        String(m.bpm),
+      std_bpm:         m.bpm,
       jacket_filename: m.jacket,
       jacket_author:   m.illust,
       icon_filename:   '',
       information:     '',
     },
     beat: {
-      bpm: chart.bpmEvents.map(ev => ({ y: ev.y * KSH_TO_KSON, v: ev.bpm })),
-      time_sig: chart.timeSigEvents.map(ev => ({
-        idx: ev.measure,
-        v:   [ev.num, ev.den],
-      })),
-      scroll_speed: [{ y: 0, v: 1.0 }],
+      bpm:          chart.bpmEvents.map(ev => [Math.round(ev.y * KSH_TO_KSON), ev.bpm]),
+      time_sig:     chart.timeSigEvents.map(ev => [ev.measure, [ev.num, ev.den]]),
+      scroll_speed: [[0, 1.0]],
     },
     note: {
       bt: chart.bt.map(lane =>
-        lane.map(n => n.len === 0 ? [n.y * KSH_TO_KSON, 0]
-                                   : [n.y * KSH_TO_KSON, n.len * KSH_TO_KSON])
+        lane.map(n => [Math.round(n.y * KSH_TO_KSON), Math.round((n.len || 0) * KSH_TO_KSON)])
       ),
       fx: chart.fx.map(lane =>
-        lane.map(n => n.len === 0 ? [n.y * KSH_TO_KSON, 0]
-                                   : [n.y * KSH_TO_KSON, n.len * KSH_TO_KSON])
+        lane.map(n => [Math.round(n.y * KSH_TO_KSON), Math.round((n.len || 0) * KSH_TO_KSON)])
       ),
-      laser: chart.lasers.map((sections, side) =>
-        sections.map(sec => ({
-          y:    sec.y * KSH_TO_KSON,
-          // Interpolation and slam preserved for lossless round-trips.
-          // a/b encode the curve shape; 'step' stored as non-standard 'interp'
-          // field which KSON-compliant readers safely ignore.
-          v:    sec.points.map(pt => {
-            const interp = pt.interp ?? 'linear';
-            const curve  = pt.curve  ?? 0.5;
-            const kpt = { ry: pt.ry * KSH_TO_KSON, v: pt.v };
-            if (interp === 'bezier') {
-              kpt.a = curve; kpt.b = curve;
-            } else if (interp === 'step') {
-              kpt.a = 0.5; kpt.b = 0.5;
-              kpt.interp = 'step'; // round-trip marker
-            } else {
-              kpt.a = 0.5; kpt.b = 0.5;
-            }
-            if (pt.slam === true) kpt.slam = true;
-            return kpt;
-          }),
-          wide: sec.wide ? 2 : 1,
-        }))
-      ),
+      laser: chart.lasers.map(buildLaserSections),
     },
     audio: {
       bgm: {
-        filename:  m.music,
-        vol:       1.0,
-        offset:    m.offset,
+        filename: m.music,
+        vol:      1.0,
+        offset:   m.offset,
         preview: {
-          offset: m.previewStart,
+          offset:   m.previewStart,
           duration: m.previewDuration,
         },
       },
       key_sound: { laser: { vol: 0.5 }, button: { vol: 1.0 } },
       audio_effect: {
         fx: {
-          def: chart.fxChains.flatMap((chain, side) =>
-            chain.map((inst, i) => ({
-              name: `fx_${side === 0 ? 'l' : 'r'}_${i}`,
-              type: inst.type,
-              v:    inst.params,
-            }))
-          ),
+          def:          fxDef,
           param_change: {},
+          long_event:   longEvent,
         },
         laser: {
-          def: [{
-            name:  'laser_filter',
-            type:  chart.laserSettings.filter,
-            v:     { gain: chart.laserSettings.gain / 100 },
-          }],
-          param_change: {},
+          def: [['laser_filter', {
+            type: chart.laserSettings.filter,
+            v:    { gain: String(chart.laserSettings.gain / 100) },
+          }]],
+          param_change:         {},
+          pulse_event:          {},
+          peaking_filter_delay: 0,
         },
       },
     },
     camera: {
-      tilt: {
-        manual:    [],
-        keep:      false,
-        scale:     [{ y: 0, v: 1.0 }],
-      },
+      tilt: { manual: [], keep: false, scale: [[0, 1.0]] },
       cam: {
-        body: {
-          zoom:   [],
-          shift_x:[],
-          rotation_x: [],
-          rotation_z: [],
-        },
+        body:    { zoom: [], shift_x: [], rotation_x: [], rotation_z: [] },
         pattern: { laser: { slam_event: { spin: [], half_spin: [], swing: [] } } },
       },
     },
-    bg: {
-      filename: m.bg,
-      offset:   0,
-    },
+    bg: { filename: m.bg, offset: 0 },
   };
 
   return JSON.stringify(kson, null, 2);
 }
 
+// ── Import ──────────────────────────────────────────────────────────────────
+//
+// Accepts BOTH array form (spec-compliant, what we now write) and the legacy
+// object form ({y, v}, {ry, v, slam, a, b}, etc.) so older vibe-editr exports
+// still load.
+
 function importKson(text) {
   const data  = JSON.parse(text);
   const chart = new ChartData();
 
+  // ── Tiny helpers for the dual-form readers ───────────────────────────────
+  // ByPulse<T>: [y, v] OR {y, v}
+  const readByPulse = (raw) => Array.isArray(raw)
+    ? { y: raw[0], v: raw[1] }
+    : { y: raw.y, v: raw.v };
+  // ByMeasureIdx<T>: [idx, v] OR {idx, v}
+  const readByMeasure = (raw) => Array.isArray(raw)
+    ? { idx: raw[0], v: raw[1] }
+    : { idx: raw.idx, v: raw.v };
+
+  // ── Meta ────────────────────────────────────────────────────────────────
   const meta = data.meta ?? {};
   chart.meta.title   = meta.title   ?? '';
   chart.meta.artist  = meta.artist  ?? '';
@@ -137,32 +195,43 @@ function importKson(text) {
   chart.meta.illust  = meta.jacket_author ?? '';
   chart.meta.level   = meta.level   ?? 10;
   chart.meta.bpm     = meta.std_bpm ?? 180;
-  if (meta.difficulty) {
-    chart.meta.difficulty = meta.difficulty.name?.toLowerCase() ?? 'infinite';
+  // difficulty is a number per spec, but older vibe-editr exports used
+  // {name, short_name, idx}. Handle both.
+  if (typeof meta.difficulty === 'number') {
+    chart.meta.difficulty =
+      ['light','challenge','extended','infinite'][meta.difficulty] ?? 'infinite';
+  } else if (meta.difficulty?.name) {
+    chart.meta.difficulty = meta.difficulty.name.toLowerCase();
   }
 
+  // ── Beat ────────────────────────────────────────────────────────────────
   const beat = data.beat ?? {};
-  if (beat.bpm) {
-    chart.bpmEvents = beat.bpm.map(e => ({
-      y:   Math.round(e.y / KSH_TO_KSON),
-      bpm: e.v,
-    }));
+  if (Array.isArray(beat.bpm) && beat.bpm.length) {
+    chart.bpmEvents = beat.bpm.map(e => {
+      const p = readByPulse(e);
+      return { y: Math.round(p.y / KSH_TO_KSON), bpm: Number(p.v) };
+    });
     if (chart.bpmEvents.length) chart.meta.bpm = chart.bpmEvents[0].bpm;
   }
-  if (beat.time_sig) {
-    chart.timeSigEvents = beat.time_sig.map(e => ({
-      measure: e.idx,
-      num:     e.v[0],
-      den:     e.v[1],
-    }));
+  if (Array.isArray(beat.time_sig) && beat.time_sig.length) {
+    chart.timeSigEvents = beat.time_sig.map(e => {
+      const r = readByMeasure(e);
+      const v = r.v;
+      return {
+        measure: r.idx,
+        num: Array.isArray(v) ? v[0] : v.num,
+        den: Array.isArray(v) ? v[1] : v.den,
+      };
+    });
   }
 
+  // ── Notes: BT / FX ──────────────────────────────────────────────────────
   const note = data.note ?? {};
   if (note.bt) {
     note.bt.forEach((lane, li) => {
       lane.forEach(n => {
         const y   = Math.round(n[0] / KSH_TO_KSON);
-        const len = Math.round(n[1] / KSH_TO_KSON);
+        const len = Math.round((n[1] || 0) / KSH_TO_KSON);
         chart.addBtNote(li, y, len);
       });
     });
@@ -171,63 +240,127 @@ function importKson(text) {
     note.fx.forEach((lane, li) => {
       lane.forEach(n => {
         const y   = Math.round(n[0] / KSH_TO_KSON);
-        const len = Math.round(n[1] / KSH_TO_KSON);
+        const len = Math.round((n[1] || 0) / KSH_TO_KSON);
         chart.addFxNote(li, y, len);
       });
     });
   }
+
+  // ── Lasers ──────────────────────────────────────────────────────────────
+  // Each section is either spec form [y, points[], w] or legacy
+  // {y, v: points, wide}. Each point is either spec form [ry, v, [a, b]?]
+  // or legacy {ry, v, slam, a, b, interp}.
   if (note.laser) {
     note.laser.forEach((sections, side) => {
-      sections.forEach(sec => {
-        if (!sec.v || sec.v.length === 0) return;
-        const startY = Math.round(sec.y / KSH_TO_KSON);
-        // Reconstruct slam flags with a clear priority order:
-        //   1. pt.slam === true  → explicit slam (our editor wrote this, trust it)
-        //   2. pt.slam === false → explicit non-slam (our editor wrote this, trust it)
-        //   3. pt.slam absent    → infer from tick distance using LASER_SLAM_TICKS
-        // This means external KSON files (no slam field) still get reasonable detection,
-        // while our own KSON files survive a lossless round-trip.
-        const points = sec.v.map((pt, pi) => {
-          const ry = Math.round(pt.ry / KSH_TO_KSON);
+      sections.forEach(rawSec => {
+        // Unpack section header
+        let startY, rawPts, wideFlag;
+        if (Array.isArray(rawSec)) {
+          startY   = rawSec[0];
+          rawPts   = rawSec[1] || [];
+          wideFlag = rawSec[2] === 2;
+        } else {
+          startY   = rawSec.y;
+          rawPts   = rawSec.v || [];
+          wideFlag = rawSec.wide === 2;
+        }
+        if (!rawPts.length) return;
+        startY = Math.round(startY / KSH_TO_KSON);
+
+        // First pass: read each point into a uniform shape
+        // { ry, v, slam, vIn?, interp, curve }
+        const points = [];
+        for (let pi = 0; pi < rawPts.length; pi++) {
+          const rawPt = rawPts[pi];
+          let ry, vRaw, curveRaw, legacySlam, legacyInterp;
+          if (Array.isArray(rawPt)) {
+            ry      = rawPt[0];
+            vRaw    = rawPt[1];
+            curveRaw = rawPt[2];
+          } else {
+            ry      = rawPt.ry;
+            vRaw    = (rawPt.vf !== undefined) ? [rawPt.v, rawPt.vf] : rawPt.v;
+            curveRaw = (rawPt.a !== undefined) ? [rawPt.a, rawPt.b ?? rawPt.a] : undefined;
+            legacySlam   = rawPt.slam;
+            legacyInterp = rawPt.interp;
+          }
+          ry = Math.round(ry / KSH_TO_KSON);
+
           let isSlam = false;
-          if (pi > 0) {
-            if (pt.slam === true) {
-              isSlam = true;   // explicitly flagged slam — no heuristic needed
-            } else if (pt.slam !== false) {
-              // No explicit flag (external KSON) — fall back to tick-distance check.
-              // Use the runtime-configurable LASER_SLAM_TICKS (default 6) so Gameplay
-              // preference changes propagate here too.
-              const prevRy = Math.round(sec.v[pi - 1].ry / KSH_TO_KSON);
-              isSlam = (ry - prevRy) <= LASER_SLAM_TICKS;
+          let vIn    = null;
+          let vOut;
+          if (Array.isArray(vRaw)) {
+            // Spec slam form: v = [v_in, v_out]
+            vIn    = vRaw[0];
+            vOut   = vRaw[1];
+            isSlam = true;
+          } else {
+            vOut = vRaw;
+          }
+
+          // Interpolation: bezier if curve[0] non-default, step if our marker
+          let interp = 'linear';
+          let curve  = 0.5;
+          if (Array.isArray(curveRaw)) {
+            if (curveRaw[0] === 1.0 && curveRaw[1] === 0.0) {
+              interp = 'step';
+            } else if (Math.abs(curveRaw[0] - 0.5) > 0.01) {
+              interp = 'bezier';
+              curve  = (curveRaw[0] + (curveRaw[1] ?? curveRaw[0])) / 2;
             }
-            // pt.slam === false: explicitly marked non-slam; isSlam stays false.
           }
-          // Reconstruct interpolation type from a/b (or explicit 'interp' field)
-          let reconInterp = 'linear';
-          let reconCurve  = 0.5;
-          if (pt.interp === 'step') {
-            reconInterp = 'step';
-          } else if (pt.a !== undefined && Math.abs(pt.a - 0.5) > 0.01) {
-            reconInterp = 'bezier';
-            reconCurve  = (pt.a + (pt.b ?? pt.a)) / 2;
+          if (legacyInterp === 'step') interp = 'step';
+          if (legacySlam === true)     isSlam = true;
+          if (legacySlam === false)    isSlam = false;
+
+          points.push({ ry, v: vOut, slam: isSlam, vIn, interp, curve });
+        }
+
+        // Second pass: split slam points (one point with [v_in, v_out]) into
+        // the two-point form our editor uses internally.
+        // A slam at ry with vIn=A, vOut=B becomes:
+        //   (ry - δ, v=A, slam=false)
+        //   (ry,     v=B, slam=true)
+        // Where δ is small enough to still be detected as a slam by
+        // LASER_SLAM_TICKS-distance checks.
+        const SLAM_GAP = Math.max(1, Math.floor((LASER_SLAM_TICKS ?? 6) / 2));
+        const splitPoints = [];
+        for (let i = 0; i < points.length; i++) {
+          const pt = points[i];
+          if (pt.slam && pt.vIn !== null) {
+            // Only split if there isn't already a preceding point near `ry`.
+            // Otherwise the prior point already supplies v_in.
+            const prior = splitPoints[splitPoints.length - 1];
+            const priorIsClose = prior && (pt.ry - prior.ry) <= LASER_SLAM_TICKS;
+            if (!priorIsClose || Math.abs(prior.v - pt.vIn) > 0.001) {
+              splitPoints.push({
+                ry: Math.max(0, pt.ry - SLAM_GAP),
+                v: pt.vIn, slam: false, interp: pt.interp, curve: pt.curve,
+              });
+            }
           }
-          return { ry, v: pt.v, slam: isSlam, interp: reconInterp, curve: reconCurve };
-        });
-        // Slam segments must render as step (hold-then-jump), not linear.
-        // The interp lives on p0 (outgoing) but slam is flagged on p1 (incoming).
-        // Patch any p0 whose outgoing segment is a slam and whose interp was not
-        // already set to something intentional (bezier/step) by the a/b fields.
-        for (let i = 1; i < points.length; i++) {
-          if (points[i].slam && points[i - 1].interp === 'linear') {
-            points[i - 1].interp = 'step';
+          splitPoints.push({
+            ry: pt.ry, v: pt.v, slam: pt.slam,
+            interp: pt.interp, curve: pt.curve,
+          });
+        }
+
+        // Slams must render as step (hold-then-jump). The interp lives on p0
+        // (outgoing) but slam is flagged on p1 (incoming). Patch the
+        // outgoing interp for any unconverted segment.
+        for (let i = 1; i < splitPoints.length; i++) {
+          if (splitPoints[i].slam && splitPoints[i - 1].interp === 'linear') {
+            splitPoints[i - 1].interp = 'step';
           }
         }
-        chart.lasers[side].push({ y: startY, points, wide: sec.wide === 2 });
+
+        chart.lasers[side].push({ y: startY, points: splitPoints, wide: wideFlag });
         chart.lasers[side].sort((a, b) => a.y - b.y);
       });
     });
   }
 
+  // ── Audio / BGM ─────────────────────────────────────────────────────────
   const bgm = data.audio?.bgm;
   if (bgm) {
     chart.meta.music  = bgm.filename ?? '';
@@ -236,9 +369,80 @@ function importKson(text) {
     chart.meta.previewDuration = bgm.preview?.duration ?? 15000;
   }
 
+  // ── FX effect chains: rebuild from audio_effect.fx.def ──────────────────
+  // def is [[name, {type, v}], ...] in spec form, or [{name, type, v}, ...]
+  // in legacy form. The name encodes which lane the effect belongs to
+  // (fx_l_* → left, fx_r_* → right).
+  const fxAE = data.audio?.audio_effect?.fx?.def;
+  if (Array.isArray(fxAE)) {
+    chart.fxChains = [[], []];
+    for (const entry of fxAE) {
+      let name, body;
+      if (Array.isArray(entry)) { name = entry[0]; body = entry[1]; }
+      else                      { name = entry.name; body = entry; }
+      const side = /^fx_r_/.test(name) ? 1 : 0;
+      // Convert string param values back into numbers when possible.
+      const params = {};
+      for (const [k, val] of Object.entries(body?.v || {})) {
+        const n = Number(val);
+        params[k] = Number.isFinite(n) && String(n) === String(val) ? n : val;
+      }
+      chart.fxChains[side].push({ type: body?.type, params });
+    }
+  }
+
   chart.totalMeasures = Math.max(64,
     Math.ceil(chart.bt.flat().reduce((m, n) => Math.max(m, n.y + n.len), 0) / TICKS_PER_MEASURE) + 4
   );
 
   return chart;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// vibe-editr KSON pack format (.ksonpack)
+//
+// A simple wrapper that bundles multiple KSON charts into one file. The
+// structure mirrors a regular .kson file but adds top-level metadata and an
+// array of full chart objects (each one is whatever exportKson would write).
+//
+// {
+//   "format":  "ksonpack",
+//   "version": "0.1.0",
+//   "meta":    { "title": "...", "artist": "...", "description": "...",
+//                "created": "ISO-8601 timestamp" },
+//   "charts":  [ <kson chart>, <kson chart>, ... ]
+// }
+//
+// Designed so a standard KSON parser CAN extract any individual chart by
+// reading `charts[i]` and serialising that subtree back out as KSON.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function exportKsonPack(charts, packMeta = {}) {
+  // Reuse exportKson then re-parse so each chart sits as a JS object inside
+  // the bundle. Slightly wasteful but keeps a single export code path.
+  const entries = charts
+    .filter(c => c && c.meta)
+    .map(c => JSON.parse(exportKson(c)));
+  const pack = {
+    format:  'ksonpack',
+    version: '0.1.0',
+    meta: {
+      title:       packMeta.title       || 'Untitled Pack',
+      artist:      packMeta.artist      || '',
+      description: packMeta.description || '',
+      created:     new Date().toISOString(),
+      chartCount:  entries.length,
+    },
+    charts: entries,
+  };
+  return JSON.stringify(pack, null, 2);
+}
+
+function importKsonPack(text) {
+  const data = JSON.parse(text);
+  if (data.format !== 'ksonpack' || !Array.isArray(data.charts)) {
+    throw new Error('Not a ksonpack file (missing format:"ksonpack" or charts[]).');
+  }
+  const charts = data.charts.map(c => importKson(JSON.stringify(c)));
+  return { meta: data.meta || {}, charts };
 }
