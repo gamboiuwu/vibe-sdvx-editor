@@ -631,25 +631,17 @@ function detectFxHits(prevTick, curTick) {
         src.connect(tickGainNode || audioCtx.destination);
         src.start();
       }
-      // FX hold: play metronome tick on HOLD_SAMPLE intervals while holding
-      else if (n.len > 0 && n.y <= curTick && n.y + n.len >= prevTick) {
-        const HOLD_SAMPLE = TICKS_PER_BEAT / 8;  // 48/8 = 6 ticks
-        // Find all HOLD_SAMPLE grid points between prevTick..curTick
-        const firstSample = Math.ceil(Math.max(n.y, prevTick) / HOLD_SAMPLE) * HOLD_SAMPLE;
-        const lastSample  = Math.floor(Math.min(n.y + n.len, curTick) / HOLD_SAMPLE) * HOLD_SAMPLE;
-        for (let t = firstSample; t <= lastSample; t += HOLD_SAMPLE) {
-          if (t >= prevTick && t < curTick && t > n.y && t < n.y + n.len) {
-            // Play a quiet metronome tick on FX holds
-            if (audioCtx && tickBuffer) {
-              const src = audioCtx.createBufferSource();
-              src.buffer = tickBuffer;
-              const g = audioCtx.createGain();
-              g.gain.value = 0.4;  // quieter than regular ticks
-              src.connect(g);
-              g.connect(tickGainNode || audioCtx.destination);
-              src.start();
-            }
-          }
+      // FX hold: play tick once when hold starts
+      else if (n.len > 0 && n.y >= prevTick && n.y < curTick) {
+        // Play a tick when the hold is first pressed
+        if (audioCtx && tickBuffer) {
+          const src = audioCtx.createBufferSource();
+          src.buffer = tickBuffer;
+          const g = audioCtx.createGain();
+          g.gain.value = 0.4;  // quieter than regular ticks
+          src.connect(g);
+          g.connect(tickGainNode || audioCtx.destination);
+          src.start();
         }
       }
     }
