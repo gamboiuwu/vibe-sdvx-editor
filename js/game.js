@@ -44,6 +44,22 @@ class GameView {
     // Slam flash queue: [{ side, v0, v1, wide, time }]
     // Each entry lives for ~200 ms then is pruned.
     this._slamFlashes = [];
+
+    // Phase 1 WebGL lane renderer. Attached lazily via attachGL().
+    // When useGL is true and _glRenderer.ok is true, the lane runway is
+    // rendered on a separate GL canvas behind this 2D canvas; the 2D
+    // path skips its lane drawing and only paints notes/lasers/HUD.
+    this.useGL = false;
+    this._glRenderer = null;
+  }
+
+  // Wire a sibling WebGL canvas. If GL2 isn't supported the renderer
+  // simply marks itself not-ok and the 2D fallback continues unchanged.
+  attachGL(glCanvas) {
+    if (!glCanvas || typeof GLLaneRenderer === 'undefined') return false;
+    this._glRenderer = new GLLaneRenderer(glCanvas);
+    if (this._glRenderer.ok) this._glRenderer.resize(this.canvas.width, this.canvas.height);
+    return !!this._glRenderer.ok;
   }
 
   get VISIBLE_TICKS() { return TICKS_PER_MEASURE * 4 / Math.max(0.1, this.hispeed); }
@@ -53,6 +69,7 @@ class GameView {
     const h = this.canvas.clientHeight || this.canvas.parentElement?.clientHeight || 600;
     this.canvas.width  = w;
     this.canvas.height = h;
+    if (this._glRenderer?.ok) this._glRenderer.resize(w, h);
     this._totalWeight = this.chart ? this._calcTotalWeight(this.chart) : 0;
     this._paramDirty  = true;
   }
@@ -304,13 +321,21 @@ class GameView {
     const chain = (chart && autoplayOn) ? this.countChain(chart, tick) : 0;
 
     // ── Background ────────────────────────────────────────────────────────
-
-    const bgGrad = ctx.createLinearGradient(0, 0, 0, p.h);
-    bgGrad.addColorStop(0,   '#020308');
-    bgGrad.addColorStop(0.4, '#050515');
-    bgGrad.addColorStop(1,   '#08001a');
-    ctx.fillStyle = bgGrad;
-    ctx.fillRect(0, 0, p.w, p.h);
+    // When the WebGL lane renderer is active, it owns the background gradient
+    // and the entire lane runway. We just clear the 2D overlay to transparent
+    // so notes/lasers/HUD composite cleanly on top.
+    const useGL = this.useGL && this._glRenderer?.ok;
+    if (useGL) {
+      this._glRenderer.render(p, this, typeof laserColors !== 'undefined' ? laserColors : null);
+      ctx.clearRect(0, 0, p.w, p.h);
+    } else {
+      const bgGrad = ctx.createLinearGradient(0, 0, 0, p.h);
+      bgGrad.addColorStop(0,   '#020308');
+      bgGrad.addColorStop(0.4, '#050515');
+      bgGrad.addColorStop(1,   '#08001a');
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, p.w, p.h);
+    }
 
     // ── Camera tilt: rotate the entire lane/notes around the judgment line center ──
     // We use ctx.rotate() so the full 3-D lane tilts as one rigid body (CW/CCW).
@@ -323,6 +348,9 @@ class GameView {
     }
 
     // Lane trapezoid — BT/FX area [norm 0..1] clipped at cutoffY
+    // Coordinates are needed even when GL handles the visible lane,
+    // since the rest of the draw path (hit flashes, etc.) doesn't
+    // recompute them. Cheap to keep unconditional.
     const OFF = GameView.LASER_LANE_OFFSET;
     const lx0 = this._screenX(0,    p.cutoffY, p);
     const rx0 = this._screenX(1,    p.cutoffY, p);
@@ -334,86 +362,87 @@ class GameView {
     const vlx1 = this._screenX(-OFF, p.judgeY,  p);
     const vrx1 = this._screenX(1+OFF, p.judgeY,  p);
 
-    // ── VOL lane panels (darker tint, drawn first) ───────────────────────
-    const volGrad = ctx.createLinearGradient(0, p.cutoffY, 0, p.judgeY);
-    volGrad.addColorStop(0, '#030312');
-    volGrad.addColorStop(1, '#080820');
+    if (!useGL) {
+      // ── VOL lane panels (darker tint, drawn first) ───────────────────────
+      const volGrad = ctx.createLinearGradient(0, p.cutoffY, 0, p.judgeY);
+      volGrad.addColorStop(0, '#030312');
+      volGrad.addColorStop(1, '#080820');
 
-    // Left VOL panel
-    ctx.beginPath();
-    ctx.moveTo(vlx0, p.cutoffY); ctx.lineTo(lx0, p.cutoffY);
-    ctx.lineTo(lx1, p.judgeY);   ctx.lineTo(vlx1, p.judgeY);
-    ctx.closePath();
-    ctx.fillStyle = volGrad; ctx.fill();
-
-    // Right VOL panel
-    ctx.beginPath();
-    ctx.moveTo(rx0, p.cutoffY); ctx.lineTo(vrx0, p.cutoffY);
-    ctx.lineTo(vrx1, p.judgeY); ctx.lineTo(rx1, p.judgeY);
-    ctx.closePath();
-    ctx.fillStyle = volGrad; ctx.fill();
-
-    // ── BT/FX main lane ──────────────────────────────────────────────────
-    ctx.beginPath();
-    ctx.moveTo(lx0, p.cutoffY); ctx.lineTo(rx0, p.cutoffY);
-    ctx.lineTo(rx1, p.judgeY);  ctx.lineTo(lx1, p.judgeY);
-    ctx.closePath();
-    const laneGrad = ctx.createLinearGradient(0, p.cutoffY, 0, p.judgeY);
-    laneGrad.addColorStop(0, '#060618');
-    laneGrad.addColorStop(0.6, '#0d0d28');
-    laneGrad.addColorStop(1, '#12133a');
-    ctx.fillStyle = laneGrad;
-    ctx.fill();
-
-    // VOL outer boundary lines
-    ctx.strokeStyle = '#2a2a55'; ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(vlx0, p.cutoffY); ctx.lineTo(vlx1, p.judgeY);
-    ctx.moveTo(vrx0, p.cutoffY); ctx.lineTo(vrx1, p.judgeY);
-    ctx.stroke();
-
-    // Side glow — from outer VOL lane edge inward
-    const hw1     = this._halfW(p.judgeY, p);
-    const volLeft  = this._laserX(0, p.judgeY, p);   // leftmost laser position
-    const volRight = this._laserX(1, p.judgeY, p);   // rightmost laser position
-    const _drawGlow = (x, dir, col) => {
-      const w = Math.abs(x - (dir < 0 ? vlx1 : vrx1)) + 40;
-      const g = ctx.createLinearGradient(x, 0, x + dir * w, 0);
-      g.addColorStop(0, col); g.addColorStop(1, 'transparent');
-      ctx.fillStyle = g;
-      ctx.fillRect(Math.min(x, x + dir * w), p.cutoffY, w, p.judgeY - p.cutoffY);
-    };
-    _drawGlow(volLeft,  -1, laserColors.L + '33');
-    _drawGlow(volRight,  1, laserColors.R + '33');
-
-    // ── Scrolling grid (beat/measure lines) ───────────────────────────────
-
-    const beatStep  = TICKS_PER_BEAT;
-    const startBeat = Math.floor(tick / beatStep) * beatStep;
-    for (let t = startBeat; t <= tick + VT + beatStep; t += beatStep) {
-      const dt = t - tick;
-      if (dt < 0 || dt > VT) continue;
-      const sy = this._screenY(dt, p);
-      if (sy <= p.cutoffY || sy >= p.judgeY) continue;
-      const isMeasure = (t % TICKS_PER_MEASURE === 0);
-      ctx.strokeStyle = isMeasure ? '#6060aa' : '#22224a';
-      ctx.lineWidth   = isMeasure ? 1.5 : 0.7;
+      // Left VOL panel
       ctx.beginPath();
-      ctx.moveTo(this._screenX(0, sy, p), sy);
-      ctx.lineTo(this._screenX(1, sy, p), sy);
-      ctx.stroke();
-    }
+      ctx.moveTo(vlx0, p.cutoffY); ctx.lineTo(lx0, p.cutoffY);
+      ctx.lineTo(lx1, p.judgeY);   ctx.lineTo(vlx1, p.judgeY);
+      ctx.closePath();
+      ctx.fillStyle = volGrad; ctx.fill();
 
-    // ── Vertical lane dividers ────────────────────────────────────────────
-
-    for (let i = 0; i <= 4; i++) {
-      const n = i / 4;
-      ctx.strokeStyle = i === 0 || i === 4 ? '#5050a0' : '#282858';
-      ctx.lineWidth = i === 0 || i === 4 ? 1.5 : 0.8;
+      // Right VOL panel
       ctx.beginPath();
-      ctx.moveTo(this._screenX(n, p.cutoffY, p), p.cutoffY);
-      ctx.lineTo(this._screenX(n, p.judgeY,  p), p.judgeY);
+      ctx.moveTo(rx0, p.cutoffY); ctx.lineTo(vrx0, p.cutoffY);
+      ctx.lineTo(vrx1, p.judgeY); ctx.lineTo(rx1, p.judgeY);
+      ctx.closePath();
+      ctx.fillStyle = volGrad; ctx.fill();
+
+      // ── BT/FX main lane ──────────────────────────────────────────────────
+      ctx.beginPath();
+      ctx.moveTo(lx0, p.cutoffY); ctx.lineTo(rx0, p.cutoffY);
+      ctx.lineTo(rx1, p.judgeY);  ctx.lineTo(lx1, p.judgeY);
+      ctx.closePath();
+      const laneGrad = ctx.createLinearGradient(0, p.cutoffY, 0, p.judgeY);
+      laneGrad.addColorStop(0, '#060618');
+      laneGrad.addColorStop(0.6, '#0d0d28');
+      laneGrad.addColorStop(1, '#12133a');
+      ctx.fillStyle = laneGrad;
+      ctx.fill();
+
+      // VOL outer boundary lines
+      ctx.strokeStyle = '#2a2a55'; ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(vlx0, p.cutoffY); ctx.lineTo(vlx1, p.judgeY);
+      ctx.moveTo(vrx0, p.cutoffY); ctx.lineTo(vrx1, p.judgeY);
       ctx.stroke();
+
+      // Side glow — from outer VOL lane edge inward
+      const volLeft  = this._laserX(0, p.judgeY, p);   // leftmost laser position
+      const volRight = this._laserX(1, p.judgeY, p);   // rightmost laser position
+      const _drawGlow = (x, dir, col) => {
+        const w = Math.abs(x - (dir < 0 ? vlx1 : vrx1)) + 40;
+        const g = ctx.createLinearGradient(x, 0, x + dir * w, 0);
+        g.addColorStop(0, col); g.addColorStop(1, 'transparent');
+        ctx.fillStyle = g;
+        ctx.fillRect(Math.min(x, x + dir * w), p.cutoffY, w, p.judgeY - p.cutoffY);
+      };
+      _drawGlow(volLeft,  -1, laserColors.L + '33');
+      _drawGlow(volRight,  1, laserColors.R + '33');
+
+      // ── Scrolling grid (beat/measure lines) ───────────────────────────────
+
+      const beatStep  = TICKS_PER_BEAT;
+      const startBeat = Math.floor(tick / beatStep) * beatStep;
+      for (let t = startBeat; t <= tick + VT + beatStep; t += beatStep) {
+        const dt = t - tick;
+        if (dt < 0 || dt > VT) continue;
+        const sy = this._screenY(dt, p);
+        if (sy <= p.cutoffY || sy >= p.judgeY) continue;
+        const isMeasure = (t % TICKS_PER_MEASURE === 0);
+        ctx.strokeStyle = isMeasure ? '#6060aa' : '#22224a';
+        ctx.lineWidth   = isMeasure ? 1.5 : 0.7;
+        ctx.beginPath();
+        ctx.moveTo(this._screenX(0, sy, p), sy);
+        ctx.lineTo(this._screenX(1, sy, p), sy);
+        ctx.stroke();
+      }
+
+      // ── Vertical lane dividers ────────────────────────────────────────────
+
+      for (let i = 0; i <= 4; i++) {
+        const n = i / 4;
+        ctx.strokeStyle = i === 0 || i === 4 ? '#5050a0' : '#282858';
+        ctx.lineWidth = i === 0 || i === 4 ? 1.5 : 0.8;
+        ctx.beginPath();
+        ctx.moveTo(this._screenX(n, p.cutoffY, p), p.cutoffY);
+        ctx.lineTo(this._screenX(n, p.judgeY,  p), p.judgeY);
+        ctx.stroke();
+      }
     }
 
     if (!chart) { this._drawHUD(p, tick, score, chain); return; }
