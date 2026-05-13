@@ -3451,6 +3451,9 @@ function showCtxMenu(x, y) {
 }
 
 function openContextMenuCenter() {
+  // When opened via the C key, default the menu tick to the playhead so
+  // "Add BPM Change…" / "Add Time Sig…" still pre-fill sensibly.
+  _ctxMenuTick = renderer?.playTick ?? 0;
   const canvas = document.getElementById('chart-canvas');
   if (canvas && viewMode !== 'game') {
     const r = canvas.getBoundingClientRect();
@@ -4091,6 +4094,16 @@ function updateSelStatus() {
 function onRightClick(e) {
   e.preventDefault();
 
+  // Cmd/Ctrl+right-click → open the context menu. The clicked tick is
+  // saved so measure-aware items ("Add BPM Change…", "Add Time Sig…")
+  // can pre-fill their modal.
+  if (e.ctrlKey || e.metaKey) {
+    const h = getHit(e);
+    _ctxMenuTick = Math.max(0, Math.round(h.tick));
+    showCtxMenu(e.clientX, e.clientY);
+    return;
+  }
+
   // Right-click on a laser anchor dot → interp menu (laser tools).
   if (tool === 'laser-l' || tool === 'laser-r') {
     const side = tool === 'laser-l' ? 0 : 1;
@@ -4107,13 +4120,17 @@ function onRightClick(e) {
     }
   }
 
-  // Any other right-click opens the context menu. The clicked tick is
-  // saved so menu items like "Add BPM Change…" can pre-fill the modal
-  // with the right measure + beat. To erase a specific note, use the
-  // Erase tool (E) instead.
+  // Default: erase note at cursor.
   const h = getHit(e);
-  _ctxMenuTick = Math.max(0, Math.round(h.tick));
-  showCtxMenu(e.clientX, e.clientY);
+  if (h.laneIdx < 0) return;
+  saveUndo(`Deleted at M${Math.floor(h.tick / TICKS_PER_MEASURE) + 1}`);
+  eraseAt(h.laneIdx, h.tick);
+  // Clear selection if we erased a laser
+  if (h.laneIdx === 4 || h.laneIdx === 5) {
+    _laserSel = null;
+    if (renderer) renderer.selectedLaserPoint = null;
+  }
+  render();
 }
 
 function eraseAt(laneIdx, tick) {
