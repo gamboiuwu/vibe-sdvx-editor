@@ -5,7 +5,7 @@ A browser-based chart editor for **Sound Voltex** style rhythm charts. KSON-firs
 No installation, no build step — it's a static page plus an optional Node helper that serves files with the headers the Web Audio API needs.
 
 ```
-  ▶  http://localhost:3000
+  ▶  https://gamboiuwu.github.io/vibe-sdvx-editor/
 ```
 
 ---
