@@ -170,13 +170,17 @@ class GLLaneRenderer {
   // ── Main render ────────────────────────────────────────────────────────
   // `params` is the same object returned by GameView._params().
   // `gv` is the GameView instance (for _screenX / _screenY / _laserX / _halfW).
-  render(params, gv, laserColors) {
+  // `chart` is optional — when present, BT chips/holds and FX chips/holds are
+  // emitted into the same vertex buffer as the lane and submitted in a
+  // single draw call (Phase 2).
+  render(params, gv, laserColors, chart) {
     if (!this.ok) return;
     const gl = this.gl;
     this._n = 0;
     const p = params;
     const xf = this._rotXform(p);
     const T = xf ? ((x, y) => xf(x, y)) : ((x, y) => [x, y]);
+    this._T = T;
 
     // ── 1. Full-screen background gradient (matches 2D draw) ───────────
     // NOT rotated — the 2D version doesn't rotate the background either.
@@ -306,7 +310,10 @@ class GLLaneRenderer {
       this._line(x0, y0, x1, y1, lw, col);
     }
 
-    // ── 7. Submit + draw ───────────────────────────────────────────────
+    // ── 7. Notes (Phase 2) — emitted into the same vertex buffer ───────
+    if (chart) this._emitNotes(p, gv, chart);
+
+    // ── 8. Submit + draw ───────────────────────────────────────────────
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.enable(gl.BLEND);
@@ -318,6 +325,129 @@ class GLLaneRenderer {
     gl.bufferSubData(gl.ARRAY_BUFFER, 0, this._cpu, 0, this._n * 6);
     gl.drawArrays(gl.TRIANGLES, 0, this._n);
     gl.bindVertexArray(null);
+  }
+
+  // ── Phase 2: BT/FX notes ─────────────────────────────────────────────
+  // Mirrors the iteration order and geometry of the 2D path in
+  // game.js draw() exactly (FX holds → FX chips → BT holds → BT chips)
+  // so the visual result matches by construction.
+  //
+  // Approximations vs 2D path:
+  //  • No ctx.shadowBlur glow (would need a separate render target).
+  //    Notes are ~95 % visually identical; the bloom around hits is
+  //    skipped in Phase 2 — comes back in Phase 4 polish.
+  //  • Multi-stop horizontal gradients (FX chip / FX hold) are emitted
+  //    as two stacked quads split at the lane center, so the brighter
+  //    middle stop renders correctly via vertex interpolation.
+  //  • Active-hold bright outline reuses the same base quad rather than
+  //    stroking a 1.5 px line, since gl.LINE_WIDTH > 1 is unreliable.
+  _emitNotes(p, gv, chart) {
+    const T = this._T;
+    const VT = gv.VISIBLE_TICKS;
+    const tick = gv.playTick;
+
+    // Colors (precomputed normalized RGBA)
+    const FX_HOLD_EDGE = [0.549, 0.251, 0.000, 1.00]; // #8c4000
+    const FX_HOLD_MID  = [1.000, 0.533, 0.000, 0.80]; // #ff8800cc
+    const FX_CHIP_EDGE = [0.667, 0.333, 0.000, 1.00]; // #aa5500
+    const FX_CHIP_MID  = [1.000, 0.800, 0.000, 1.00]; // #ffcc00
+    const BT_HOLD_TOP  = [0.565, 0.565, 0.800, 1.00]; // #9090cc
+    const BT_HOLD_BOT  = [0.910, 0.910, 1.000, 1.00]; // #e8e8ff
+    const BT_HOLD_HOT  = [1.000, 1.000, 1.000, 1.00]; // active highlight
+    const BT_CAP       = [0.973, 0.973, 1.000, 1.00]; // #f8f8ff
+    const BT_CHIP      = [0.910, 0.910, 1.000, 1.00]; // #e8e8ff
+    const BT_HIGHLIGHT = [1.000, 1.000, 1.000, 0.80]; // #ffffffcc
+
+    // Helper to emit a perspective trapezoid with 4 corner colors.
+    const trapQuad = (x_TL, y_T, x_TR, x_BR, y_B, x_BL, cTL, cTR, cBR, cBL) => {
+      const [a0,a1] = T(x_TL, y_T), [b0,b1] = T(x_TR, y_T);
+      const [c0,c1] = T(x_BR, y_B), [d0,d1] = T(x_BL, y_B);
+      this._quad(a0,a1, b0,b1, c0,c1, d0,d1, cTL, cTR, cBR, cBL);
+    };
+
+    // ── FX holds ──
+    const FX_INSET = 0.012;
+    for (let li = 0; li < 2; li++) {
+      const ln = li * 0.5, rn = (li + 1) * 0.5;
+      const mid = ln + 0.25;
+      for (const n of chart.fx[li]) {
+        if (n.len === 0 || n.y + n.len < tick || n.y > tick + VT) continue;
+        const dt0 = Math.max(n.y - tick, 0);
+        const dt1 = Math.min(n.y + n.len - tick, VT);
+        const sy0 = gv._screenY(dt1, p);
+        const sy1 = gv._screenY(dt0, p);
+        const x0l = gv._screenX(ln + FX_INSET, sy0, p);
+        const x0m = gv._screenX(mid,           sy0, p);
+        const x0r = gv._screenX(rn - FX_INSET, sy0, p);
+        const x1l = gv._screenX(ln + FX_INSET, sy1, p);
+        const x1m = gv._screenX(mid,           sy1, p);
+        const x1r = gv._screenX(rn - FX_INSET, sy1, p);
+        trapQuad(x0l, sy0, x0m, x1m, sy1, x1l, FX_HOLD_EDGE, FX_HOLD_MID, FX_HOLD_MID, FX_HOLD_EDGE);
+        trapQuad(x0m, sy0, x0r, x1r, sy1, x1m, FX_HOLD_MID, FX_HOLD_EDGE, FX_HOLD_EDGE, FX_HOLD_MID);
+      }
+    }
+
+    // ── FX chips ──
+    for (let li = 0; li < 2; li++) {
+      const ln = li * 0.5, rn = (li + 1) * 0.5;
+      for (const n of chart.fx[li]) {
+        if (n.len !== 0 || n.y < tick || n.y > tick + VT) continue;
+        const dt = n.y - tick;
+        const sy = gv._screenY(dt, p);
+        if (sy < p.cutoffY) continue;
+        const lx = gv._screenX(ln + 0.01, sy, p);
+        const rx = gv._screenX(rn - 0.01, sy, p);
+        const chipH = Math.max(5, (rx - lx) * 0.12);
+        const midX = (lx + rx) * 0.5;
+        const yT = sy - chipH;
+        trapQuad(lx,   yT, midX, midX, sy, lx,   FX_CHIP_EDGE, FX_CHIP_MID,  FX_CHIP_MID,  FX_CHIP_EDGE);
+        trapQuad(midX, yT, rx,   rx,   sy, midX, FX_CHIP_MID,  FX_CHIP_EDGE, FX_CHIP_EDGE, FX_CHIP_MID);
+      }
+    }
+
+    // ── BT holds ──
+    const btScale = Math.min(1.5, Math.max(0, gv.btWidthScale ?? 1.0));
+    const bwInset = (1 - btScale) / 8;
+    for (let li = 0; li < 4; li++) {
+      const ln = li / 4 + bwInset, rn = (li + 1) / 4 - bwInset;
+      for (const n of chart.bt[li]) {
+        if (n.len === 0 || n.y + n.len < tick || n.y > tick + VT) continue;
+        const dt0 = Math.max(n.y - tick, 0);
+        const dt1 = Math.min(n.y + n.len - tick, VT);
+        const sy0 = gv._screenY(dt1, p);
+        const sy1 = gv._screenY(dt0, p);
+        const active = (n.y <= tick && n.y + n.len >= tick);
+        const x0l = gv._screenX(ln + 0.005, sy0, p), x0r = gv._screenX(rn - 0.005, sy0, p);
+        const x1l = gv._screenX(ln + 0.005, sy1, p), x1r = gv._screenX(rn - 0.005, sy1, p);
+        const topC = active ? BT_HOLD_HOT : BT_HOLD_TOP;
+        trapQuad(x0l, sy0, x0r, x1r, sy1, x1l, topC, topC, BT_HOLD_BOT, BT_HOLD_BOT);
+
+        // White top cap at the start of the hold
+        if (n.y >= tick && n.y <= tick + VT) {
+          const capH = Math.max(3, (x1r - x1l) * 0.07);
+          trapQuad(x1l, sy1 - capH, x1r, x1r, sy1, x1l, BT_CAP, BT_CAP, BT_CAP, BT_CAP);
+        }
+      }
+    }
+
+    // ── BT chips ──
+    for (let li = 0; li < 4; li++) {
+      const ln = li / 4 + bwInset, rn = (li + 1) / 4 - bwInset;
+      for (const n of chart.bt[li]) {
+        if (n.len !== 0 || n.y < tick || n.y > tick + VT) continue;
+        const dt = n.y - tick;
+        const sy = gv._screenY(dt, p);
+        if (sy < p.cutoffY) continue;
+        const hw = gv._halfW(sy, p);
+        const chipH = Math.max(4, hw * 0.08 * btScale);
+        const lx = gv._screenX(ln + 0.01, sy, p);
+        const rx = gv._screenX(rn - 0.01, sy, p);
+        const yT = sy - chipH;
+        trapQuad(lx, yT, rx, rx, sy, lx, BT_CHIP, BT_CHIP, BT_CHIP, BT_CHIP);
+        // 2-pixel top highlight
+        trapQuad(lx, yT, rx, rx, yT + 2, lx, BT_HIGHLIGHT, BT_HIGHLIGHT, BT_HIGHLIGHT, BT_HIGHLIGHT);
+      }
+    }
   }
 
   clear() {

@@ -498,12 +498,12 @@
       <span id="pvc-save-config-label" class="pvc-val" style="color:#66bb66;opacity:0;transition:opacity 0.4s">Saved!</span>
     </div>
 
-    <!-- Phase 1: WebGL lane renderer toggle -->
-    <div class="pvc-section" title="Render the lane runway, grid and side glow on the GPU. Notes and lasers still use the 2D overlay in Phase 1.">
+    <!-- WebGL renderer toggle (Phase 1: lane runway · Phase 2: notes) -->
+    <div class="pvc-section" title="Render the lane runway, grid, side glow and BT/FX notes on the GPU. Lasers and slams still use the 2D overlay; coming in Phase 3.">
       <span class="pvc-label">WebGL Lane</span>
       <label style="display:flex;align-items:center;gap:6px;font-size:10px;color:#aabbdd;cursor:pointer;flex:1">
         <input type="checkbox" id="pvc-use-webgl" style="cursor:pointer">
-        <span>Experimental (Phase 1)</span>
+        <span>Experimental (Phase 2)</span>
       </label>
     </div>
 
@@ -1017,7 +1017,7 @@
 <script src="js/effects.js"></script>
 <script src="js/chart.js?v=2"></script>
 <script src="js/renderer.js?v=3"></script>
-<script src="js/game.js?v=3"></script>
+<script src="js/game.js?v=4"></script>
 <script src="js/ksh.js?v=3"></script>
 <!-- Laser interpolation context menu -->
 <div id="laser-interp-menu" style="display:none;position:fixed;z-index:3000">
@@ -1241,7 +1241,7 @@
 <script src="js/kson.js"></script>
 <script src="js/calibration.js"></script>
 <script src="js/i18n.js"></script>
-<script src="js/gl-lane.js?v=1"></script>
+<script src="js/gl-lane.js?v=2"></script>
 <script src="js/app.js?v=12"></script>
 <script src="js/dock.js?v=5"></script>
 <script src="js/tools.js?v=4"></script>

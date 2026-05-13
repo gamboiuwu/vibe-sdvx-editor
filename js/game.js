@@ -326,7 +326,7 @@ class GameView {
     // so notes/lasers/HUD composite cleanly on top.
     const useGL = this.useGL && this._glRenderer?.ok;
     if (useGL) {
-      this._glRenderer.render(p, this, typeof laserColors !== 'undefined' ? laserColors : null);
+      this._glRenderer.render(p, this, typeof laserColors !== 'undefined' ? laserColors : null, chart);
       ctx.clearRect(0, 0, p.w, p.h);
     } else {
       const bgGrad = ctx.createLinearGradient(0, 0, 0, p.h);
@@ -450,6 +450,11 @@ class GameView {
     // ── Hit flash surface glow — drawn ON the lane BEFORE notes ───────────
     // (additive composite makes it look like light emitted from the surface)
     this._drawHitFlashes(p, tick, chart);
+
+    // ── FX holds / FX chips / BT holds / BT chips ────────────────────────
+    // When the WebGL renderer is active it has already emitted these note
+    // quads into its vertex buffer in the same draw pass as the lane.
+    if (!useGL) {
 
     // ── FX holds ──────────────────────────────────────────────────────────
 
@@ -575,6 +580,8 @@ class GameView {
         ctx.fillRect(lx, sy - chipH, rx - lx, 2);
       }
     }
+
+    } // end if (!useGL) — notes block
 
     // ── Lasers — perspective-correct ribbon quads ─────────────────────────
 
