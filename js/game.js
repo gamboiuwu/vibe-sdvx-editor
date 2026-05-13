@@ -331,7 +331,12 @@ class GameView {
     // so notes/lasers/HUD composite cleanly on top.
     const useGL = this.useGL && this._glRenderer?.ok;
     if (useGL) {
-      this._glRenderer.render(p, this, typeof laserColors !== 'undefined' ? laserColors : null, chart);
+      this._glRenderer.render(
+        p, this,
+        typeof laserColors !== 'undefined' ? laserColors : null,
+        chart,
+        typeof laserOpacity !== 'undefined' ? laserOpacity : 0.7
+      );
       ctx.clearRect(0, 0, p.w, p.h);
     } else {
       const bgGrad = ctx.createLinearGradient(0, 0, 0, p.h);
@@ -589,6 +594,9 @@ class GameView {
     } // end if (!useGL) — notes block
 
     // ── Lasers — perspective-correct ribbon quads ─────────────────────────
+    // When the WebGL renderer is active, lasers + slams are emitted into
+    // the same vertex buffer as the lane runway and notes (Phase 3).
+    if (!useGL) {
 
     for (let side = 0; side < 2; side++) {
       const mainCol = side === 0 ? laserColors.L  : laserColors.R;
@@ -833,6 +841,8 @@ class GameView {
         }
       }
     }
+
+    } // end if (!useGL) — lasers block
 
     // ── Laser indicator bars at judgment line ─────────────────────────────
 

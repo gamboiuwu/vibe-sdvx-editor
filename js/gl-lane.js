@@ -171,9 +171,10 @@ class GLLaneRenderer {
   // `params` is the same object returned by GameView._params().
   // `gv` is the GameView instance (for _screenX / _screenY / _laserX / _halfW).
   // `chart` is optional — when present, BT chips/holds and FX chips/holds are
-  // emitted into the same vertex buffer as the lane and submitted in a
-  // single draw call (Phase 2).
-  render(params, gv, laserColors, chart) {
+  // emitted into the same vertex buffer as the lane (Phase 2) and so are
+  // VOL laser ribbons + slams (Phase 3). Everything submits in one draw call.
+  // `laserOpacity` (0..1) is multiplied into laser vertex alpha.
+  render(params, gv, laserColors, chart, laserOpacity) {
     if (!this.ok) return;
     const gl = this.gl;
     this._n = 0;
@@ -313,7 +314,10 @@ class GLLaneRenderer {
     // ── 7. Notes (Phase 2) — emitted into the same vertex buffer ───────
     if (chart) this._emitNotes(p, gv, chart);
 
-    // ── 8. Submit + draw ───────────────────────────────────────────────
+    // ── 8. Lasers + slams (Phase 3) — same vertex buffer ───────────────
+    if (chart && laserColors) this._emitLasers(p, gv, chart, laserColors, laserOpacity);
+
+    // ── 9. Submit + draw ───────────────────────────────────────────────
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.enable(gl.BLEND);
@@ -446,6 +450,175 @@ class GLLaneRenderer {
         trapQuad(lx, yT, rx, rx, sy, lx, BT_CHIP, BT_CHIP, BT_CHIP, BT_CHIP);
         // 2-pixel top highlight
         trapQuad(lx, yT, rx, rx, yT + 2, lx, BT_HIGHLIGHT, BT_HIGHLIGHT, BT_HIGHLIGHT, BT_HIGHLIGHT);
+      }
+    }
+  }
+
+  // ── Phase 3: VOL lasers + slams ──────────────────────────────────────
+  // Mirrors the 2D laser path in game.js draw() — same bezier sampling,
+  // same slam-block reprojection, same linear/perspective ribbon
+  // construction. Phase 3 specifics:
+  //   • Ribbon edge "stroke" reproduced as thin parallelograms along
+  //     each segment's left and right edges using the edge color,
+  //     instead of ctx.stroke (which gl.lineWidth can't match).
+  //   • The smooth-quadratic-bezier ortho path is emitted as straight
+  //     per-segment polygons. With BEZIER_STEPS=10 the polygonal curve
+  //     is already smooth at any zoom level.
+  //   • Tail-end cap and judgment-line indicator diamonds remain on
+  //     the 2D overlay — they're small UI bits, not rendering hot path.
+  _emitLasers(p, gv, chart, laserColors, laserOpacity) {
+    const T = this._T;
+    const VT = gv.VISIBLE_TICKS;
+    const tick = gv.playTick;
+    const LASER_FRAC = 0.056;
+    const BEZIER_STEPS = 10;
+    const opacity = (laserOpacity ?? 0.7);
+
+    const parseHex = (hex, alphaMul = 1) => {
+      const h = hex.replace('#', '');
+      const n = h.length === 8 ? h : h + 'ff';
+      return [
+        parseInt(n.slice(0,2), 16) / 255,
+        parseInt(n.slice(2,4), 16) / 255,
+        parseInt(n.slice(4,6), 16) / 255,
+        (parseInt(n.slice(6,8), 16) / 255) * alphaMul,
+      ];
+    };
+
+    const flatQuad = (x0, y0, x1, y1, x2, y2, x3, y3, c) => {
+      const [a0,a1] = T(x0, y0), [b0,b1] = T(x1, y1);
+      const [c0,c1] = T(x2, y2), [d0,d1] = T(x3, y3);
+      this._quad(a0,a1, b0,b1, c0,c1, d0,d1, c, c, c, c);
+    };
+
+    const isSlam = (typeof ChartData !== 'undefined' && ChartData.isPointSlam)
+      ? ChartData.isPointSlam.bind(ChartData)
+      : ((p0, p1) => (p1.ry - p0.ry) <= 6);
+
+    for (let side = 0; side < 2; side++) {
+      const mainCol = parseHex(side === 0 ? laserColors.L  : laserColors.R,  opacity);
+      const edgeCol = parseHex(side === 0 ? laserColors.Le : laserColors.Re, opacity);
+      const whiteCol = [1, 1, 1, opacity];
+
+      for (const sec of chart.lasers[side]) {
+        if (!sec.points.length) continue;
+        const secEnd = sec.y + (sec.points[sec.points.length - 1]?.ry ?? 0);
+        if (secEnd < tick || sec.y > tick + VT) continue;
+
+        // ── Build flat segment list (same as 2D path) ─────────────────
+        const gSegs = [];
+        for (let pi = 0; pi < sec.points.length - 1; pi++) {
+          const p0 = sec.points[pi], p1 = sec.points[pi + 1];
+          const t0 = sec.y + p0.ry, t1 = sec.y + p1.ry;
+          const dt0g = t0 - tick, dt1g = t1 - tick;
+          if (dt1g < 0 || dt0g > VT) continue;
+
+          const slam = isSlam(p0, p1);
+          const interp = slam ? 'linear' : (p0.interp ?? 'linear');
+
+          if (interp === 'bezier') {
+            const curve = p0.curve ?? 0.5;
+            const tCtrl = t0 + (t1 - t0) * curve;
+            const bzTick = (t) => t0*(1-t)**3 + tCtrl*3*t*(1-t) + t1*t**3;
+            const bzV    = (t) => p0.v*(1-t)**2*(1+2*t) + p1.v*t**2*(3-2*t);
+            let prevDt = null, prevV = null;
+            for (let si = 0; si <= BEZIER_STEPS; si++) {
+              const t = si / BEZIER_STEPS;
+              const dt = bzTick(t) - tick;
+              const v  = bzV(t);
+              if (prevDt !== null) {
+                const cDt0 = Math.max(prevDt, 0), cDt1 = Math.min(dt, VT);
+                if (cDt0 <= cDt1) {
+                  const span = dt - prevDt;
+                  const r0 = span > 0 ? (cDt0 - prevDt) / span : 0;
+                  const r1 = span > 0 ? (cDt1 - prevDt) / span : 1;
+                  const mv0 = prevV + (v - prevV) * r0;
+                  const mv1 = prevV + (v - prevV) * r1;
+                  const sy0 = gv._screenY(cDt0, p);
+                  const sy1 = gv._screenY(cDt1, p);
+                  const hw0 = gv._halfW(sy0, p) * LASER_FRAC * 2;
+                  const hw1 = gv._halfW(sy1, p) * LASER_FRAC * 2;
+                  gSegs.push({ sy0, sy1,
+                    cx0: gv._laserX(mv0, sy0, p, sec.wide),
+                    cx1: gv._laserX(mv1, sy1, p, sec.wide),
+                    hw0, hw1, v0: mv0, v1: mv1,
+                    wide: sec.wide, slam: false });
+                }
+              }
+              prevDt = dt; prevV = v;
+            }
+            continue;
+          }
+
+          // Linear / slam
+          const cdt0 = Math.max(dt0g, 0), cdt1 = Math.min(dt1g, VT);
+          const r0 = t1 === t0 ? 0 : (cdt0 - dt0g) / (dt1g - dt0g);
+          const r1 = t1 === t0 ? 1 : (cdt1 - dt0g) / (dt1g - dt0g);
+          const v0 = p0.v + (p1.v - p0.v) * r0;
+          const v1 = p0.v + (p1.v - p0.v) * r1;
+          const sy0 = gv._screenY(cdt0, p);
+          const sy1 = gv._screenY(cdt1, p);
+          const hw0 = gv._halfW(sy0, p) * LASER_FRAC * 2;
+          const hw1 = gv._halfW(sy1, p) * LASER_FRAC * 2;
+          const cx0 = gv._laserX(v0, sy0, p, sec.wide);
+          const cx1 = gv._laserX(v1, sy1, p, sec.wide);
+          gSegs.push({ sy0, sy1, cx0, cx1, hw0, hw1, v0, v1,
+                       wide: sec.wide, slam });
+        }
+        if (!gSegs.length) continue;
+
+        // ── Emit each segment / slam ──────────────────────────────────
+        for (const s of gSegs) {
+          if (s.slam) {
+            // Perspective-correct slam trapezoid (matches 2D path)
+            const syBot = Math.max(s.sy0, s.sy1);
+            const syTop = Math.min(s.sy0, s.sy1);
+            const vOld  = s.sy0 >= s.sy1 ? s.v0 : s.v1;
+            const vNew  = s.sy0 >= s.sy1 ? s.v1 : s.v0;
+            const hwMax = Math.max(s.hw0, s.hw1);
+            const minH  = hwMax * 5.5;
+            const extraH = Math.max(0, minH - (syBot - syTop)) * 0.5;
+            const sBot = syBot + extraH;
+            const sTop = syTop - extraH;
+            const hwB = gv._halfW(sBot, p) * LASER_FRAC * 2;
+            const hwT = gv._halfW(sTop, p) * LASER_FRAC * 2;
+            const xB0 = gv._laserX(vOld, sBot, p, s.wide);
+            const xB1 = gv._laserX(vNew, sBot, p, s.wide);
+            const xT0 = gv._laserX(vOld, sTop, p, s.wide);
+            const xT1 = gv._laserX(vNew, sTop, p, s.wide);
+            const xLBot = Math.min(xB0, xB1) - hwB;
+            const xRBot = Math.max(xB0, xB1) + hwB;
+            const xLTop = Math.min(xT0, xT1) - hwT;
+            const xRTop = Math.max(xT0, xT1) + hwT;
+
+            // Body trapezoid (TL, TR, BR, BL)
+            flatQuad(xLTop, sTop, xRTop, sTop, xRBot, sBot, xLBot, sBot, mainCol);
+
+            // Bright white leading-edge line at the bottom face (~3.5 px)
+            flatQuad(xLBot + 2, sBot - 1.75, xRBot - 2, sBot - 1.75,
+                     xRBot - 2, sBot + 1.75, xLBot + 2, sBot + 1.75, whiteCol);
+          } else {
+            // Ribbon body quad
+            flatQuad(s.cx0 - s.hw0, s.sy0,
+                     s.cx0 + s.hw0, s.sy0,
+                     s.cx1 + s.hw1, s.sy1,
+                     s.cx1 - s.hw1, s.sy1, mainCol);
+
+            // Edge stripes — thin parallelograms along each side
+            const sw0 = Math.max(0.6, s.hw0 * 0.18);
+            const sw1 = Math.max(0.6, s.hw1 * 0.18);
+            // Left edge
+            flatQuad(s.cx0 - s.hw0,        s.sy0,
+                     s.cx0 - s.hw0 + sw0,  s.sy0,
+                     s.cx1 - s.hw1 + sw1,  s.sy1,
+                     s.cx1 - s.hw1,        s.sy1, edgeCol);
+            // Right edge
+            flatQuad(s.cx0 + s.hw0 - sw0,  s.sy0,
+                     s.cx0 + s.hw0,        s.sy0,
+                     s.cx1 + s.hw1,        s.sy1,
+                     s.cx1 + s.hw1 - sw1,  s.sy1, edgeCol);
+          }
+        }
       }
     }
   }
