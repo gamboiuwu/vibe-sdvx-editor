@@ -242,3 +242,52 @@ function importKson(text) {
 
   return chart;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// vibe-editr KSON pack format (.ksonpack)
+//
+// A simple wrapper that bundles multiple KSON charts into one file. The
+// structure mirrors a regular .kson file but adds top-level metadata and an
+// array of full chart objects (each one is whatever exportKson would write).
+//
+// {
+//   "format":  "ksonpack",
+//   "version": "0.1.0",
+//   "meta":    { "title": "...", "artist": "...", "description": "...",
+//                "created": "ISO-8601 timestamp" },
+//   "charts":  [ <kson chart>, <kson chart>, ... ]
+// }
+//
+// Designed so a standard KSON parser CAN extract any individual chart by
+// reading `charts[i]` and serialising that subtree back out as KSON.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function exportKsonPack(charts, packMeta = {}) {
+  // Reuse exportKson then re-parse so each chart sits as a JS object inside
+  // the bundle. Slightly wasteful but keeps a single export code path.
+  const entries = charts
+    .filter(c => c && c.meta)
+    .map(c => JSON.parse(exportKson(c)));
+  const pack = {
+    format:  'ksonpack',
+    version: '0.1.0',
+    meta: {
+      title:       packMeta.title       || 'Untitled Pack',
+      artist:      packMeta.artist      || '',
+      description: packMeta.description || '',
+      created:     new Date().toISOString(),
+      chartCount:  entries.length,
+    },
+    charts: entries,
+  };
+  return JSON.stringify(pack, null, 2);
+}
+
+function importKsonPack(text) {
+  const data = JSON.parse(text);
+  if (data.format !== 'ksonpack' || !Array.isArray(data.charts)) {
+    throw new Error('Not a ksonpack file (missing format:"ksonpack" or charts[]).');
+  }
+  const charts = data.charts.map(c => importKson(JSON.stringify(c)));
+  return { meta: data.meta || {}, charts };
+}

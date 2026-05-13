@@ -196,7 +196,7 @@ class GLLaneRenderer {
 
     // ── 2. Trapezoid coordinates (rotated if tilt) ─────────────────────
     const OFF = (typeof GameView !== 'undefined' && GameView.LASER_LANE_OFFSET)
-              || 0.135;
+              || 0.25;
     const lx0  = gv._screenX(0,    p.cutoffY, p);
     const rx0  = gv._screenX(1,    p.cutoffY, p);
     const lx1  = gv._screenX(0,    p.judgeY,  p);
@@ -470,7 +470,9 @@ class GLLaneRenderer {
     const T = this._T;
     const VT = gv.VISIBLE_TICKS;
     const tick = gv.playTick;
-    const LASER_FRAC = 0.056;
+    // Sourced from GameView so position and width stay in sync. Fallback
+    // to 0.125 if the static is unreachable (shouldn't happen in practice).
+    const LASER_FRAC = (typeof GameView !== 'undefined' && GameView.LASER_HALF_FRAC) || 0.125;
     const BEZIER_STEPS = 10;
     const opacity = (laserOpacity ?? 0.7);
 
