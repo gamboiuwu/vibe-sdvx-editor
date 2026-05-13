@@ -1962,27 +1962,113 @@ window.addEventListener('DOMContentLoaded', () => {
     el.addEventListener('input',  syncMetaToChart);
   });
 
+  // Export progress UI manager
+  let _exportAborted = false;
+  function showExportProgress(label = 'Exporting…') {
+    _exportAborted = false;
+    const modal = document.getElementById('export-progress-modal');
+    const status = document.getElementById('export-status');
+    const progressFill = document.getElementById('export-progress-fill');
+    const progressText = document.getElementById('export-progress-text');
+    const cancelBtn = document.getElementById('export-cancel-btn');
+    const doneBtn = document.getElementById('export-done-btn');
+    const debugLog = document.getElementById('export-debug');
+    if (!modal) return;
+    // Reset
+    status.textContent = label;
+    progressFill.style.width = '0%';
+    progressText.textContent = '';
+    debugLog.innerHTML = '<div style="color:#aaaadd;opacity:0.7">Debug log:</div>';
+    cancelBtn.style.display = 'block';
+    doneBtn.style.display = 'none';
+    modal.style.display = 'flex';
+  }
+  function updateExportProgress(pct, status = null, debugMsg = null) {
+    const modal = document.getElementById('export-progress-modal');
+    const statusEl = document.getElementById('export-status');
+    const progressFill = document.getElementById('export-progress-fill');
+    const progressText = document.getElementById('export-progress-text');
+    const debugLog = document.getElementById('export-debug');
+    if (!modal) return;
+    pct = Math.max(0, Math.min(100, pct));
+    progressFill.style.width = pct + '%';
+    if (pct > 10) progressText.textContent = pct + '%';
+    if (status) statusEl.textContent = status;
+    if (debugMsg) {
+      const line = document.createElement('div');
+      line.textContent = debugMsg;
+      line.style.color = debugMsg.includes('Error') || debugMsg.includes('error') ? '#ff8888' : '#88cc88';
+      debugLog.appendChild(line);
+      debugLog.scrollTop = debugLog.scrollHeight;
+    }
+  }
+  function closeExportProgress() {
+    const modal = document.getElementById('export-progress-modal');
+    if (modal) modal.style.display = 'none';
+  }
+  function finishExportProgress(success = true, msg = null) {
+    const statusEl = document.getElementById('export-status');
+    const cancelBtn = document.getElementById('export-cancel-btn');
+    const doneBtn = document.getElementById('export-done-btn');
+    if (success) {
+      statusEl.textContent = msg || '✓ Export complete';
+      statusEl.style.color = '#aaffaa';
+      updateExportProgress(100);
+    } else {
+      statusEl.textContent = msg || '✗ Export failed';
+      statusEl.style.color = '#ff8888';
+    }
+    cancelBtn.style.display = 'none';
+    doneBtn.style.display = 'block';
+  }
+  function cancelExport() {
+    _exportAborted = true;
+    const modal = document.getElementById('export-progress-modal');
+    if (modal) modal.style.display = 'none';
+  }
+  window.showExportProgress = showExportProgress;
+  window.updateExportProgress = updateExportProgress;
+  window.finishExportProgress = finishExportProgress;
+  window.cancelExport = cancelExport;
+  window.closeExportProgress = closeExportProgress;
+
   // Export
   document.getElementById('btn-export-ksh').addEventListener('click', () => {
     try {
+      showExportProgress('Exporting KSH…');
+      updateExportProgress(10, 'Preparing chart data…');
       const base = (chart.meta.title.replace(/[^a-zA-Z0-9_]/g, '_') || 'chart');
       const diff = (chart.meta.difficulty || '').toLowerCase();
       const suffix = diff ? `_${diff}` : '';
-      downloadText(base + suffix + '.ksh', exportKsh(chart));
+      updateExportProgress(30, 'Generating KSH…', 'Serializing chart notes and events');
+      const ksh = exportKsh(chart);
+      updateExportProgress(80, 'Preparing download…', `Generated ${(ksh.length / 1024).toFixed(1)}KB KSH`);
+      downloadText(base + suffix + '.ksh', ksh);
+      updateExportProgress(95, 'Initiating download…');
+      setTimeout(() => finishExportProgress(true, '✓ KSH exported: ' + base + suffix + '.ksh'), 500);
     } catch (err) {
       console.error('KSH export failed:', err);
-      alert('Failed to export KSH:\n' + (err?.message || err));
+      updateExportProgress(0, null, 'Error: ' + (err?.message || err));
+      finishExportProgress(false, '✗ ' + (err?.message || err));
     }
   });
   document.getElementById('btn-export-kson').addEventListener('click', () => {
     try {
+      showExportProgress('Exporting KSON…');
+      updateExportProgress(10, 'Preparing chart data…');
       const base = (chart.meta.title.replace(/[^a-zA-Z0-9_]/g, '_') || 'chart');
       const diff = (chart.meta.difficulty || '').toLowerCase();
       const suffix = diff ? `_${diff}` : '';
-      downloadText(base + suffix + '.kson', exportKson(chart));
+      updateExportProgress(30, 'Generating KSON…', 'Serializing chart with spec-compliant format');
+      const kson = exportKson(chart);
+      updateExportProgress(80, 'Preparing download…', `Generated ${(kson.length / 1024).toFixed(1)}KB KSON`);
+      downloadText(base + suffix + '.kson', kson);
+      updateExportProgress(95, 'Initiating download…');
+      setTimeout(() => finishExportProgress(true, '✓ KSON exported: ' + base + suffix + '.kson'), 500);
     } catch (err) {
       console.error('KSON export failed:', err);
-      alert('Failed to export KSON:\n' + (err?.message || err));
+      updateExportProgress(0, null, 'Error: ' + (err?.message || err));
+      finishExportProgress(false, '✗ ' + (err?.message || err));
     }
   });
 
@@ -2119,9 +2205,18 @@ window.addEventListener('DOMContentLoaded', () => {
       description: `${charts.length} chart${charts.length === 1 ? '' : 's'} bundled from vibe-editr.`,
     };
     try {
-      downloadText(packName + '.ksonpack', exportKsonPack(charts, packMeta));
+      showExportProgress('Exporting .ksonpack bundle…');
+      updateExportProgress(10, `Preparing ${charts.length} chart(s)…`);
+      updateExportProgress(25, 'Serializing charts…', `Processing ${charts.length} chart(s)`);
+      const pack = exportKsonPack(charts, packMeta);
+      updateExportProgress(80, 'Preparing download…', `Generated ${(pack.length / 1024).toFixed(1)}KB pack`);
+      downloadText(packName + '.ksonpack', pack);
+      updateExportProgress(95, 'Initiating download…');
+      setTimeout(() => finishExportProgress(true, `✓ Pack exported: ${packName}.ksonpack`), 500);
     } catch(err) {
-      alert('Failed to export pack:\n' + err.message);
+      console.error('Pack export failed:', err);
+      updateExportProgress(0, null, 'Error: ' + (err?.message || err));
+      finishExportProgress(false, '✗ ' + (err?.message || err));
     }
   });
 
