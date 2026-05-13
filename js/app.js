@@ -3520,6 +3520,21 @@ function openTimesigModalAtCtx() {
   document.getElementById('modal-timesig').style.display = 'flex';
 }
 
+function openScrollSpeedModalAtCtx() {
+  const m = Math.floor(_ctxMenuTick / TICKS_PER_MEASURE) + 1;
+  const b = Math.floor((_ctxMenuTick % TICKS_PER_MEASURE) / TICKS_PER_BEAT) + 1;
+  const elM = document.getElementById('ss-ev-measure');
+  const elB = document.getElementById('ss-ev-beat');
+  const elS = document.getElementById('ss-ev-speed');
+  if (elM) elM.value = m;
+  if (elB) elB.value = b;
+  if (elS && chart?.getScrollSpeedAt) {
+    const currentSpeed = chart.getScrollSpeedAt(_ctxMenuTick);
+    elS.value = Number(currentSpeed.toFixed(1));
+  }
+  document.getElementById('modal-scroll-speed').style.display = 'flex';
+}
+
 function ensureCtxMenu() {
   if (ctxMenuEl) return;
   ctxMenuEl = document.createElement('div');
@@ -3532,6 +3547,7 @@ function ensureCtxMenu() {
     <div class="ctx-sep"></div>
     <div class="ctx-item" data-act="add-bpm">Add BPM Change…</div>
     <div class="ctx-item" data-act="add-timesig">Add Time Sig…</div>
+    <div class="ctx-item" data-act="add-velocity">Add Chart Velocity…</div>
     <div class="ctx-sep"></div>
     <div class="ctx-item ctx-has-sub">Modify Style
       <div class="ctx-sub">
@@ -3582,6 +3598,7 @@ function ensureCtxMenu() {
     else if (act === 'paste')   selPaste();
     else if (act === 'add-bpm')      openBpmModalAtCtx();
     else if (act === 'add-timesig')  openTimesigModalAtCtx();
+    else if (act === 'add-velocity') openScrollSpeedModalAtCtx();
     else if (act === 'transform')    selTransform();
     else if (act === 'mirror-all') selMirror('all');
     else if (act === 'mirror-fx')  selMirror('fx');
