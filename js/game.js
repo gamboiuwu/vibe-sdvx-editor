@@ -180,22 +180,27 @@ class GameView {
 
   // ── Laser lane offset ─────────────────────────────────────────────────────
   // In SDVX the VOL (laser) lanes extend outside the BT/FX lane boundary.
-  // This constant controls how far (as a fraction of BT lane width per side).
-  // LASER_LANE_OFFSET = 0.13 → each VOL lane is ~13% of BT width; total
-  // visible track becomes 126% of BT width.
+  // This constant controls the size of the visible VOL panel painting
+  // (the dark side-rails left and right of the BT lanes).
   static get LASER_LANE_OFFSET() { return 0.13; }
 
+  // Laser ribbon half-width as a fraction of the BT-lane normalised range.
+  // 0.056 ≈ 0.45 BT-lane wide (arcade-accurate slim ribbon).
+  // This is also the offset used by _laserNorm so that the ribbon's outer
+  // edge lands exactly on the BT lane boundary at v=0 / v=1.
+  static get LASER_HALF_FRAC() { return 0.056; }
+
   // Map laser position v ∈ [0, 1] to normalised track coordinate.
-  // Normal (wide=false): v spans the BT+VOL lane area → norm ∈ [-OFFSET, 1+OFFSET]
-  // Wide 2× (wide=true):  v spans double that range, centered → norm ∈ [-0.5-2*OFF, 1.5+2*OFF]
-  // This matches the KSON/KSH spec: @laserrange=2x doubles the physical travel distance.
+  // Default rest positions:
+  //   v = 0  →  laser ribbon's RIGHT edge sits on BT-A's left edge (norm 0).
+  //   v = 1  →  laser ribbon's LEFT  edge sits on BT-D's right edge (norm 1).
+  // Wide 2× (wide=true) doubles the travel range, centered at 0.5.
   _laserNorm(v, wide = false) {
-    const off = GameView.LASER_LANE_OFFSET;
+    const HALF = GameView.LASER_HALF_FRAC;
     if (wide) {
-      // Double range centered at 0.5 — same center, twice the width
-      return -0.5 - 2 * off + v * (2 + 4 * off);
+      return -0.5 - 2 * HALF + v * (2 + 4 * HALF);
     }
-    return -off + v * (1 + 2 * off);
+    return -HALF + v * (1 + 2 * HALF);
   }
 
   // Convenience: screen X for a laser v-value
