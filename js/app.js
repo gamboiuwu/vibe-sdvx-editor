@@ -1932,20 +1932,30 @@ window.addEventListener('DOMContentLoaded', () => {
 
   // Zoom slider (100% = 1.2× internal zoom)
   document.getElementById('zoom-slider').addEventListener('input', e => {
-    renderer.zoom = +e.target.value / 100 * 1.2;
-    document.getElementById('zoom-label').textContent = e.target.value + '%';
+    const val = +e.target.value;
+    prefs.zoom = val;
+    renderer.zoom = val / 100 * 1.2;
+    document.getElementById('zoom-label').textContent = val + '%';
     renderer.resize();
     render();
+    try { localStorage.setItem('vibe-editr-prefs', JSON.stringify(prefs)); } catch(_) {}
   });
 
   // Beats per lane slider
   const bplSlider = document.getElementById('beats-per-lane');
-  bplSlider?.addEventListener('input', () => applyBeatsPerLane(+bplSlider.value));
+  bplSlider?.addEventListener('input', () => {
+    const val = +bplSlider.value;
+    prefs.beatsPerLane = val;
+    applyBeatsPerLane(val);
+    try { localStorage.setItem('vibe-editr-prefs', JSON.stringify(prefs)); } catch(_) {}
+  });
   // Legacy meas-per-col input (Chart menu) — keep both in sync
   document.getElementById('meas-per-col')?.addEventListener('change', e => {
     const mpc = Math.max(1, Math.min(16, +e.target.value));
+    prefs.measPerCol = mpc;
     renderer.measPerCol = mpc;
     applyBeatsPerLane(renderer.beatsPerCol);
+    try { localStorage.setItem('vibe-editr-prefs', JSON.stringify(prefs)); } catch(_) {}
   });
 
   // Metadata
@@ -5263,24 +5273,30 @@ function initHistoryPanel() {
   const laneSlider = document.getElementById('split-lane-count');
   const laneLabel  = document.getElementById('split-lane-label');
   laneSlider?.addEventListener('input', () => {
-    laneLabel.textContent = laneSlider.value + ' lanes';
+    const val = Math.max(1, +laneSlider.value);
+    prefs.measPerCol = val;
+    laneLabel.textContent = val + ' lanes';
     // split-lane-count is "measures per column" — convert to beats and apply
     if (renderer) {
-      renderer.measPerCol = Math.max(1, +laneSlider.value);
+      renderer.measPerCol = val;
       applyBeatsPerLane(renderer.beatsPerCol);
     }
+    try { localStorage.setItem('vibe-editr-prefs', JSON.stringify(prefs)); } catch(_) {}
   });
 
   const widthSlider = document.getElementById('split-edit-width');
   const widthLabel  = document.getElementById('split-edit-width-label');
   widthSlider?.addEventListener('input', () => {
-    widthLabel.textContent = widthSlider.value + '%';
+    const val = +widthSlider.value;
+    prefs.splitEditWidth = val;
+    widthLabel.textContent = val + '%';
     const main = document.getElementById('main');
     const gameWrap = document.getElementById('game-wrap');
     if (main && gameWrap && viewMode === 'split') {
-      main.style.flex    = widthSlider.value;
-      gameWrap.style.flex = (100 - +widthSlider.value) + '';
+      main.style.flex    = val;
+      gameWrap.style.flex = (100 - val) + '';
     }
+    try { localStorage.setItem('vibe-editr-prefs', JSON.stringify(prefs)); } catch(_) {}
   });
 
   refreshHistoryPanel();
@@ -5343,6 +5359,11 @@ const prefs = {
   autoplay:         true,   // game preview auto-plays score chain
   slamThreshold:    12,     // LASER_SLAM_TICKS (≤1/16 note by default)
   defaultSnap:      8,      // default snap divisor
+  // Editor UI
+  zoom:             100,    // editor zoom level (20-500%)
+  beatsPerLane:     16,     // beats displayed per lane column
+  measPerCol:       4,      // measures per column in split view
+  splitEditWidth:   50,     // editor/game split view width ratio
   // Autosave / history
   autosaveInterval: 60,
   savePath:         'Downloads',
@@ -5502,6 +5523,43 @@ function applyPreferences() {
   const vdEl = document.getElementById('pref-video-delay');
   if (adEl && document.activeElement !== adEl) adEl.value = prefs.audioDelay ?? 0;
   if (vdEl && document.activeElement !== vdEl) vdEl.value = prefs.videoDelay ?? 0;
+
+  // Editor UI settings
+  const zoomSlider = document.getElementById('zoom-slider');
+  if (zoomSlider) {
+    zoomSlider.value = prefs.zoom ?? 100;
+    if (renderer) {
+      renderer.zoom = (+zoomSlider.value / 100) * 1.2;
+      renderer.resize();
+    }
+  }
+
+  const bplSlider = document.getElementById('beats-per-lane');
+  if (bplSlider) {
+    bplSlider.value = prefs.beatsPerLane ?? 16;
+    if (typeof applyBeatsPerLane === 'function') {
+      applyBeatsPerLane(+bplSlider.value);
+    }
+  }
+
+  const measPerColInput = document.getElementById('meas-per-col');
+  if (measPerColInput) {
+    measPerColInput.value = prefs.measPerCol ?? 4;
+  }
+
+  const splitLaneSlider = document.getElementById('split-lane-count');
+  if (splitLaneSlider) {
+    splitLaneSlider.value = prefs.measPerCol ?? 4;
+    const laneLabel = document.getElementById('split-lane-label');
+    if (laneLabel) laneLabel.textContent = splitLaneSlider.value + ' lanes';
+  }
+
+  const splitWidthSlider = document.getElementById('split-edit-width');
+  if (splitWidthSlider) {
+    splitWidthSlider.value = prefs.splitEditWidth ?? 50;
+    const widthLabel = document.getElementById('split-edit-width-label');
+    if (widthLabel) widthLabel.textContent = splitWidthSlider.value + '%';
+  }
 
   // Slam threshold (1–16 ticks)
   LASER_SLAM_TICKS = prefs.slamThreshold ?? 6;
