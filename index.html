@@ -82,6 +82,7 @@
         <div class="menu-sep"></div>
         <button class="menu-item" id="btn-add-bpm">Add BPM Change…</button>
         <button class="menu-item" id="btn-add-timesig">Add Time Sig…</button>
+        <button class="menu-item" id="btn-add-scroll-speed">Add Chart Velocity…</button>
         <div class="menu-sep"></div>
         <button class="menu-item" id="btn-load-audio">Load Audio File…</button>
         <div class="menu-sep"></div>
@@ -424,6 +425,9 @@
     <h3 style="margin-top:12px">Stop Events</h3>
     <div id="stop-event-list" style="font-size:10px; max-height:60px; overflow-y:auto;"></div>
 
+    <h3 style="margin-top:12px">Chart Velocity Events</h3>
+    <div id="scroll-speed-event-list" style="font-size:10px; max-height:80px; overflow-y:auto;"></div>
+
     <h3 style="margin-top:18px">Keyboard Shortcuts</h3>
     <div class="shortcuts">
       <div class="shortcut-group-label">Tools</div>
@@ -600,6 +604,21 @@
     <div class="modal-buttons">
       <button id="ts-ev-ok">Add</button>
       <button id="ts-ev-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Add Chart Velocity event -->
+<div id="modal-scroll-speed" class="modal" style="display:none">
+  <div class="modal-box">
+    <h3>Add Chart Velocity</h3>
+    <div class="form-group"><label>Measure</label><input type="number" id="ss-ev-measure" min="1" value="1"></div>
+    <div class="form-group"><label>Beat</label><input type="number" id="ss-ev-beat" min="1" value="1"></div>
+    <div class="form-group"><label>Speed (1.0 = normal)</label><input type="number" id="ss-ev-speed" min="0.1" max="4" step="0.1" value="1.0"></div>
+    <div style="font-size:10px;color:#888;margin:8px 0">Notes before this point maintain normal speed. Notes after run at the new speed.</div>
+    <div class="modal-buttons">
+      <button id="ss-ev-ok">Add</button>
+      <button id="ss-ev-cancel">Cancel</button>
     </div>
   </div>
 </div>

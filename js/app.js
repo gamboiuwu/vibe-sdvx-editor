@@ -252,7 +252,7 @@ function switchToTab(idx) {
     renderer.playTick  = 0;
   }
   if (gameView) gameView.chart = chart;
-  pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList(); updateStopEventList();
+  pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList(); updateStopEventList(); updateScrollSpeedEventList();
   renderFxChain(0); renderFxChain(1);
   renderTabBar();
   _multiUpdateTabButtons();
@@ -282,7 +282,7 @@ function closeTab(idx) {
   audioBuffer = tabs[activeTabIdx].audioBuffer || null;
   if (renderer) { renderer.chart = chart; renderer.scrollCol = 0; renderer.playTick = 0; }
   if (gameView) gameView.chart = chart;
-  pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList(); updateStopEventList();
+  pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList(); updateStopEventList(); updateScrollSpeedEventList();
   renderFxChain(0); renderFxChain(1);
   renderTabBar();
   _multiUpdateTabButtons();
@@ -2126,7 +2126,7 @@ window.addEventListener('DOMContentLoaded', () => {
           renderer.chart = chart; renderer.scrollCol = 0; renderer.playTick = 0;
           if (gameView) { gameView.chart = chart; gameView._liveCamera = null; }
           fxChipSEBuffers = [null, null];
-          pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList(); updateStopEventList();
+          pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList(); updateStopEventList(); updateScrollSpeedEventList();
           renderFxChain(0); renderFxChain(1);
           renderTabBar();
           render();
@@ -2155,7 +2155,7 @@ window.addEventListener('DOMContentLoaded', () => {
         if (gameView) { gameView.chart = chart; gameView._liveCamera = null; }
         // Reset per-chart SE buffers (no folder context for single file)
         fxChipSEBuffers = [null, null];
-        pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList(); updateStopEventList();
+        pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList(); updateStopEventList(); updateScrollSpeedEventList();
         renderFxChain(0); renderFxChain(1);
         renderTabBar();
         render();
@@ -2181,7 +2181,7 @@ window.addEventListener('DOMContentLoaded', () => {
     renderer.chart = chart;
     renderer.scrollCol = 0; renderer.playTick = 0;
     if (gameView) gameView.chart = chart;
-    pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList(); updateStopEventList();
+    pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList(); updateStopEventList(); updateScrollSpeedEventList();
     renderFxChain(0); renderFxChain(1); render();
     updateSeekbar(0);
   });
@@ -2327,6 +2327,20 @@ window.addEventListener('DOMContentLoaded', () => {
     updateTimeSigList();
   });
 
+  // Chart Velocity modal
+  document.getElementById('btn-add-scroll-speed').addEventListener('click', () => document.getElementById('modal-scroll-speed').style.display = 'flex');
+  document.getElementById('ss-ev-cancel').addEventListener('click', () => document.getElementById('modal-scroll-speed').style.display = 'none');
+  document.getElementById('ss-ev-ok').addEventListener('click', () => {
+    const measure = +document.getElementById('ss-ev-measure').value - 1;
+    const beat    = +document.getElementById('ss-ev-beat').value - 1;
+    const speed   = +document.getElementById('ss-ev-speed').value;
+    const y = measure * TICKS_PER_MEASURE + beat * TICKS_PER_BEAT;
+    saveUndo(`Added Chart Velocity ${speed}x at M${measure+1}`);
+    chart.addScrollSpeedEvent(y, speed);
+    document.getElementById('modal-scroll-speed').style.display = 'none';
+    updateScrollSpeedEventList(); render();
+  });
+
   // Open song folder
   document.getElementById('btn-open-folder')?.addEventListener('click', () => {
     document.getElementById('folder-input').click();
@@ -2369,7 +2383,7 @@ window.addEventListener('DOMContentLoaded', () => {
       renderer.chart = chart;
       renderer.scrollCol = 0; renderer.playTick = 0;
       if (gameView) gameView.chart = chart;
-      pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList(); updateStopEventList();
+      pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList(); updateStopEventList(); updateScrollSpeedEventList();
       renderFxChain(0); renderFxChain(1);
       renderTabBar();
       updateSeekbar(0);
@@ -4896,6 +4910,30 @@ function updateTimeSigList() {
   });
 }
 
+function updateScrollSpeedEventList() {
+  const list = document.getElementById('scroll-speed-event-list');
+  if (!list) return;
+  list.innerHTML = '';
+  const evs = chart.scrollSpeedEvents ?? [];
+  evs.forEach(ev => {
+    if (ev.y === 0) return; // Don't show anchor event
+    const m = Math.floor(ev.y / TICKS_PER_MEASURE) + 1;
+    const b = Math.floor((ev.y % TICKS_PER_MEASURE) / TICKS_PER_BEAT) + 1;
+    const row = document.createElement('div');
+    row.className = 'ev-row';
+    const speedStr = ev.speed.toFixed(2).replace(/\.?0+$/, '');
+    row.innerHTML = `<span>M${m} B${b}: <b>${speedStr}x</b></span><button class="ev-del" data-y="${ev.y}">✕</button>`;
+    row.querySelector('.ev-del').addEventListener('click', de => {
+      const y = +de.target.dataset.y;
+      saveUndo(`Deleted Chart Velocity at M${Math.floor(y/TICKS_PER_MEASURE)+1}`);
+      chart.removeScrollSpeedEvent(y);
+      updateScrollSpeedEventList();
+      render();
+    });
+    list.appendChild(row);
+  });
+}
+
 function updateCameraEventList() {
   const list = document.getElementById('camera-event-list');
   if (!list) return;
@@ -5726,7 +5764,7 @@ async function recoverAutosave() {
     tabs[activeTabIdx].chart = chart;
     if (renderer) renderer.chart = chart;
     if (gameView) gameView.chart = chart;
-    pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList(); updateStopEventList();
+    pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList(); updateStopEventList(); updateScrollSpeedEventList();
     renderFxChain(0); renderFxChain(1); render();
     saveUndo('Restored Autosave');
 
