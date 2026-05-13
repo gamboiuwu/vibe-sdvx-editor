@@ -37,61 +37,97 @@ function exportKsh(chart) {
 
   lines.push('--');
 
+  // Walking time-sig pointer so each measure knows its own length.
+  let tsEvIdx = 0;
+  let curTs   = getTimeSigAt(chart, 0);
+  let measureStartY = 0;
+
   // Body — iterate measure by measure
   for (let measure = 0; measure < chart.totalMeasures; measure++) {
-    const startY = measure * TICKS_PER_MEASURE;
-    const endY   = startY + TICKS_PER_MEASURE;
+    // Advance time-sig if a new one starts at this measure
+    while (tsEvIdx + 1 < chart.timeSigEvents.length &&
+           chart.timeSigEvents[tsEvIdx + 1].measure <= measure) {
+      tsEvIdx++;
+      curTs = chart.timeSigEvents[tsEvIdx];
+    }
+    // Ticks in this measure depend on the live TS, not the global default
+    const measTicks = Math.round((curTs.num / curTs.den) * 4 * TICKS_PER_BEAT);
+    const startY = measureStartY;
+    const endY   = startY + measTicks;
 
-    // Collect all tick positions that have something in this measure
-    const tickSet = new Set([startY]);
-    const addTicks = (arr, laneFilter) => {
+    // Collect every tick (relative offset from startY) that carries content.
+    // We will write evenly-spaced lines per measure with spacing chosen so
+    // every offset lands exactly on a line — fixing the round-trip bug where
+    // 1/16 / 1/24 notes were quantised to 1/8 because the KSH importer
+    // assumes lines are equispaced across the measure.
+    const offsets = new Set([0]);
+
+    const addNotes = (arr) => {
       for (const n of arr) {
-        if (n.y >= startY && n.y < endY) tickSet.add(n.y);
-        if (n.len > 0 && n.y + n.len > startY && n.y < endY) {
-          // Add interior ticks for holds
-          const step = gcd(n.len, TICKS_PER_MEASURE / 16);
-          for (let t = n.y; t <= n.y + n.len; t += step) {
-            if (t >= startY && t < endY) tickSet.add(t);
-          }
+        if (n.y >= startY && n.y < endY)               offsets.add(n.y - startY);
+        if (n.len > 0) {
+          // Tail crossing into this measure → end-of-hold marker
+          const endTick = n.y + n.len;
+          if (endTick > startY && endTick <= endY)     offsets.add(endTick - startY);
         }
       }
     };
-    for (let li = 0; li < 4; li++) addTicks(chart.bt[li]);
-    for (let li = 0; li < 2; li++) addTicks(chart.fx[li]);
+    for (let li = 0; li < 4; li++) addNotes(chart.bt[li]);
+    for (let li = 0; li < 2; li++) addNotes(chart.fx[li]);
 
-    // Add laser ticks
+    // Laser anchor points
     for (let side = 0; side < 2; side++) {
       for (const sec of chart.lasers[side]) {
         for (const pt of sec.points) {
           const t = sec.y + pt.ry;
-          if (t >= startY && t < endY) tickSet.add(t);
+          if (t >= startY && t < endY) offsets.add(t - startY);
         }
       }
     }
 
-    // BPM changes in this measure
+    // BPM changes
     for (const ev of chart.bpmEvents) {
-      if (ev.y >= startY && ev.y < endY) tickSet.add(ev.y);
+      if (ev.y >= startY && ev.y < endY) offsets.add(ev.y - startY);
     }
 
-    const ticks = Array.from(tickSet).sort((a, b) => a - b);
-    const division = ticks.length; // lines per measure
+    // ── Choose line spacing ─────────────────────────────────────────────
+    // step = gcd(measTicks, all_offsets). The number of lines per measure
+    // is measTicks / step. We cap the step to at least 1/192 of the
+    // measure so very dense charts still round-trip cleanly.
+    let step = measTicks;
+    for (const o of offsets) if (o > 0) step = gcd(step, o);
+    // Minimum density: ensure at least 8 lines per beat (1/32 resolution)
+    // for empty measures, which avoids a degenerate "1 line per measure"
+    // when the measure is empty.
+    const minLines = (curTs.num / curTs.den) * 4 * 8;
+    while (measTicks / step < minLines) step = step / 2;
+    // Safety against fractional step (shouldn't happen with sane charts).
+    step = Math.max(1, Math.round(step));
+    const lineCount = Math.round(measTicks / step);
 
     // Time sig
-    const ts = getTimeSigAt(chart, measure);
-    if (measure === 0 || !timeSigEqual(getTimeSigAt(chart, measure - 1), ts)) {
-      lines.push(`beat=${ts.num}/${ts.den}`);
+    if (measure === 0 || !timeSigEqual(getTimeSigAt(chart, measure - 1), curTs)) {
+      lines.push(`beat=${curTs.num}/${curTs.den}`);
     }
 
     // BPM events at measure start
     for (const ev of chart.bpmEvents) {
-      if (ev.y >= startY && ev.y < endY) {
+      if (ev.y >= startY && ev.y < endY && ev.y === startY) {
         lines.push(`t=${ev.bpm}`);
       }
     }
 
-    for (const tick of ticks) {
-      // BT columns
+    // ── Emit equispaced lines ──────────────────────────────────────────
+    for (let i = 0; i < lineCount; i++) {
+      const tick = startY + i * step;
+
+      // Inline BPM change if it falls on this line (and isn't at measure start)
+      if (i > 0) {
+        for (const ev of chart.bpmEvents) {
+          if (ev.y === tick) lines.push(`t=${ev.bpm}`);
+        }
+      }
+
       const btStr = [0, 1, 2, 3].map(li => {
         const note = chart.bt[li].find(n =>
           n.y === tick || (n.len > 0 && tick > n.y && tick < n.y + n.len)
@@ -101,7 +137,6 @@ function exportKsh(chart) {
         return '2';
       }).join('');
 
-      // FX columns
       const fxStr = [0, 1].map(li => {
         const note = chart.fx[li].find(n =>
           n.y === tick || (n.len > 0 && tick > n.y && tick < n.y + n.len)
@@ -111,13 +146,11 @@ function exportKsh(chart) {
         return '1';
       }).join('');
 
-      // Laser columns
       const laserStr = [0, 1].map(side => {
         for (const sec of chart.lasers[side]) {
           for (const pt of sec.points) {
             if (sec.y + pt.ry === tick) return laserPosToChar(pt.v);
           }
-          // continuation
           const pts = sec.points;
           if (pts.length >= 2) {
             for (let pi = 0; pi < pts.length - 1; pi++) {
@@ -134,6 +167,7 @@ function exportKsh(chart) {
     }
 
     lines.push('--');
+    measureStartY = endY;
   }
 
   return lines.join('\n');
@@ -497,9 +531,22 @@ function getTimeSigAt(chart, measure) {
 function timeSigEqual(a, b) { return a.num === b.num && a.den === b.den; }
 
 function downloadText(filename, text) {
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+  // Firefox (and some Safari builds) refuse to fire downloads when the anchor
+  // isn't part of the DOM, and revoking the object URL synchronously can
+  // cancel the transfer mid-flight. Attach, click, then revoke on a delay.
+  const blob = new Blob([text], { type: 'application/octet-stream' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
   a.download = filename;
-  a.click();
-  URL.revokeObjectURL(a.href);
+  a.rel      = 'noopener';
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  try { a.click(); }
+  finally {
+    setTimeout(() => {
+      try { document.body.removeChild(a); } catch (_) {}
+      URL.revokeObjectURL(url);
+    }, 4000);
+  }
 }

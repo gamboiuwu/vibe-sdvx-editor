@@ -64,6 +64,18 @@ class GameView {
 
   get VISIBLE_TICKS() { return TICKS_PER_MEASURE * 4 / Math.max(0.1, this.hispeed); }
 
+  // ── Chart Velocity (visual scroll-speed) helpers ─────────────────────────
+  // Effective "dt" from the playhead to a chart tick, integrating
+  // chart.scrollSpeedEvents.  When no velocity events exist this is just
+  // (y - playTick) so behaviour is identical to before.  Cached per draw().
+  _effDt(y) {
+    if (!this.chart || !this.chart.scrollDistanceTo) return y - this.playTick;
+    if (this._playDist == null) {
+      this._playDist = this.chart.scrollDistanceTo(this.playTick);
+    }
+    return this.chart.scrollDistanceTo(y) - this._playDist;
+  }
+
   resize() {
     const w = this.canvas.clientWidth  || this.canvas.parentElement?.clientWidth  || 800;
     const h = this.canvas.clientHeight || this.canvas.parentElement?.clientHeight || 600;
@@ -313,6 +325,8 @@ class GameView {
     const chart = this.chart;
     const tick  = this.playTick;
     const VT    = this.VISIBLE_TICKS;
+    // Reset the per-frame Chart Velocity playhead-distance cache.
+    this._playDist = null;
     // High-quality flag: glow/shadow enabled when true (set via Preferences)
     const hq = (typeof highQualityRendering === 'undefined' || highQualityRendering)
                && p.projMode !== 'ortho';
@@ -430,8 +444,12 @@ class GameView {
 
       const beatStep  = TICKS_PER_BEAT;
       const startBeat = Math.floor(tick / beatStep) * beatStep;
-      for (let t = startBeat; t <= tick + VT + beatStep; t += beatStep) {
-        const dt = t - tick;
+      // Extend upper iteration bound when chart velocity is slower than 1.0
+      // so we still draw all beat lines in the visible window.
+      const _velAtTick = chart?.getScrollSpeedAt ? chart.getScrollSpeedAt(tick) : 1.0;
+      const beatIterMax = tick + VT / Math.max(0.05, _velAtTick) + beatStep;
+      for (let t = startBeat; t <= beatIterMax; t += beatStep) {
+        const dt = this._effDt(t);
         if (dt < 0 || dt > VT) continue;
         const sy = this._screenY(dt, p);
         if (sy <= p.cutoffY || sy >= p.judgeY) continue;
@@ -474,9 +492,11 @@ class GameView {
       const ln = li * 0.5, rn = (li + 1) * 0.5;
       const FX_INSET = 0.012; // keep FX holds inside the lane boundary lines
       for (const n of chart.fx[li]) {
-        if (n.len === 0 || n.y + n.len < tick || n.y > tick + VT) continue;
-        const dt0 = Math.max(n.y - tick, 0);
-        const dt1 = Math.min(n.y + n.len - tick, VT);
+        const _eEnd = this._effDt(n.y + n.len);
+        const _eStart = this._effDt(n.y);
+        if (n.len === 0 || _eEnd < 0 || _eStart > VT) continue;
+        const dt0 = Math.max(_eStart, 0);
+        const dt1 = Math.min(_eEnd, VT);
         const sy0 = this._screenY(dt1, p); // top (far)
         const sy1 = this._screenY(dt0, p); // bottom (near)
         const x0l = this._screenX(ln + FX_INSET, sy0, p), x0r = this._screenX(rn - FX_INSET, sy0, p);
@@ -501,8 +521,9 @@ class GameView {
     for (let li = 0; li < 2; li++) {
       const ln = li * 0.5, rn = (li + 1) * 0.5;
       for (const n of chart.fx[li]) {
-        if (n.len !== 0 || n.y < tick || n.y > tick + VT) continue;
-        const dt = n.y - tick;
+        if (n.len !== 0) continue;
+        const dt = this._effDt(n.y);
+        if (dt < 0 || dt > VT) continue;
         const sy = this._screenY(dt, p);
         if (sy < p.cutoffY) continue; // cull above runway
         const lx = this._screenX(ln + 0.01, sy, p);
@@ -527,9 +548,11 @@ class GameView {
       const bwInset = (1 - Math.min(1.5, Math.max(0, this.btWidthScale))) / 8;
       const ln = li / 4 + bwInset, rn = (li + 1) / 4 - bwInset;
       for (const n of chart.bt[li]) {
-        if (n.len === 0 || n.y + n.len < tick || n.y > tick + VT) continue;
-        const dt0 = Math.max(n.y - tick, 0);
-        const dt1 = Math.min(n.y + n.len - tick, VT);
+        const _eEnd = this._effDt(n.y + n.len);
+        const _eStart = this._effDt(n.y);
+        if (n.len === 0 || _eEnd < 0 || _eStart > VT) continue;
+        const dt0 = Math.max(_eStart, 0);
+        const dt1 = Math.min(_eEnd, VT);
         const sy0 = this._screenY(dt1, p); // top (far)
         const sy1 = this._screenY(dt0, p); // bottom (near/judgment)
         const x0l = this._screenX(ln + 0.005, sy0, p), x0r = this._screenX(rn - 0.005, sy0, p);
@@ -575,8 +598,9 @@ class GameView {
       const bwInset = (1 - Math.min(1.5, Math.max(0, this.btWidthScale))) / 8;
       const ln = li / 4 + bwInset, rn = (li + 1) / 4 - bwInset;
       for (const n of chart.bt[li]) {
-        if (n.len !== 0 || n.y < tick || n.y > tick + VT) continue;
-        const dt = n.y - tick;
+        if (n.len !== 0) continue;
+        const dt = this._effDt(n.y);
+        if (dt < 0 || dt > VT) continue;
         const sy = this._screenY(dt, p);
         if (sy < p.cutoffY) continue; // cull above runway
         const hw = this._halfW(sy, p);
@@ -612,7 +636,9 @@ class GameView {
       for (const sec of chart.lasers[side]) {
         if (!sec.points.length) continue;
         const secEnd = sec.y + (sec.points[sec.points.length - 1]?.ry ?? 0);
-        if (secEnd < tick || sec.y > tick + VT) continue;
+        const _secEndEff   = this._effDt(secEnd);
+        const _secStartEff = this._effDt(sec.y);
+        if (_secEndEff < 0 || _secStartEff > VT) continue;
 
         // ── Build flat segment list (clamped to visible range) ───────────────
         // Bezier segments are pre-sampled into N micro-linear gSegs so that the
@@ -626,7 +652,7 @@ class GameView {
         for (let pi = 0; pi < sec.points.length - 1; pi++) {
           const p0 = sec.points[pi], p1 = sec.points[pi + 1];
           const t0 = sec.y + p0.ry, t1 = sec.y + p1.ry;
-          const dt0g = t0 - tick, dt1g = t1 - tick;
+          const dt0g = this._effDt(t0), dt1g = this._effDt(t1);
           if (dt1g < 0 || dt0g > VT) continue;
 
           const isSlam = ChartData.isPointSlam(p0, p1);
@@ -641,7 +667,7 @@ class GameView {
             let prevDt = null, prevV = null;
             for (let si = 0; si <= BEZIER_STEPS; si++) {
               const t  = si / BEZIER_STEPS;
-              const dt = bzTick(t) - tick;
+              const dt = this._effDt(bzTick(t));
               const v  = bzV(t);
               if (prevDt !== null) {
                 const cDt0 = Math.max(prevDt, 0), cDt1 = Math.min(dt, VT);
@@ -824,7 +850,7 @@ class GameView {
         // ── Tail-end cap at the last point of the section ─────────────────
         if (sec.points.length >= 2) {
           const lastPt = sec.points[sec.points.length - 1];
-          const lastDt = (sec.y + lastPt.ry) - tick;
+          const lastDt = this._effDt(sec.y + lastPt.ry);
           if (lastDt >= 0 && lastDt <= VT) {
             const lastSy = this._screenY(lastDt, p);
             if (lastSy > p.cutoffY) {
@@ -1347,7 +1373,7 @@ class GameView {
     const now  = Date.now();
 
     annotations.forEach(ann => {
-      const dt = ann.tick - tick;           // ticks ahead of playhead
+      const dt = this._effDt(ann.tick);     // ticks ahead of playhead (velocity-aware)
       if (dt < -TICKS_PER_BEAT || dt > VT) return;   // outside runway
 
       const alpha  = alphaFn ? alphaFn(ann) : 1;
