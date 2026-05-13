@@ -6451,16 +6451,42 @@ const Bookmarks = (function() {
       });
     });
   }
+  function flashToast(msg) {
+    let t = document.getElementById('bm-toast');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'bm-toast';
+      t.style.cssText = 'position:fixed;bottom:48px;left:50%;transform:translateX(-50%);' +
+        'background:#16162a;border:1px solid #00cfff;color:#00cfff;padding:8px 16px;' +
+        'border-radius:6px;font-size:13px;font-weight:600;z-index:9999;' +
+        'box-shadow:0 4px 16px #00000099;opacity:0;transition:opacity .2s;' +
+        'pointer-events:none';
+      document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.style.opacity = '1';
+    clearTimeout(t._h);
+    t._h = setTimeout(() => { t.style.opacity = '0'; }, 1500);
+  }
   function addAtPlayhead() {
-    if (!chart || !renderer) return;
+    if (!chart || !renderer) {
+      flashToast('No chart loaded');
+      return;
+    }
     load();
     const tick = renderer.playTick | 0;
     // Toggle: if a bookmark within 24 ticks (half-beat) already exists, remove it
     const idx = items.findIndex(b => Math.abs(b.tick - tick) < 24);
-    if (idx >= 0) items.splice(idx, 1);
-    else items.push({ tick, label: '' });
+    let action;
+    if (idx >= 0) { items.splice(idx, 1); action = 'removed'; }
+    else { items.push({ tick, label: '' }); action = 'added'; }
     save();
-    if (panel.style.display !== 'none') refresh();
+    // Always show the panel so the user sees confirmation
+    if (panel.style.display === 'none') {
+      panel.style.display = 'flex';
+    }
+    refresh();
+    flashToast(`Bookmark ${action} @ ${tickToLabel(tick)}`);
   }
   function clearAll() {
     if (!items.length) return;
@@ -6498,14 +6524,15 @@ const Bookmarks = (function() {
     window.addEventListener('mouseup', () => dragging = false);
   }
 
-  // Ctrl+B keybind
+  // Ctrl+B / Cmd+B keybind (Cmd+Shift+B works as fallback if browser swallows Cmd+B)
   document.addEventListener('keydown', e => {
     if (['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName)) return;
     if ((e.ctrlKey || e.metaKey) && (e.key === 'b' || e.key === 'B')) {
       e.preventDefault();
+      e.stopPropagation();
       addAtPlayhead();
     }
-  });
+  }, true); // capture phase so we run before any other handler
 
   return { addAtPlayhead, toggle, refresh };
 })();
