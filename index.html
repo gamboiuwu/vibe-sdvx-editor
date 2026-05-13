@@ -190,6 +190,11 @@
         <button class="menu-item accent" id="btn-tools-window">&#9965; Tools Hub…</button>
         <button class="menu-item" id="btn-radar-window">&#11042; Pattern Radar…</button>
         <button class="menu-item" id="btn-handsim-window">&#9758; Hand Simulator…</button>
+        <div class="menu-sep"></div>
+        <button class="menu-item" id="btn-chart-stats">&#128202; Chart Statistics…</button>
+        <button class="menu-item" id="btn-bookmarks-panel">&#128278; Bookmarks  <kbd>Ctrl+B</kbd></button>
+        <div class="menu-sep"></div>
+        <button class="menu-item" id="btn-whats-new">&#10024; What's New…</button>
       </div>
     </div>
   </div>
@@ -1068,6 +1073,77 @@
   </div>
 </div>
 
+<!-- First-run disclaimer modal ─────────────────────────────────── -->
+<div id="modal-disclaimer" class="modal" style="display:none">
+  <div class="modal-box disclaimer-box">
+    <div class="disclaimer-warn-icon">⚠</div>
+    <h3 class="disclaimer-title">WARNING — Experimental Software</h3>
+    <p class="disclaimer-lead">
+      <strong>This project is vibecoded</strong> and everything may be unstable.
+    </p>
+    <p class="disclaimer-body">
+      <strong>vibe-editr</strong> exists for the sole purpose of <strong>experimenting</strong>.
+      It is not a finished product, has no warranty of any kind, and cannot be reproduced.
+      Charts may break, audio may glitch, the editor may crash without warning.
+      Always export and back up your work frequently.
+    </p>
+    <p class="disclaimer-body disclaimer-sub">
+      By continuing, you acknowledge that you are using this software at your own risk
+      and understand that this build is intended for experimental and personal use only.
+    </p>
+    <label class="disclaimer-agree">
+      <input type="checkbox" id="disclaimer-agree-cb">
+      <span>I understand and agree.</span>
+    </label>
+    <div class="modal-buttons">
+      <button id="disclaimer-continue" class="accent" disabled>Continue</button>
+    </div>
+  </div>
+</div>
+
+<!-- Chart Statistics modal ─────────────────────────────────────── -->
+<div id="modal-chart-stats" class="modal" style="display:none">
+  <div class="modal-box" style="min-width:420px;max-width:520px">
+    <h3 style="margin-bottom:4px">Chart Statistics</h3>
+    <div id="cs-subtitle" style="font-size:11px;color:#6668a0;margin-bottom:14px">—</div>
+    <div id="cs-grid" class="cs-grid"></div>
+    <div class="modal-buttons" style="margin-top:14px">
+      <button id="cs-close">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Bookmarks floating panel ────────────────────────────────────── -->
+<div id="bookmarks-panel" class="floating-panel" style="display:none">
+  <div class="fp-header">
+    <span class="fp-title">&#128278; Bookmarks</span>
+    <div class="fp-actions">
+      <button id="bm-add" title="Add bookmark at playhead [Ctrl+B]">+ Add</button>
+      <button id="bm-clear" title="Clear all bookmarks">Clear</button>
+      <button id="bm-close" title="Close">✕</button>
+    </div>
+  </div>
+  <div id="bm-list" class="bm-list">
+    <div class="bm-empty">No bookmarks yet — press <kbd>Ctrl+B</kbd> at any playhead position to add one.</div>
+  </div>
+</div>
+
+<!-- What's New / Update modal ───────────────────────────────────── -->
+<div id="modal-whats-new" class="modal" style="display:none">
+  <div class="modal-box" style="min-width:480px;max-width:600px">
+    <div id="wn-header">
+      <div id="wn-badge">NEW</div>
+      <h3 id="wn-title">What's New in vibe-editr</h3>
+      <div id="wn-subtitle">—</div>
+    </div>
+    <div id="wn-body"></div>
+    <div class="modal-buttons" style="margin-top:18px;justify-content:space-between">
+      <a id="wn-full-changelog" href="vibe-editr-docs.html#updates" target="_blank" style="font-size:12px;color:#00a0cc">View full changelog →</a>
+      <button id="wn-close" class="accent">Got it</button>
+    </div>
+  </div>
+</div>
+
 <!-- Donation modal -->
 <div id="modal-donate" class="modal" style="display:none">
   <div class="modal-box donate-box">
@@ -1153,7 +1229,7 @@
 <script src="js/kson.js"></script>
 <script src="js/calibration.js"></script>
 <script src="js/i18n.js"></script>
-<script src="js/app.js?v=8"></script>
+<script src="js/app.js?v=11"></script>
 <script src="js/dock.js?v=5"></script>
 <script src="js/tools.js?v=4"></script>
 <script src="js/radar.js?v=1"></script>
