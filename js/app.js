@@ -6165,3 +6165,347 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   }
 })();
+
+// ──────────────────────────────────────────────────────────────────────────────
+// v1.4.1: app version, changelog data, "What's New" modal
+// ──────────────────────────────────────────────────────────────────────────────
+const APP_VERSION = '1.4.1';
+const CHANGELOG = [
+  {
+    version: '1.4.1',
+    title: 'Statistics, bookmarks &amp; update notifications',
+    entries: [
+      ['add', 'Chart Statistics panel — note breakdown, peak/average density, duration. Window → Chart Statistics…'],
+      ['add', 'Quick Bookmarks — <kbd>Ctrl+B</kbd> drops a bookmark at the playhead. Floating panel lists them with click-to-jump. Persisted per chart.'],
+      ['add', 'What\'s New modal — automatic update notification when the app version changes, with a per-version one-time popup.'],
+    ],
+  },
+  {
+    version: '1.4',
+    title: 'Multi-chart preview &amp; laser pen tool',
+    entries: [
+      ['add', 'Multi-chart preview mode — up to four charts share a synchronized playhead in Split View.'],
+      ['add', 'Laser Pen Tool with Bézier anchor points and handles, modeled on Photoshop pen behavior.'],
+      ['add', 'Linear pattern radar in the Song Data panel.'],
+      ['fix', 'Bézier curve drift between editor canvas and 3D preview.'],
+    ],
+  },
+  {
+    version: '1.3',
+    title: 'Selection &amp; seekbar refinements',
+    entries: [
+      ['fix', 'Stop events no longer cause the chart to scroll backward during playback.'],
+      ['add', '<kbd>Ctrl+D</kbd> / <kbd>Cmd+D</kbd> deselects the current selection.'],
+      ['add', 'Double-click the seekbar to open a numeric selection-range editor.'],
+    ],
+  },
+];
+
+(function initWhatsNew() {
+  const KEY = 'vibe_editr_seen_version';
+  const modal = document.getElementById('modal-whats-new');
+  const body  = document.getElementById('wn-body');
+  const title = document.getElementById('wn-title');
+  const sub   = document.getElementById('wn-subtitle');
+  const badge = document.getElementById('wn-badge');
+  const btnClose = document.getElementById('wn-close');
+  const btnMenu  = document.getElementById('btn-whats-new');
+  if (!modal || !body) return;
+
+  function buildBody(showAll) {
+    const blocks = showAll ? CHANGELOG : [CHANGELOG[0]];
+    body.innerHTML = blocks.map(v => `
+      <div class="wn-version-block">
+        <span class="wn-version-tag">v${v.version}</span>
+        <span class="wn-version-title">${v.title}</span>
+        <ul>${v.entries.map(([k, t]) =>
+          `<li><span class="wn-tag ${k}">${k}</span>${t}</li>`).join('')}</ul>
+      </div>
+    `).join('');
+  }
+
+  function open(mode) {
+    // mode: 'welcome' | 'updated' | 'manual'
+    if (mode === 'welcome') {
+      badge.textContent = 'WELCOME';
+      title.innerHTML = `Welcome to vibe-editr v${APP_VERSION}`;
+      sub.textContent = 'Here\'s what this version includes.';
+      buildBody(false);
+    } else if (mode === 'updated') {
+      badge.textContent = 'UPDATED';
+      title.innerHTML = `Updated to v${APP_VERSION}`;
+      sub.textContent = 'New since your last visit:';
+      buildBody(false);
+    } else {
+      badge.textContent = 'CHANGELOG';
+      title.innerHTML = `What's New — v${APP_VERSION}`;
+      sub.textContent = 'Recent release history.';
+      buildBody(true);
+    }
+    modal.style.display = 'flex';
+  }
+  function close() {
+    modal.style.display = 'none';
+    try { localStorage.setItem(KEY, APP_VERSION); } catch(_) {}
+  }
+
+  btnClose?.addEventListener('click', close);
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  btnMenu?.addEventListener('click', () => open('manual'));
+
+  // Boot-time check: show welcome on first run, "updated" if version changed
+  setTimeout(() => {
+    let seen = null;
+    try { seen = localStorage.getItem(KEY); } catch(_) {}
+    if (seen === APP_VERSION) return;
+    open(seen ? 'updated' : 'welcome');
+  }, 600);
+})();
+
+// ──────────────────────────────────────────────────────────────────────────────
+// v1.4.1: Chart Statistics modal
+// ──────────────────────────────────────────────────────────────────────────────
+(function initChartStats() {
+  const modal = document.getElementById('modal-chart-stats');
+  const grid  = document.getElementById('cs-grid');
+  const sub   = document.getElementById('cs-subtitle');
+  const btnOpen  = document.getElementById('btn-chart-stats');
+  const btnClose = document.getElementById('cs-close');
+  if (!modal || !grid) return;
+
+  function row(k, v) {
+    return `<div class="cs-row"><span class="cs-key">${k}</span><span class="cs-val">${v}</span></div>`;
+  }
+  function section(t) { return `<div class="cs-section-title">${t}</div>`; }
+
+  function compute() {
+    if (!chart) return null;
+    const TPM = 192, TPB = 48;
+    let btChip = 0, btHold = 0;
+    for (const lane of chart.bt) for (const n of lane) (n.len > 0 ? btHold++ : btChip++);
+    let fxChip = 0, fxHold = 0;
+    for (const lane of chart.fx) for (const n of lane) (n.len > 0 ? fxHold++ : fxChip++);
+
+    let segL = 0, segR = 0, slamL = 0, slamR = 0, pointsL = 0, pointsR = 0;
+    [chart.lasers[0], chart.lasers[1]].forEach((side, idx) => {
+      for (const sec of side) {
+        if (idx === 0) segL++; else segR++;
+        const pts = sec.points || [];
+        if (idx === 0) pointsL += pts.length; else pointsR += pts.length;
+        for (let i = 1; i < pts.length; i++) {
+          if ((pts[i].ry - pts[i-1].ry) <= 6) {
+            if (idx === 0) slamL++; else slamR++;
+          }
+        }
+      }
+    });
+
+    const totalNotes = btChip + btHold + fxChip + fxHold;
+    const totalMeas = chart.totalMeasures || 1;
+
+    // Density: notes per measure across all measures that contain at least one note
+    const measBuckets = new Array(totalMeas).fill(0);
+    const addToBucket = (y) => {
+      const m = Math.floor(y / TPM);
+      if (m >= 0 && m < totalMeas) measBuckets[m]++;
+    };
+    for (const lane of chart.bt) for (const n of lane) addToBucket(n.y);
+    for (const lane of chart.fx) for (const n of lane) addToBucket(n.y);
+
+    let peak = 0, peakMeas = 0, totalSpanned = 0;
+    measBuckets.forEach((c, i) => {
+      if (c > peak) { peak = c; peakMeas = i; }
+      if (c > 0) totalSpanned++;
+    });
+    const avgDens = totalSpanned ? (totalNotes / totalSpanned) : 0;
+
+    // Duration estimate from BPM events
+    let durSec = 0;
+    const events = [...chart.bpmEvents].sort((a, b) => a.y - b.y);
+    const endTick = totalMeas * TPM;
+    for (let i = 0; i < events.length; i++) {
+      const a = events[i].y;
+      const b = (i + 1 < events.length) ? events[i + 1].y : endTick;
+      const ticks = Math.max(0, b - a);
+      const bpm = events[i].bpm || 120;
+      durSec += (ticks / TPB) * (60 / bpm);
+    }
+    const mm = Math.floor(durSec / 60), ss = Math.floor(durSec % 60);
+    const durStr = `${mm}:${String(ss).padStart(2, '0')}`;
+
+    return {
+      btChip, btHold, fxChip, fxHold,
+      segL, segR, slamL, slamR, pointsL, pointsR,
+      totalNotes, totalMeas, peak, peakMeas, avgDens, durStr,
+      bpmRange: events.length ? (() => {
+        const bs = events.map(e => e.bpm);
+        const lo = Math.min(...bs), hi = Math.max(...bs);
+        return lo === hi ? lo.toFixed(2) : `${lo.toFixed(2)} – ${hi.toFixed(2)}`;
+      })() : '—',
+    };
+  }
+
+  function render() {
+    const s = compute();
+    if (!s) { grid.innerHTML = '<div class="cs-row"><span>No chart loaded.</span></div>'; return; }
+    const title = (chart.meta?.title || 'Untitled') + (chart.meta?.artist ? ' — ' + chart.meta.artist : '');
+    sub.textContent = title;
+    grid.innerHTML = [
+      section('Notes'),
+      row('BT chips',     s.btChip),
+      row('BT holds',     s.btHold),
+      row('FX chips',     s.fxChip),
+      row('FX holds',     s.fxHold),
+      row('Total notes',  `<strong>${s.totalNotes}</strong>`),
+      section('Lasers'),
+      row('L segments',   `${s.segL} (${s.pointsL} pts)`),
+      row('R segments',   `${s.segR} (${s.pointsR} pts)`),
+      row('Slams L / R',  `${s.slamL} / ${s.slamR}`),
+      section('Timing'),
+      row('Duration',     s.durStr),
+      row('Total measures', s.totalMeas),
+      row('BPM',          s.bpmRange),
+      section('Density'),
+      row('Peak (notes/measure)', `${s.peak} @ m${s.peakMeas + 1}`),
+      row('Avg over active measures', s.avgDens.toFixed(1)),
+    ].join('');
+  }
+
+  function open()  { render(); modal.style.display = 'flex'; }
+  function close() { modal.style.display = 'none'; }
+
+  btnOpen?.addEventListener('click', open);
+  btnClose?.addEventListener('click', close);
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+})();
+
+// ──────────────────────────────────────────────────────────────────────────────
+// v1.4.1: Quick Bookmarks (Ctrl+B), floating panel, per-chart persistence
+// ──────────────────────────────────────────────────────────────────────────────
+const Bookmarks = (function() {
+  const STORAGE_PREFIX = 'vibe_editr_bookmarks::';
+  const panel = document.getElementById('bookmarks-panel');
+  const list  = document.getElementById('bm-list');
+  const btnAdd   = document.getElementById('bm-add');
+  const btnClear = document.getElementById('bm-clear');
+  const btnClose = document.getElementById('bm-close');
+  const btnOpen  = document.getElementById('btn-bookmarks-panel');
+
+  let items = []; // [{ tick, label }]
+
+  function key() {
+    if (!chart) return null;
+    const t = (chart.meta?.title  || '').trim();
+    const a = (chart.meta?.artist || '').trim();
+    return STORAGE_PREFIX + (t || 'untitled') + '|' + a;
+  }
+  function load() {
+    items = [];
+    const k = key();
+    if (!k) return;
+    try {
+      const s = localStorage.getItem(k);
+      if (s) items = JSON.parse(s) || [];
+    } catch(_) { items = []; }
+  }
+  function save() {
+    const k = key();
+    if (!k) return;
+    try { localStorage.setItem(k, JSON.stringify(items)); } catch(_) {}
+  }
+  function tickToLabel(tick) {
+    const TPM = 192, TPB = 48;
+    const m = Math.floor(tick / TPM) + 1;
+    const b = Math.floor((tick % TPM) / TPB) + 1;
+    return `m${m}:b${b}`;
+  }
+  function refresh() {
+    if (!list) return;
+    if (!items.length) {
+      list.innerHTML = `<div class="bm-empty">No bookmarks yet — press <kbd>Ctrl+B</kbd> at any playhead position to add one.</div>`;
+      return;
+    }
+    items.sort((a, b) => a.tick - b.tick);
+    list.innerHTML = items.map((b, i) =>
+      `<div class="bm-item" data-i="${i}">
+        <span class="bm-pos">${tickToLabel(b.tick)}</span>
+        <input class="bm-label" value="${(b.label || '').replace(/"/g, '&quot;')}" placeholder="(label)">
+        <button class="bm-del" title="Remove">✕</button>
+       </div>`
+    ).join('');
+    list.querySelectorAll('.bm-item').forEach(el => {
+      const i = +el.dataset.i;
+      el.addEventListener('click', ev => {
+        if (ev.target.classList.contains('bm-del') ||
+            ev.target.classList.contains('bm-label')) return;
+        if (typeof _seekTo === 'function') _seekTo(items[i].tick);
+      });
+      el.querySelector('.bm-label').addEventListener('change', ev => {
+        items[i].label = ev.target.value;
+        save();
+      });
+      el.querySelector('.bm-del').addEventListener('click', ev => {
+        ev.stopPropagation();
+        items.splice(i, 1);
+        save(); refresh();
+      });
+    });
+  }
+  function addAtPlayhead() {
+    if (!chart || !renderer) return;
+    load();
+    const tick = renderer.playTick | 0;
+    // Toggle: if a bookmark within 24 ticks (half-beat) already exists, remove it
+    const idx = items.findIndex(b => Math.abs(b.tick - tick) < 24);
+    if (idx >= 0) items.splice(idx, 1);
+    else items.push({ tick, label: '' });
+    save();
+    if (panel.style.display !== 'none') refresh();
+  }
+  function clearAll() {
+    if (!items.length) return;
+    if (!confirm('Remove all bookmarks for this chart?')) return;
+    items = []; save(); refresh();
+  }
+  function toggle() {
+    if (!panel) return;
+    if (panel.style.display === 'none') { load(); refresh(); panel.style.display = 'flex'; }
+    else panel.style.display = 'none';
+  }
+
+  btnAdd?.addEventListener('click', addAtPlayhead);
+  btnClear?.addEventListener('click', clearAll);
+  btnClose?.addEventListener('click', () => panel.style.display = 'none');
+  btnOpen?.addEventListener('click', toggle);
+
+  // Drag-to-move on header
+  const header = panel?.querySelector('.fp-header');
+  if (header) {
+    let dragging = false, ox = 0, oy = 0;
+    header.addEventListener('mousedown', e => {
+      if (e.target.tagName === 'BUTTON') return;
+      dragging = true;
+      const r = panel.getBoundingClientRect();
+      ox = e.clientX - r.left; oy = e.clientY - r.top;
+      e.preventDefault();
+    });
+    window.addEventListener('mousemove', e => {
+      if (!dragging) return;
+      panel.style.left = (e.clientX - ox) + 'px';
+      panel.style.top  = (e.clientY - oy) + 'px';
+      panel.style.right = 'auto';
+    });
+    window.addEventListener('mouseup', () => dragging = false);
+  }
+
+  // Ctrl+B keybind
+  document.addEventListener('keydown', e => {
+    if (['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName)) return;
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'b' || e.key === 'B')) {
+      e.preventDefault();
+      addAtPlayhead();
+    }
+  });
+
+  return { addAtPlayhead, toggle, refresh };
+})();

@@ -36,6 +36,8 @@ You can also just open `index.html` directly from disk, but some Web Audio featu
 - **Per-tab audio** with a real FX chain: Retrigger, Gate, Flanger, PitchShift, BitCrusher, Phaser, Wobble, TapeStop, Echo, SideChain.
 - **Visual calibration** — tap `Space` on the audio to measure delay and apply the correction automatically.
 - **Full undo history** — Photoshop-style History panel, click any past state to jump back to it.
+- **Chart statistics & bookmarks** — note/laser/density breakdown panel, plus `Ctrl+B` quick bookmarks with per-chart persistence.
+- **Auto update notifications** — first-run welcome and per-version "What's New" popups so you never miss a change.
 - **Autosave**, S-Ran shuffles (All / BT / FX / VOL), mirror tools, ½× / 2× tick speed, and Unicode metadata.
 
 A user-facing changelog lives at [`vibe-editr-docs.html#updates`](vibe-editr-docs.html). The roadmap (BPM detection inside calibration mode, strict 2D orthographic preview, deeper pen-tool parity) lives in [`Upcoming Changes.rtf`](Upcoming%20Changes.rtf).
