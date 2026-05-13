@@ -6167,6 +6167,47 @@ window.addEventListener('DOMContentLoaded', () => {
 })();
 
 // ──────────────────────────────────────────────────────────────────────────────
+// First-run disclaimer (blocks the app until the user agrees)
+// ──────────────────────────────────────────────────────────────────────────────
+const DisclaimerGate = (function() {
+  const KEY = 'vibe_editr_disclaimer_accepted';
+  const modal = document.getElementById('modal-disclaimer');
+  const cb    = document.getElementById('disclaimer-agree-cb');
+  const btn   = document.getElementById('disclaimer-continue');
+  if (!modal || !cb || !btn) return { isAccepted: () => true, onAccept: (cb) => cb() };
+
+  let alreadyAccepted = false;
+  try { alreadyAccepted = localStorage.getItem(KEY) === '1'; } catch(_) {}
+
+  const acceptCallbacks = [];
+
+  function show() {
+    modal.style.display = 'flex';
+    cb.checked = false;
+    btn.disabled = true;
+  }
+  function accept() {
+    try { localStorage.setItem(KEY, '1'); } catch(_) {}
+    modal.style.display = 'none';
+    alreadyAccepted = true;
+    acceptCallbacks.splice(0).forEach(fn => { try { fn(); } catch(_) {} });
+  }
+
+  cb.addEventListener('change', () => { btn.disabled = !cb.checked; });
+  btn.addEventListener('click', () => { if (cb.checked) accept(); });
+
+  if (!alreadyAccepted) show();
+
+  return {
+    isAccepted: () => alreadyAccepted,
+    onAccept(fn) {
+      if (alreadyAccepted) fn();
+      else acceptCallbacks.push(fn);
+    },
+  };
+})();
+
+// ──────────────────────────────────────────────────────────────────────────────
 // v1.4.1: app version, changelog data, "What's New" modal
 // ──────────────────────────────────────────────────────────────────────────────
 const APP_VERSION = '1.4.1';
@@ -6253,13 +6294,16 @@ const CHANGELOG = [
   modal.addEventListener('click', e => { if (e.target === modal) close(); });
   btnMenu?.addEventListener('click', () => open('manual'));
 
-  // Boot-time check: show welcome on first run, "updated" if version changed
-  setTimeout(() => {
-    let seen = null;
-    try { seen = localStorage.getItem(KEY); } catch(_) {}
-    if (seen === APP_VERSION) return;
-    open(seen ? 'updated' : 'welcome');
-  }, 600);
+  // Boot-time check: show welcome on first run, "updated" if version changed.
+  // Wait for the disclaimer to be accepted (or skip wait if already accepted).
+  DisclaimerGate.onAccept(() => {
+    setTimeout(() => {
+      let seen = null;
+      try { seen = localStorage.getItem(KEY); } catch(_) {}
+      if (seen === APP_VERSION) return;
+      open(seen ? 'updated' : 'welcome');
+    }, 600);
+  });
 })();
 
 // ──────────────────────────────────────────────────────────────────────────────

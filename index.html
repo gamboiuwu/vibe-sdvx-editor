@@ -1073,6 +1073,34 @@
   </div>
 </div>
 
+<!-- First-run disclaimer modal ─────────────────────────────────── -->
+<div id="modal-disclaimer" class="modal" style="display:none">
+  <div class="modal-box disclaimer-box">
+    <div class="disclaimer-warn-icon">⚠</div>
+    <h3 class="disclaimer-title">WARNING — Experimental Software</h3>
+    <p class="disclaimer-lead">
+      <strong>This project is vibecoded</strong> and everything may be unstable.
+    </p>
+    <p class="disclaimer-body">
+      <strong>vibe-editr</strong> exists for the sole purpose of <strong>experimenting</strong>.
+      It is not a finished product, has no warranty of any kind, and cannot be reproduced.
+      Charts may break, audio may glitch, the editor may crash without warning.
+      Always export and back up your work frequently.
+    </p>
+    <p class="disclaimer-body disclaimer-sub">
+      By continuing, you acknowledge that you are using this software at your own risk
+      and understand that this build is intended for experimental and personal use only.
+    </p>
+    <label class="disclaimer-agree">
+      <input type="checkbox" id="disclaimer-agree-cb">
+      <span>I understand and agree.</span>
+    </label>
+    <div class="modal-buttons">
+      <button id="disclaimer-continue" class="accent" disabled>Continue</button>
+    </div>
+  </div>
+</div>
+
 <!-- Chart Statistics modal ─────────────────────────────────────── -->
 <div id="modal-chart-stats" class="modal" style="display:none">
   <div class="modal-box" style="min-width:420px;max-width:520px">
@@ -1201,7 +1229,7 @@
 <script src="js/kson.js"></script>
 <script src="js/calibration.js"></script>
 <script src="js/i18n.js"></script>
-<script src="js/app.js?v=10"></script>
+<script src="js/app.js?v=11"></script>
 <script src="js/dock.js?v=5"></script>
 <script src="js/tools.js?v=4"></script>
 <script src="js/radar.js?v=1"></script>
