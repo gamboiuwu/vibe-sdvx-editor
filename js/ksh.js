@@ -534,19 +534,42 @@ function downloadText(filename, text) {
   // Firefox (and some Safari builds) refuse to fire downloads when the anchor
   // isn't part of the DOM, and revoking the object URL synchronously can
   // cancel the transfer mid-flight. Attach, click, then revoke on a delay.
-  const blob = new Blob([text], { type: 'application/octet-stream' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href     = url;
-  a.download = filename;
-  a.rel      = 'noopener';
-  a.style.display = 'none';
-  document.body.appendChild(a);
-  try { a.click(); }
-  finally {
+  try {
+    const blob = new Blob([text], { type: 'application/octet-stream' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+
+    a.href     = url;
+    a.download = filename;
+    a.rel      = 'noopener';
+    a.style.display = 'none';
+
+    console.log(`[Download] Creating download: ${filename}, blob size: ${blob.size} bytes`);
+    console.log(`[Download] Object URL: ${url.substring(0, 50)}...`);
+    console.log(`[Download] Anchor in DOM: ${document.body.contains(a)}`);
+
+    document.body.appendChild(a);
+    console.log(`[Download] After append, anchor in DOM: ${document.body.contains(a)}`);
+
+    // Trigger the download
+    a.click();
+    console.log(`[Download] click() invoked on anchor element`);
+
+    // Cleanup on delay
     setTimeout(() => {
-      try { document.body.removeChild(a); } catch (_) {}
+      try {
+        document.body.removeChild(a);
+        console.log(`[Download] Removed anchor from DOM`);
+      } catch (e) {
+        console.warn(`[Download] Could not remove anchor:`, e);
+      }
       URL.revokeObjectURL(url);
+      console.log(`[Download] Revoked object URL`);
     }, 4000);
+
+    console.log(`[Download] Download initiated successfully: ${filename}`);
+  } catch (err) {
+    console.error(`[Download] Fatal error:`, err);
+    alert(`Download failed: ${err.message}`);
   }
 }

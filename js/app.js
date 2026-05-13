@@ -2040,12 +2040,15 @@ window.addEventListener('DOMContentLoaded', () => {
       const base = (chart.meta.title.replace(/[^a-zA-Z0-9_]/g, '_') || 'chart');
       const diff = (chart.meta.difficulty || '').toLowerCase();
       const suffix = diff ? `_${diff}` : '';
+      const filename = base + suffix + '.ksh';
       updateExportProgress(30, 'Generating KSH…', 'Serializing chart notes and events');
       const ksh = exportKsh(chart);
       updateExportProgress(80, 'Preparing download…', `Generated ${(ksh.length / 1024).toFixed(1)}KB KSH`);
-      downloadText(base + suffix + '.ksh', ksh);
-      updateExportProgress(95, 'Initiating download…');
-      setTimeout(() => finishExportProgress(true, '✓ KSH exported: ' + base + suffix + '.ksh'), 500);
+      console.log(`[Export] Calling downloadText('${filename}', ...)`);
+      updateExportProgress(85, 'Starting download…', `Triggering download of ${filename}`);
+      downloadText(filename, ksh);
+      updateExportProgress(95, 'Download initiated…', 'Your file should appear in your Downloads folder');
+      setTimeout(() => finishExportProgress(true, '✓ KSH exported: ' + filename), 500);
     } catch (err) {
       console.error('KSH export failed:', err);
       updateExportProgress(0, null, 'Error: ' + (err?.message || err));
@@ -2059,12 +2062,15 @@ window.addEventListener('DOMContentLoaded', () => {
       const base = (chart.meta.title.replace(/[^a-zA-Z0-9_]/g, '_') || 'chart');
       const diff = (chart.meta.difficulty || '').toLowerCase();
       const suffix = diff ? `_${diff}` : '';
+      const filename = base + suffix + '.kson';
       updateExportProgress(30, 'Generating KSON…', 'Serializing chart with spec-compliant format');
       const kson = exportKson(chart);
       updateExportProgress(80, 'Preparing download…', `Generated ${(kson.length / 1024).toFixed(1)}KB KSON`);
-      downloadText(base + suffix + '.kson', kson);
-      updateExportProgress(95, 'Initiating download…');
-      setTimeout(() => finishExportProgress(true, '✓ KSON exported: ' + base + suffix + '.kson'), 500);
+      console.log(`[Export] Calling downloadText('${filename}', ...)`);
+      updateExportProgress(85, 'Starting download…', `Triggering download of ${filename}`);
+      downloadText(filename, kson);
+      updateExportProgress(95, 'Download initiated…', 'Your file should appear in your Downloads folder');
+      setTimeout(() => finishExportProgress(true, '✓ KSON exported: ' + filename), 500);
     } catch (err) {
       console.error('KSON export failed:', err);
       updateExportProgress(0, null, 'Error: ' + (err?.message || err));
@@ -2199,6 +2205,7 @@ window.addEventListener('DOMContentLoaded', () => {
     const charts = tabs.map(t => t.chart).filter(Boolean);
     if (!charts.length) { alert('No charts to export.'); return; }
     const packName = (charts[0].meta.title || 'pack').replace(/[^a-zA-Z0-9_]/g, '_');
+    const filename = packName + '.ksonpack';
     const packMeta = {
       title:       charts[0].meta.title || 'Untitled Pack',
       artist:      charts[0].meta.artist || '',
@@ -2210,9 +2217,11 @@ window.addEventListener('DOMContentLoaded', () => {
       updateExportProgress(25, 'Serializing charts…', `Processing ${charts.length} chart(s)`);
       const pack = exportKsonPack(charts, packMeta);
       updateExportProgress(80, 'Preparing download…', `Generated ${(pack.length / 1024).toFixed(1)}KB pack`);
-      downloadText(packName + '.ksonpack', pack);
-      updateExportProgress(95, 'Initiating download…');
-      setTimeout(() => finishExportProgress(true, `✓ Pack exported: ${packName}.ksonpack`), 500);
+      console.log(`[Export] Calling downloadText('${filename}', ...)`);
+      updateExportProgress(85, 'Starting download…', `Triggering download of ${filename}`);
+      downloadText(filename, pack);
+      updateExportProgress(95, 'Download initiated…', 'Your file should appear in your Downloads folder');
+      setTimeout(() => finishExportProgress(true, `✓ Pack exported: ${filename}`), 500);
     } catch(err) {
       console.error('Pack export failed:', err);
       updateExportProgress(0, null, 'Error: ' + (err?.message || err));
