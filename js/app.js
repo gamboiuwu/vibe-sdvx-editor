@@ -3914,9 +3914,12 @@ function onMouseDown(e) {
       // Extend the active section with a new point
       const sec    = _activeLaserSec.sec;
       const ry     = Math.round(tick) - sec.y;
-      const lastRy = sec.points[sec.points.length - 1]?.ry ?? -1;
+      const lastPt = sec.points[sec.points.length - 1];
+      const lastRy = lastPt?.ry ?? -1;
       if (ry > lastRy) {
-        sec.points.push({ ry, v, slam: false, interp: 'linear', curve: 0.5 });
+        // Detect horizontal laser (same position as previous point)
+        const isHorizontal = lastPt && Math.abs(v - lastPt.v) < 0.001;
+        sec.points.push({ ry, v, slam: isHorizontal, interp: 'linear', curve: 0.5 });
       } else {
         // Clicked at or before the last point — finish current section, start new
         _activeLaserSec = null;
