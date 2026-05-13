@@ -305,7 +305,27 @@ html, body {
 }
 /* Inside the dock workspace */
 #ws-edit-area > #game-wrap { height: auto; flex: 1; }
-#game-canvas { display: block; width: 100%; flex: 1; min-height: 0; }
+/* Wrap that stacks the WebGL lane layer behind the 2D overlay (Phase 1). */
+#game-canvas-wrap {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+}
+#game-canvas-wrap > canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+/* GL lane sits behind the 2D overlay; the 2D canvas catches pointer events. */
+#game-canvas-gl { pointer-events: none; z-index: 0; }
+#game-canvas    { z-index: 1; }
+/* Legacy selector kept for non-wrapped contexts (multi-chart slots). */
+.multi-chart-slot #game-canvas,
+#ws-edit-area #game-canvas { position: static; width: 100%; flex: 1; min-height: 0; }
 .view-btn.active { background: var(--bg3); border-color: var(--accent); color: var(--accent); }
 
 /* ── Multi-chart preview ── */

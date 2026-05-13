@@ -1352,7 +1352,9 @@ function setViewMode(mode) {
   // Respect multi-mode canvas visibility
   if (mode !== 'edit') {
     const singleCanvas = document.getElementById('game-canvas');
+    const singleWrap   = document.getElementById('game-canvas-wrap');
     const multiArea    = document.getElementById('multi-preview-area');
+    if (singleWrap)   singleWrap.style.display   = _multiMode ? 'none' : '';
     if (singleCanvas) singleCanvas.style.display = _multiMode ? 'none' : '';
     if (multiArea)    multiArea.style.display     = _multiMode ? 'flex' : 'none';
     if (_multiMode) {
@@ -1536,7 +1538,9 @@ function _multiSyncSettings() {
 function _multiToggle() {
   _multiMode = !_multiMode;
   const singleCanvas = document.getElementById('game-canvas');
+  const singleWrap   = document.getElementById('game-canvas-wrap');
   const area = document.getElementById('multi-preview-area');
+  if (singleWrap)   singleWrap.style.display   = _multiMode ? 'none' : '';
   if (singleCanvas) singleCanvas.style.display = _multiMode ? 'none' : '';
   const sub = document.getElementById('pvc-multi-controls');
   if (sub) sub.style.display = _multiMode ? 'block' : 'none';
@@ -1754,6 +1758,33 @@ window.addEventListener('DOMContentLoaded', () => {
   if (gameCanvas) {
     gameView = new GameView(gameCanvas);
     gameView.chart = chart;
+    // Phase 1: try to attach the sibling WebGL canvas. Falls back silently
+    // if the browser doesn't support WebGL2.
+    const glCanvas = document.getElementById('game-canvas-gl');
+    if (glCanvas) {
+      gameView.attachGL(glCanvas);
+      // Restore the user's preference (default off).
+      try {
+        const saved = JSON.parse(localStorage.getItem('vibe-editr-prefs') || '{}');
+        if (saved.useGLLane && gameView._glRenderer?.ok) gameView.useGL = true;
+      } catch(_) {}
+      const cb = document.getElementById('pvc-use-webgl');
+      if (cb) {
+        cb.checked  = !!gameView.useGL;
+        cb.disabled = !gameView._glRenderer?.ok;
+        if (cb.disabled) cb.title = 'WebGL2 not supported in this browser.';
+        cb.addEventListener('change', () => {
+          gameView.useGL = !!cb.checked;
+          if (!gameView.useGL) gameView._glRenderer?.clear();
+          try {
+            const s = JSON.parse(localStorage.getItem('vibe-editr-prefs') || '{}');
+            s.useGLLane = gameView.useGL;
+            localStorage.setItem('vibe-editr-prefs', JSON.stringify(s));
+          } catch(_) {}
+          gameView.draw();
+        });
+      }
+    }
     gameView.resize();
     gameCanvas.addEventListener('contextmenu', e => { e.preventDefault(); showGameCtxMenu(e.clientX, e.clientY); });
   }

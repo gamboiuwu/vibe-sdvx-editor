@@ -498,6 +498,15 @@
       <span id="pvc-save-config-label" class="pvc-val" style="color:#66bb66;opacity:0;transition:opacity 0.4s">Saved!</span>
     </div>
 
+    <!-- WebGL renderer toggle (Phase 1: lane runway · Phase 2: notes) -->
+    <div class="pvc-section" title="Render the lane runway, grid, side glow and BT/FX notes on the GPU. Lasers and slams still use the 2D overlay; coming in Phase 3.">
+      <span class="pvc-label">WebGL Lane</span>
+      <label style="display:flex;align-items:center;gap:6px;font-size:10px;color:#aabbdd;cursor:pointer;flex:1">
+        <input type="checkbox" id="pvc-use-webgl" style="cursor:pointer">
+        <span>Experimental (Phase 3)</span>
+      </label>
+    </div>
+
     <!-- Multi-Chart Mode -->
     <div class="pvc-section" style="border-top:1px solid #ffffff18;padding-top:6px;margin-top:2px">
       <span class="pvc-label">Multi Chart</span>
@@ -530,7 +539,10 @@
   </div>
 
   <!-- Single-chart canvas (hidden in multi mode) -->
-  <canvas id="game-canvas"></canvas>
+  <div id="game-canvas-wrap">
+    <canvas id="game-canvas-gl"></canvas>
+    <canvas id="game-canvas"></canvas>
+  </div>
   <!-- Multi-chart canvas area (shown in multi mode) -->
   <div id="multi-preview-area" style="display:none;flex:1;min-height:0;overflow:hidden"></div>
   <!-- Seek / scrub bar -->
@@ -1005,7 +1017,7 @@
 <script src="js/effects.js"></script>
 <script src="js/chart.js?v=2"></script>
 <script src="js/renderer.js?v=3"></script>
-<script src="js/game.js?v=2"></script>
+<script src="js/game.js?v=5"></script>
 <script src="js/ksh.js?v=3"></script>
 <!-- Laser interpolation context menu -->
 <div id="laser-interp-menu" style="display:none;position:fixed;z-index:3000">
@@ -1229,7 +1241,8 @@
 <script src="js/kson.js"></script>
 <script src="js/calibration.js"></script>
 <script src="js/i18n.js"></script>
-<script src="js/app.js?v=11"></script>
+<script src="js/gl-lane.js?v=3"></script>
+<script src="js/app.js?v=12"></script>
 <script src="js/dock.js?v=5"></script>
 <script src="js/tools.js?v=4"></script>
 <script src="js/radar.js?v=1"></script>
