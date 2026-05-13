@@ -623,13 +623,34 @@ function detectFxHits(prevTick, curTick) {
   for (let li = 0; li < 2; li++) {
     for (const n of chart.fx[li]) {
       if (n.len === 0 && n.y >= prevTick && n.y < curTick) {
-        // Prefer per-chart SE buffer (loaded from fx-l_se / fx-r_se), then fallback
+        // Chip hit: play SE sound
         const buf = fxChipSEBuffers[li] || clapBuffer;
         if (!buf) continue;
         const src = audioCtx.createBufferSource();
         src.buffer = buf;
         src.connect(tickGainNode || audioCtx.destination);
         src.start();
+      }
+      // FX hold: play metronome tick on HOLD_SAMPLE intervals while holding
+      else if (n.len > 0 && n.y <= curTick && n.y + n.len >= prevTick) {
+        const HOLD_SAMPLE = TICKS_PER_BEAT / 8;  // 48/8 = 6 ticks
+        // Find all HOLD_SAMPLE grid points between prevTick..curTick
+        const firstSample = Math.ceil(Math.max(n.y, prevTick) / HOLD_SAMPLE) * HOLD_SAMPLE;
+        const lastSample  = Math.floor(Math.min(n.y + n.len, curTick) / HOLD_SAMPLE) * HOLD_SAMPLE;
+        for (let t = firstSample; t <= lastSample; t += HOLD_SAMPLE) {
+          if (t >= prevTick && t < curTick && t > n.y && t < n.y + n.len) {
+            // Play a quiet metronome tick on FX holds
+            if (audioCtx && tickBuffer) {
+              const src = audioCtx.createBufferSource();
+              src.buffer = tickBuffer;
+              const g = audioCtx.createGain();
+              g.gain.value = 0.4;  // quieter than regular ticks
+              src.connect(g);
+              g.connect(tickGainNode || audioCtx.destination);
+              src.start();
+            }
+          }
+        }
       }
     }
   }
@@ -5480,18 +5501,19 @@ async function _idbAutosave() {
     return;
   }
   try {
-    // Yield to the browser first so the main thread isn't blocked during frame rendering.
-    // exportKsh is synchronous and can take 10-30ms on large charts.
-    const ksh = await new Promise(resolve => {
+    // Use KSON for autosave to preserve all time signatures and measures.
+    // KSON is spec-compliant and round-trips perfectly.
+    const kson = await new Promise(resolve => {
       if (typeof requestIdleCallback !== 'undefined') {
-        requestIdleCallback(() => resolve(exportKsh(chart)), { timeout: 3000 });
+        requestIdleCallback(() => resolve(exportKson(chart)), { timeout: 3000 });
       } else {
-        setTimeout(() => resolve(exportKsh(chart)), 0);
+        setTimeout(() => resolve(exportKson(chart)), 0);
       }
     });
     const db   = await _openIDB();
     const data = {
-      ksh,
+      kson,
+      format: 'kson',  // marker so restore knows which importer to use
       title:      chart.meta.title || 'Untitled',
       audioName:  chart.meta.music || null,
       ts:         Date.now(),
@@ -5536,7 +5558,10 @@ async function recoverAutosave() {
   const when = ago < 1 ? 'just now' : `${ago} minute${ago === 1 ? '' : 's'} ago`;
   if (!confirm(`Restore autosave of "${data.title}"\nSaved: ${when}\n\nThis will replace the current chart. Continue?`)) return;
   try {
-    chart = importKsh(data.ksh);
+    // KSON (new format, preserves all TS/measures) or KSH (legacy fallback)
+    const format = data.format === 'kson' ? 'kson' : (data.kson ? 'kson' : 'ksh');
+    const text = format === 'kson' ? data.kson : data.ksh;
+    chart = format === 'kson' ? importKson(text) : importKsh(text);
     tabs[activeTabIdx].chart = chart;
     if (renderer) renderer.chart = chart;
     if (gameView) gameView.chart = chart;

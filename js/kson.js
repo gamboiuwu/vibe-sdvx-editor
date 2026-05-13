@@ -114,7 +114,7 @@ function exportKson(chart) {
     beat: {
       bpm:          chart.bpmEvents.map(ev => [Math.round(ev.y * KSH_TO_KSON), ev.bpm]),
       time_sig:     chart.timeSigEvents.map(ev => [ev.measure, [ev.num, ev.den]]),
-      scroll_speed: [[0, 1.0]],
+      scroll_speed: (chart.scrollSpeedEvents || []).map(ev => [Math.round(ev.y * KSH_TO_KSON), ev.speed]),
     },
     note: {
       bt: chart.bt.map(lane =>
@@ -223,6 +223,18 @@ function importKson(text) {
         den: Array.isArray(v) ? v[1] : v.den,
       };
     });
+  }
+  // Chart Velocity (scroll_speed): visual speed multiplier events
+  if (Array.isArray(beat.scroll_speed) && beat.scroll_speed.length) {
+    chart.scrollSpeedEvents = beat.scroll_speed.map(e => {
+      const p = readByPulse(e);
+      return { y: Math.round(p.y / KSH_TO_KSON), speed: Number(p.v) || 1.0 };
+    });
+    // Ensure anchor at y=0
+    if (!chart.scrollSpeedEvents.some(ev => ev.y === 0)) {
+      chart.scrollSpeedEvents.unshift({ y: 0, speed: 1.0 });
+      chart.scrollSpeedEvents.sort((a, b) => a.y - b.y);
+    }
   }
 
   // ── Notes: BT / FX ──────────────────────────────────────────────────────
