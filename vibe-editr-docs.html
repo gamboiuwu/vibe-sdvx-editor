@@ -111,6 +111,45 @@
     font-size: 13px;
     color: #5a3a00;
   }
+  .update-entry {
+    border-left: 3px solid #00cfff;
+    padding: 10px 14px;
+    margin-bottom: 14px;
+    background: #f6fbff;
+    border-radius: 0 6px 6px 0;
+  }
+  .update-entry h4 {
+    font-size: 14px;
+    color: #0d0d22;
+    margin-bottom: 4px;
+    font-weight: 700;
+  }
+  .update-entry .ver-tag {
+    display: inline-block;
+    font-family: monospace;
+    font-size: 11px;
+    background: #00a0cc;
+    color: #fff;
+    border-radius: 3px;
+    padding: 1px 6px;
+    margin-right: 8px;
+    vertical-align: middle;
+  }
+  .update-entry ul { margin: 6px 0 0 0; padding-left: 22px; }
+  .update-entry li { font-size: 13px; margin-bottom: 3px; }
+  .update-entry .tag {
+    display: inline-block;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    margin-right: 4px;
+    font-weight: 700;
+  }
+  .tag.add { background: #d8f5d0; color: #1f5a1f; }
+  .tag.fix { background: #ffe0d8; color: #7a2a10; }
+  .tag.chg { background: #e0e4ff; color: #20308a; }
   .color-chip {
     display: inline-block;
     width: 14px; height: 14px;
@@ -143,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v1.0 · 2025</span>
+  <span class="version">v1.4 · 2025</span>
 </div>
 
 <div class="toc">
@@ -162,6 +201,7 @@
     <li><a href="#preferences">Preferences</a></li>
     <li><a href="#export">Exporting</a></li>
     <li><a href="#shortcuts">Full Keyboard Shortcut List</a></li>
+    <li><a href="#updates">Updates</a></li>
   </ol>
 </div>
 
@@ -391,6 +431,68 @@
   <tr><td><kbd>Middle-mouse drag</kbd></td><td>Select tick region</td></tr>
   <tr><td><kbd>Middle-mouse click</kbd></td><td>Move playhead to click position</td></tr>
 </table>
+</section>
+
+<!-- ── 14. Updates ── -->
+<section id="updates">
+<h2>14. Updates</h2>
+<p>Running history of user-visible changes, listed newest first. Each entry links to one or more commits on the development branch.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v1.4</span>Multi-chart preview &amp; laser pen tool</h4>
+  <ul>
+    <li><span class="tag add">add</span>Multi-chart preview mode — up to four charts share a synchronized playhead in Split View.</li>
+    <li><span class="tag add">add</span>Laser Pen Tool with Bézier anchor points and handles, modeled on Photoshop pen behavior.</li>
+    <li><span class="tag add">add</span>Linear pattern radar in the Song Data panel.</li>
+    <li><span class="tag fix">fix</span>Bézier curve drift between editor canvas and 3D preview — both now sample the same spline.</li>
+    <li><span class="tag add">add</span><kbd>Shift</kbd>-drag on a laser anchor for fine sub-tick adjustment.</li>
+    <li><span class="tag fix">fix</span>Multi-chart preview playback freeze, mirror direction, canvas sizing, and per-chart laser bleed.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v1.3</span>Selection &amp; seekbar refinements</h4>
+  <ul>
+    <li><span class="tag fix">fix</span>Stop events no longer cause the chart to scroll backward during playback.</li>
+    <li><span class="tag add">add</span><kbd>Ctrl+D</kbd> / <kbd>Cmd+D</kbd> deselects the current selection.</li>
+    <li><span class="tag fix">fix</span>Middle-mouse double-click no longer opens the selection-range popup unintentionally.</li>
+    <li><span class="tag add">add</span>Double-click the seekbar to open a numeric selection-range editor popup.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v1.2</span>Song Data window, sorting &amp; S-Ran</h4>
+  <ul>
+    <li><span class="tag fix">fix</span>Audio/video delay now persists across restarts.</li>
+    <li><span class="tag add">add</span>Song Data window with full metadata view.</li>
+    <li><span class="tag add">add</span>Folder sort options for the Open Folder browser.</li>
+    <li><span class="tag add">add</span>Unicode support in titles, artists, and tags.</li>
+    <li><span class="tag add">add</span>S-Ran (All / BT / FX / VOL) under the Edit → Modify menu.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v1.1</span>Visual calibration mode</h4>
+  <ul>
+    <li><span class="tag add">add</span>Visual calibration: tapping <kbd>Space</kbd> measures audio delay and applies the correction automatically.</li>
+    <li><span class="tag chg">chg</span>Calibration <kbd>Space</kbd> no longer restarts audio; BPM only commits on blur to prevent mid-edit jitter.</li>
+    <li><span class="tag chg">chg</span>Metronome now plays real <code>metro_A</code> / <code>metro_B</code> samples instead of a synthetic oscillator.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v1.0</span>Initial release</h4>
+  <ul>
+    <li><span class="tag add">add</span>KSON-first editor with KSH import/export.</li>
+    <li><span class="tag add">add</span>Edit, Split, and Game Preview view modes.</li>
+    <li><span class="tag add">add</span>BT / FX notes and VOL lasers with full undo history.</li>
+    <li><span class="tag add">add</span>Per-tab audio loading and real-time playback with FX chain (Retrigger, Gate, Flanger, PitchShift, BitCrusher, Phaser, Wobble, TapeStop, Echo, SideChain).</li>
+  </ul>
+</div>
+
+<div class="note-box">
+  Looking for things still on the roadmap (BPM detection inside calibration mode, strict 2D orthographic preview, professional pen-tool parity for lasers)? See <code>Upcoming Changes.rtf</code> in the project root.
+</div>
 </section>
 
 <footer>
