@@ -2888,6 +2888,47 @@ function selCut() {
   sel.active = false; render();
 }
 
+// Like selCut() but doesn't touch the clipboard. Bound to plain Backspace
+// while a selection is active. Leaves the surrounding chart unshifted (no
+// ripple); use Shift+Backspace / Shift+Delete for ripple-delete.
+function selDeleteContents() {
+  if (!sel.active) return;
+  const [lo, hi] = selTickRange();
+  saveUndo('Deleted Selection');
+  for (let li = 0; li < 4; li++) chart.bt[li] = chart.bt[li].filter(n => !(n.y >= lo && n.y <= hi));
+  for (let li = 0; li < 2; li++) chart.fx[li] = chart.fx[li].filter(n => !(n.y >= lo && n.y <= hi));
+  for (let s  = 0; s  < 2; s++)  chart.lasers[s] = chart.lasers[s].filter(sec => !(sec.y >= lo && sec.y <= hi));
+  render();
+}
+
+// Cmd+T "Free Transform" for a selection: prompt for a stretch factor, then
+// scale every note/laser inside the range around the selection's start. The
+// selection range itself is rescaled too so subsequent edits keep working
+// on the same notes.
+function selTransform() {
+  if (!sel.active) return;
+  const [lo, hi] = selTickRange();
+  const oldDur = hi - lo;
+  if (oldDur <= 0) return;
+  const raw = prompt(
+    `Transform selection (× factor)\n\n` +
+    `  >1  stretches the region (slows it down)\n` +
+    `  <1  pulls it inward (speeds it up)\n\n` +
+    `Current duration: ${oldDur} ticks`,
+    '1.0'
+  );
+  if (raw === null) return;
+  const factor = Number(raw);
+  if (!Number.isFinite(factor) || factor <= 0) {
+    alert('Invalid factor: must be a positive number.');
+    return;
+  }
+  selAdjustSpeed(factor);
+  // Extend the selection range to cover the new stretched region.
+  sel.endTick = lo + Math.round(oldDur * factor);
+  updateSelStatus?.();
+}
+
 function selPaste() {
   if (!sel.clipboard) return;
   saveUndo('Pasted Notes');
@@ -3294,6 +3335,29 @@ function checkLaserOverlap() {
 
 // ── Context menu ──────────────────────────────────────────────────────────────
 let ctxMenuEl = null;
+// Tick of the click that most recently opened the context menu. Used so
+// "Add BPM Change…" / "Add Time Sig…" can pre-fill the modal with the
+// measure + beat under the right-click instead of defaulting to 1:1.
+let _ctxMenuTick = 0;
+
+function openBpmModalAtCtx() {
+  const m = Math.floor(_ctxMenuTick / TICKS_PER_MEASURE) + 1;
+  const b = Math.floor((_ctxMenuTick % TICKS_PER_MEASURE) / TICKS_PER_BEAT) + 1;
+  const elM = document.getElementById('bpm-ev-measure');
+  const elB = document.getElementById('bpm-ev-beat');
+  const elV = document.getElementById('bpm-ev-value');
+  if (elM) elM.value = m;
+  if (elB) elB.value = b;
+  if (elV && chart?.getBpmAt) elV.value = Number(chart.getBpmAt(_ctxMenuTick).toFixed(2));
+  document.getElementById('modal-bpm').style.display = 'flex';
+}
+
+function openTimesigModalAtCtx() {
+  const m = Math.floor(_ctxMenuTick / TICKS_PER_MEASURE) + 1;
+  const elM = document.getElementById('ts-ev-measure');
+  if (elM) elM.value = m;
+  document.getElementById('modal-timesig').style.display = 'flex';
+}
 
 function ensureCtxMenu() {
   if (ctxMenuEl) return;
@@ -3304,6 +3368,9 @@ function ensureCtxMenu() {
     <div class="ctx-item" data-act="cut">Cut</div>
     <div class="ctx-item" data-act="copy">Copy</div>
     <div class="ctx-item" data-act="paste">Paste</div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-item" data-act="add-bpm">Add BPM Change…</div>
+    <div class="ctx-item" data-act="add-timesig">Add Time Sig…</div>
     <div class="ctx-sep"></div>
     <div class="ctx-item ctx-has-sub">Modify Style
       <div class="ctx-sub">
@@ -3321,6 +3388,7 @@ function ensureCtxMenu() {
       <div class="ctx-sub">
         <div class="ctx-item" data-act="speed-half">Speed ½× (slower)</div>
         <div class="ctx-item" data-act="speed-double">Speed 2× (faster)</div>
+        <div class="ctx-item" data-act="transform">Free Transform…  Ctrl+T</div>
       </div>
     </div>
     <div class="ctx-sep"></div>
@@ -3351,6 +3419,9 @@ function ensureCtxMenu() {
     if (act === 'cut')          selCut();
     else if (act === 'copy')    selCopy();
     else if (act === 'paste')   selPaste();
+    else if (act === 'add-bpm')      openBpmModalAtCtx();
+    else if (act === 'add-timesig')  openTimesigModalAtCtx();
+    else if (act === 'transform')    selTransform();
     else if (act === 'mirror-all') selMirror('all');
     else if (act === 'mirror-fx')  selMirror('fx');
     else if (act === 'mirror-bt')  selMirror('bt');
@@ -4019,17 +4090,12 @@ function updateSelStatus() {
 
 function onRightClick(e) {
   e.preventDefault();
-  if (e.ctrlKey || e.metaKey) {
-    showCtxMenu(e.clientX, e.clientY);
-    return;
-  }
 
-  // Right-click on laser anchor dot → show interpolation menu (laser tools)
+  // Right-click on a laser anchor dot → interp menu (laser tools).
   if (tool === 'laser-l' || tool === 'laser-r') {
     const side = tool === 'laser-l' ? 0 : 1;
     const hit  = renderer?.getLaserPointAt(e.offsetX, e.offsetY, side);
     if (hit) {
-      // Select the dot first
       _laserSel = { side: hit.side, sec: hit.sec, ptIndex: hit.ptIndex };
       if (renderer) {
         renderer.selectedLaserPoint = _laserSel;
@@ -4041,17 +4107,13 @@ function onRightClick(e) {
     }
   }
 
-  // Default: delete note at cursor
+  // Any other right-click opens the context menu. The clicked tick is
+  // saved so menu items like "Add BPM Change…" can pre-fill the modal
+  // with the right measure + beat. To erase a specific note, use the
+  // Erase tool (E) instead.
   const h = getHit(e);
-  if (h.laneIdx < 0) return;
-  saveUndo(`Deleted at M${Math.floor(h.tick / TICKS_PER_MEASURE) + 1}`);
-  eraseAt(h.laneIdx, h.tick);
-  // Clear selection if we erased a laser
-  if (h.laneIdx === 4 || h.laneIdx === 5) {
-    _laserSel = null;
-    if (renderer) renderer.selectedLaserPoint = null;
-  }
-  render();
+  _ctxMenuTick = Math.max(0, Math.round(h.tick));
+  showCtxMenu(e.clientX, e.clientY);
 }
 
 function eraseAt(laneIdx, tick) {
@@ -4236,8 +4298,14 @@ function onKeyDown(e) {
       break;
 
     case 't': case 'T':
-      // Ctrl+T → open a new blank chart in a new tab.
-      if (ctrl) { e.preventDefault(); addTab(); }
+      // Cmd/Ctrl+T behaves like Photoshop's Free Transform when a selection
+      // is active — stretches/pulls the region. Otherwise creates a new
+      // blank chart in a new tab.
+      if (ctrl) {
+        e.preventDefault();
+        if (sel.active) selTransform();
+        else addTab();
+      }
       break;
 
     case 'c': case 'C':
@@ -4301,10 +4369,13 @@ function onKeyDown(e) {
       if (ctrl) { e.preventDefault(); adjustZoom(-15); } break;
 
     case 'Delete': case 'Backspace':
-      if (e.shiftKey && sel.active) {
-        e.preventDefault();
-        selRippleDelete();
-      }
+      if (!sel.active) break;
+      e.preventDefault();
+      // Shift = ripple delete (close the gap by shifting downstream content).
+      // No shift = delete in place — leaves everything outside the range
+      // untouched.
+      if (e.shiftKey) selRippleDelete();
+      else            selDeleteContents();
       break;
 
     case 'G':
