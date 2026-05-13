@@ -2036,6 +2036,8 @@ window.addEventListener('DOMContentLoaded', () => {
 
   // Export
   document.getElementById('btn-export-ksh').addEventListener('click', () => {
+    const title = chart.meta.title || 'Untitled Chart';
+    if (!confirm(`Export "${title}" as KSH?`)) return;
     try {
       showExportProgress('Exporting KSH…');
       updateExportProgress(10, 'Preparing chart data…');
@@ -2058,6 +2060,8 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   });
   document.getElementById('btn-export-kson').addEventListener('click', () => {
+    const title = chart.meta.title || 'Untitled Chart';
+    if (!confirm(`Export "${title}" as KSON?`)) return;
     try {
       showExportProgress('Exporting KSON…');
       updateExportProgress(10, 'Preparing chart data…');
