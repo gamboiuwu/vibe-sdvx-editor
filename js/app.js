@@ -4594,6 +4594,9 @@ function onKeyDown(e) {
 }
 
 let _snapDisplayTimeout = null;
+let _lastMouseX = window.innerWidth / 2;
+let _lastMouseY = window.innerHeight / 2;
+document.addEventListener('mousemove', e => { _lastMouseX = e.clientX; _lastMouseY = e.clientY; }, { passive: true });
 
 function showSnapDisplay(oldSnap, newSnap, direction) {
   const display = document.getElementById('snap-display');
@@ -4656,9 +4659,9 @@ function showSnapDisplay(oldSnap, newSnap, direction) {
     next.style.opacity = '1';
   }
 
-  // Position next to cursor
-  display.style.left = (event?.clientX ?? window.innerWidth / 2) + 16 + 'px';
-  display.style.top = (event?.clientY ?? window.innerHeight / 2) - 12 + 'px';
+  // Position next to cursor using last known mouse position
+  display.style.left = (_lastMouseX + 16) + 'px';
+  display.style.top  = (_lastMouseY - 12) + 'px';
   display.style.display = 'block';
 
   // Clear existing timeout
@@ -6766,8 +6769,23 @@ const DisclaimerGate = (function() {
 // ──────────────────────────────────────────────────────────────────────────────
 // v1.4.1: app version, changelog data, "What's New" modal
 // ──────────────────────────────────────────────────────────────────────────────
-const APP_VERSION = '1.4.1';
+const APP_VERSION = '1.5';
 const CHANGELOG = [
+  {
+    version: '1.5',
+    title: 'Chart Velocity, KSON autosave &amp; export pipeline',
+    entries: [
+      ['add', 'Chart Velocity event management — create, edit, and delete velocity events from the right-click menu or <strong>Chart → Chart Velocity…</strong>. KSON-only.'],
+      ['add', 'Export progress bar with debug terminal — shows decoding / encoding / finalizing stages during KSH and KSON export.'],
+      ['chg', 'Autosave now writes <code>.kson</code> instead of <code>.ksh</code>, preserving the full KSON data model.'],
+      ['add', 'Confirmation prompts on KSH and KSON export to prevent accidental overwrites.'],
+      ['add', 'Animated snap indicator — pressing <kbd>[</kbd> or <kbd>]</kbd> briefly shows the new snap value next to the cursor.'],
+      ['fix', 'FX hold tick now fires once on press instead of repeating through the hold duration.'],
+      ['fix', 'Horizontal lasers are now auto-marked as slams on import and during editing.'],
+      ['fix', 'Time signature display no longer de-syncs after mirroring a selection.'],
+      ['fix', 'Zoom level and editor UI layout are now persisted across page reloads.'],
+    ],
+  },
   {
     version: '1.4.1',
     title: 'Statistics, bookmarks &amp; update notifications',
