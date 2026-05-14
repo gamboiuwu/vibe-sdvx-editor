@@ -254,7 +254,7 @@ function switchToTab(idx) {
     renderer.scrollCol = 0;
     renderer.playTick  = 0;
   }
-  if (gameView) gameView.chart = chart;
+  if (gameView) { gameView.chart = chart; gameView._totalWeight = 0; }
   pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList(); updateStopEventList(); updateScrollSpeedEventList();
   renderFxChain(0); renderFxChain(1);
   renderTabBar();
@@ -284,7 +284,7 @@ function closeTab(idx) {
   chart = tabs[activeTabIdx].chart;
   audioBuffer = tabs[activeTabIdx].audioBuffer || null;
   if (renderer) { renderer.chart = chart; renderer.scrollCol = 0; renderer.playTick = 0; }
-  if (gameView) gameView.chart = chart;
+  if (gameView) { gameView.chart = chart; gameView._totalWeight = 0; }
   pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList(); updateStopEventList(); updateScrollSpeedEventList();
   renderFxChain(0); renderFxChain(1);
   renderTabBar();
@@ -2190,7 +2190,7 @@ window.addEventListener('DOMContentLoaded', () => {
           switchToTab(startIdx);
           chart = tabs[startIdx].chart;
           renderer.chart = chart; renderer.scrollCol = 0; renderer.playTick = 0;
-          if (gameView) { gameView.chart = chart; gameView._liveCamera = null; }
+          if (gameView) { gameView.chart = chart; gameView._liveCamera = null; gameView._totalWeight = 0; }
           fxChipSEBuffers = [null, null];
           pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList(); updateStopEventList(); updateScrollSpeedEventList();
           renderFxChain(0); renderFxChain(1);
@@ -2218,7 +2218,7 @@ window.addEventListener('DOMContentLoaded', () => {
         renderer.chart = chart;
         renderer.scrollCol = 0;
         renderer.playTick  = 0;
-        if (gameView) { gameView.chart = chart; gameView._liveCamera = null; }
+        if (gameView) { gameView.chart = chart; gameView._liveCamera = null; gameView._totalWeight = 0; }
         // Reset per-chart SE buffers (no folder context for single file)
         fxChipSEBuffers = [null, null];
         pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList(); updateStopEventList(); updateScrollSpeedEventList();
@@ -2246,7 +2246,7 @@ window.addEventListener('DOMContentLoaded', () => {
     tabs[activeTabIdx].chart = chart;
     renderer.chart = chart;
     renderer.scrollCol = 0; renderer.playTick = 0;
-    if (gameView) gameView.chart = chart;
+    if (gameView) { gameView.chart = chart; gameView._totalWeight = 0; }
     pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList(); updateStopEventList(); updateScrollSpeedEventList();
     renderFxChain(0); renderFxChain(1); render();
     updateSeekbar(0);
@@ -2448,7 +2448,7 @@ window.addEventListener('DOMContentLoaded', () => {
       }
       renderer.chart = chart;
       renderer.scrollCol = 0; renderer.playTick = 0;
-      if (gameView) gameView.chart = chart;
+      if (gameView) { gameView.chart = chart; gameView._totalWeight = 0; }
       pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList(); updateStopEventList(); updateScrollSpeedEventList();
       renderFxChain(0); renderFxChain(1);
       renderTabBar();
@@ -2987,37 +2987,31 @@ function _doShowFxTooltip(clientX, clientY, note, lane) {
   _fxPinned = true;
   _fxHoverNote = null;
 
-  const chain     = chart?.fxChains?.[lane] ?? [];
+  const current   = note.effect || 'retrigger';
   const laneName  = lane === 0 ? 'FX-L' : 'FX-R';
-  const curType   = chain.length > 0 ? chain[0].type : 'retrigger';
 
   const typeOpts = Object.entries(EFFECT_DEFS).map(([k, d]) =>
-    `<option value="${k}"${k === curType ? ' selected' : ''}>${d.label}</option>`
+    `<option value="${k}"${k === current ? ' selected' : ''}>${d.label}</option>`
   ).join('');
 
   let paramHtml = '';
-  if (chain.length > 0) {
-    const inst = chain[0];
-    const def  = EFFECT_DEFS[inst.type];
-    if (def) {
-      for (const [k, p] of Object.entries(def.params)) {
-        const val = inst.params[k] ?? p.def;
-        paramHtml += `
-          <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px">
-            <span style="min-width:68px;font-size:10px;color:#aaa">${p.label}</span>
-            <input type="range" class="fx-tt-sl" data-key="${k}"
-              min="${p.min}" max="${p.max}" step="${p.step}" value="${val}"
-              style="flex:1;accent-color:#ff8800;height:14px">
-            <input type="number" class="fx-tt-num" data-key="${k}"
-              min="${p.min}" max="${p.max}" step="${p.step}" value="${val}"
-              style="width:46px;background:#111;border:1px solid #333;border-radius:3px;color:#ddd;padding:1px 3px;font-size:10px">
-            <span style="min-width:20px;font-size:9px;color:#666">${p.unit || ''}</span>
-          </div>`;
+  const def = EFFECT_DEFS[current];
+  if (def) {
+    for (const [k, p] of Object.entries(def.params)) {
+      // Note: don't read params from note.effect (string), just show sliders with defaults
+      const val = p.def;
+      paramHtml += `
+        <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px">
+          <span style="min-width:68px;font-size:10px;color:#aaa">${p.label}</span>
+          <input type="range" class="fx-tt-sl" data-key="${k}"
+            min="${p.min}" max="${p.max}" step="${p.step}" value="${val}"
+            style="flex:1;accent-color:#ff8800;height:14px">
+          <input type="number" class="fx-tt-num" data-key="${k}"
+            min="${p.min}" max="${p.max}" step="${p.step}" value="${val}"
+            style="width:46px;background:#111;border:1px solid #333;border-radius:3px;color:#ddd;padding:1px 3px;font-size:10px">
+          <span style="min-width:20px;font-size:9px;color:#666">${p.unit || ''}</span>
+        </div>`;
       }
-    }
-  } else {
-    paramHtml = `<div style="color:#666;font-size:10px;margin:4px 0">No effect. Select type above, then click Add.</div>
-      <button class="fx-tt-add" style="background:#1a2a1a;border:1px solid #448844;border-radius:3px;color:#88cc88;padding:2px 8px;font-size:10px;cursor:pointer">Add Effect</button>`;
   }
 
   fxTooltipEl.innerHTML = `
@@ -3031,61 +3025,22 @@ function _doShowFxTooltip(clientX, clientY, note, lane) {
         ${typeOpts}
       </select>
     </div>
+    <div style="color:#666;font-size:9px;margin-bottom:4px;padding:0 2px">(per-note type only; lane effects set in panel)</div>
     ${paramHtml}
   `;
 
-  // Type selector: change type or create a new instance
+  // Type selector: change per-note effect type (note.effect)
   fxTooltipEl.querySelector('.fx-tt-type-sel')?.addEventListener('change', ev => {
-    const newType = ev.target.value;
-    if (!chart.fxChains[lane]) chart.fxChains[lane] = [];
-    const newInst = makeEffectInstance(newType);
-    if (chart.fxChains[lane].length > 0) {
-      chart.fxChains[lane][0] = newInst;
-    } else {
-      chart.fxChains[lane].push(newInst);
-    }
-    renderFxChain(lane);
-    _doShowFxTooltip(clientX, clientY, note, lane);
+    if (fxTooltipNote) fxTooltipNote.effect = ev.target.value || 'retrigger';
+    render();
   });
 
-  // Add button for empty chain
-  fxTooltipEl.querySelector('.fx-tt-add')?.addEventListener('click', () => {
-    const sel = fxTooltipEl.querySelector('.fx-tt-type-sel');
-    if (!chart.fxChains[lane]) chart.fxChains[lane] = [];
-    const newInst = makeEffectInstance(sel?.value || 'retrigger');
-    chart.fxChains[lane].push(newInst);
-    renderFxChain(lane);
-    _doShowFxTooltip(clientX, clientY, note, lane);
-  });
-
-  // Parameter sliders
+  // Parameter sliders just for display (note.effect doesn't store params)
   fxTooltipEl.querySelectorAll('.fx-tt-sl').forEach(sl => {
-    sl.addEventListener('input', () => {
-      const inst = chart.fxChains[lane]?.[0];
-      if (!inst) return;
-      const p = EFFECT_DEFS[inst.type]?.params?.[sl.dataset.key];
-      if (!p) return;
-      const v = Math.max(p.min, Math.min(p.max, parseFloat(sl.value)));
-      inst.params[sl.dataset.key] = v;
-      const num = fxTooltipEl.querySelector(`.fx-tt-num[data-key="${sl.dataset.key}"]`);
-      if (num && num !== document.activeElement) num.value = v;
-      renderFxChain(lane);
-    });
+    sl.addEventListener('input', () => { /* no-op: note.effect is string-only */ });
   });
-
-  // Parameter number inputs
   fxTooltipEl.querySelectorAll('.fx-tt-num').forEach(ni => {
-    ni.addEventListener('input', () => {
-      const inst = chart.fxChains[lane]?.[0];
-      if (!inst) return;
-      const p = EFFECT_DEFS[inst.type]?.params?.[ni.dataset.key];
-      if (!p) return;
-      const v = Math.max(p.min, Math.min(p.max, parseFloat(ni.value) || p.def));
-      inst.params[ni.dataset.key] = v;
-      const sl = fxTooltipEl.querySelector(`.fx-tt-sl[data-key="${ni.dataset.key}"]`);
-      if (sl && sl !== document.activeElement) sl.value = v;
-      renderFxChain(lane);
-    });
+    ni.addEventListener('input', () => { /* no-op: note.effect is string-only */ });
   });
 
   fxTooltipEl.querySelector('.fx-tt-close')?.addEventListener('click', () => {
@@ -6134,7 +6089,7 @@ async function recoverAutosave() {
     chart = format === 'kson' ? importKson(text) : importKsh(text);
     tabs[activeTabIdx].chart = chart;
     if (renderer) renderer.chart = chart;
-    if (gameView) gameView.chart = chart;
+    if (gameView) { gameView.chart = chart; gameView._totalWeight = 0; }
     pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList(); updateStopEventList(); updateScrollSpeedEventList();
     renderFxChain(0); renderFxChain(1); render();
     saveUndo('Restored Autosave');
