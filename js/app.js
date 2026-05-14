@@ -4600,78 +4600,52 @@ document.addEventListener('mousemove', e => { _lastMouseX = e.clientX; _lastMous
 
 function showSnapDisplay(oldSnap, newSnap, direction) {
   const display = document.getElementById('snap-display');
-  const curr = document.getElementById('snap-display-curr');
-  const prev = document.getElementById('snap-display-prev');
-  const next = document.getElementById('snap-display-next');
-  const text = document.getElementById('snap-display-text');
-
+  const curr    = document.getElementById('snap-display-curr');
+  const prev    = document.getElementById('snap-display-prev');
+  const next    = document.getElementById('snap-display-next');
   if (!display || !curr || !prev || !next) return;
 
   const oldLabel = SNAP_LABELS[oldSnap];
   const newLabel = SNAP_LABELS[newSnap];
+  const EASE = 'cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+  const T = '0.22s';
+  const ANIM = `top ${T} ${EASE}, opacity ${T} ${EASE}`;
+
+  // Disable transitions on all children so initial positions apply instantly
+  [prev, curr, next].forEach(el => { el.style.transition = 'none'; });
 
   if (direction === 'up') {
-    // Snap gets tighter, new text slides down from above
-    prev.textContent = newLabel;
-    curr.textContent = oldLabel;
-    next.textContent = newLabel;
-
-    prev.style.top = '-24px';
-    curr.style.top = '0px';
-    next.style.top = '24px';
-
-    prev.style.opacity = '0';
-    curr.style.opacity = '1';
-    next.style.opacity = '0';
+    // [ key: finer snap (1/4 → 1/8). Old exits up, new enters from below.
+    curr.textContent = oldLabel; curr.style.top = '0px';   curr.style.opacity = '1';
+    next.textContent = newLabel; next.style.top = '24px';  next.style.opacity = '0';
   } else {
-    // Snap gets looser, new text slides up from below
-    prev.textContent = newLabel;
-    curr.textContent = oldLabel;
-    next.textContent = newLabel;
-
-    prev.style.top = '-24px';
-    curr.style.top = '0px';
-    next.style.top = '24px';
-
-    prev.style.opacity = '0';
-    curr.style.opacity = '1';
-    next.style.opacity = '0';
+    // ] key: coarser snap (1/8 → 1/4). Old exits down, new enters from above.
+    curr.textContent = oldLabel; curr.style.top = '0px';   curr.style.opacity = '1';
+    prev.textContent = newLabel; prev.style.top = '-24px'; prev.style.opacity = '0';
   }
 
-  // Remove transition briefly to set initial state
-  text.style.transition = 'none';
-  text.offsetHeight; // Trigger reflow
+  // Force reflow so initial positions are committed before transitions start
+  display.offsetHeight;
 
-  // Apply transition and animate
-  text.style.transition = 'all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
-
+  // Enable transitions on the relevant children and animate to final state
   if (direction === 'up') {
-    // Old text moves down, new text comes from above
-    curr.style.top = '24px';
-    curr.style.opacity = '0';
-    prev.style.top = '0px';
-    prev.style.opacity = '1';
+    curr.style.transition = ANIM; curr.style.top = '-24px'; curr.style.opacity = '0';
+    next.style.transition = ANIM; next.style.top = '0px';   next.style.opacity = '1';
   } else {
-    // Old text moves up, new text comes from below
-    curr.style.top = '-24px';
-    curr.style.opacity = '0';
-    next.style.top = '0px';
-    next.style.opacity = '1';
+    curr.style.transition = ANIM; curr.style.top = '24px'; curr.style.opacity = '0';
+    prev.style.transition = ANIM; prev.style.top = '0px';  prev.style.opacity = '1';
   }
 
-  // Position next to cursor using last known mouse position
+  // Position next to cursor
   display.style.left = (_lastMouseX + 16) + 'px';
   display.style.top  = (_lastMouseY - 12) + 'px';
   display.style.display = 'block';
 
-  // Clear existing timeout
   if (_snapDisplayTimeout) clearTimeout(_snapDisplayTimeout);
-
-  // Hide after animation completes
   _snapDisplayTimeout = setTimeout(() => {
     display.style.display = 'none';
-    text.style.transition = 'none';
-  }, 400);
+    [prev, curr, next].forEach(el => { el.style.transition = 'none'; });
+  }, 500);
 }
 
 function openGotoBeatModal() {
