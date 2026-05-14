@@ -439,6 +439,22 @@
 <p>Running history of user-visible changes, listed newest first. Each entry links to one or more commits on the development branch.</p>
 
 <div class="update-entry">
+  <h4><span class="ver-tag">v1.5</span>Chart Velocity, KSON autosave &amp; export pipeline</h4>
+  <ul>
+    <li><span class="tag add">add</span>Chart Velocity event management — create, edit, and delete velocity change events directly from the right-click context menu or <strong>Chart → Chart Velocity…</strong>. KSON-only feature.</li>
+    <li><span class="tag add">add</span>Export progress bar with a debug terminal — a modal now shows decoding / encoding / finalizing stages during KSH and KSON export so long exports are clearly visible rather than appearing frozen.</li>
+    <li><span class="tag chg">chg</span>Autosave now writes <code>.kson</code> instead of <code>.ksh</code>, preserving the full KSON data model between sessions.</li>
+    <li><span class="tag add">add</span>Confirmation prompts on KSH and KSON export to prevent accidental overwrites.</li>
+    <li><span class="tag add">add</span>Animated snap indicator — pressing <kbd>[</kbd> or <kbd>]</kbd> briefly shows the new snap value on-canvas.</li>
+    <li><span class="tag fix">fix</span>FX hold tick now fires once on press instead of repeating continuously through the hold duration.</li>
+    <li><span class="tag fix">fix</span>Horizontal lasers are now auto-marked as slams on import and during editing.</li>
+    <li><span class="tag fix">fix</span>Time signature display no longer de-syncs after a mirroring operation on the selection.</li>
+    <li><span class="tag fix">fix</span>Zoom level and editor UI layout are now persisted across page reloads.</li>
+    <li><span class="tag fix">fix</span>Export progress modal no longer flashes visible on startup before any export is triggered.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
   <h4><span class="ver-tag">v1.4.1</span>Statistics, bookmarks &amp; update notifications</h4>
   <ul>
     <li><span class="tag add">add</span>Chart Statistics panel — full note breakdown, peak/average density per measure, laser segment and slam counts, total duration. Open via <strong>Window → Chart Statistics…</strong></li>
