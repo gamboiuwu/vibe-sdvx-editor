@@ -1857,8 +1857,25 @@ function _loadingDone() {
   setTimeout(() => { if (ov) ov.style.display = 'none'; }, 420);
 }
 
+function _showErrorScreen(error) {
+  const loadingOv = document.getElementById('loading-overlay');
+  const errorScreen = document.getElementById('error-screen');
+  const errorMsg = document.getElementById('error-message');
+  if (loadingOv) loadingOv.style.display = 'none';
+  if (errorScreen) {
+    errorScreen.style.display = 'flex';
+    if (errorMsg) {
+      const errText = error instanceof Error ? error.message : String(error);
+      const stack = error instanceof Error ? error.stack : '';
+      errorMsg.textContent = errText + (stack ? '\n\n' + stack : '');
+    }
+  }
+  console.error('Initialization error:', error);
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
+  try {
   _loadingShow('Initializing editor…', 5);
   buildLaneHeader();
 
@@ -2741,7 +2758,17 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     _hideImportProgress();
   });
+  } catch(err) {
+    _showErrorScreen(err);
+  }
 });
+
+// Retry button on error screen
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('error-retry-btn')?.addEventListener('click', () => {
+    location.reload();
+  });
+}, { once: true });
 
 // ── Song Import System ────────────────────────────────────────────────────────
 // Supports: .ogg (direct link), .flac/.wav/.mp3/.aac/.m4a (→ OGG via MediaRecorder)

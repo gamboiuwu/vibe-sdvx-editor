@@ -1038,6 +1038,40 @@
   <div id="loading-pct" style="font-size:11px;color:#3336a0">0%</div>
 </div>
 
+<!-- Error screen — shown when initialization fails -->
+<div id="error-screen" style="
+  position:fixed;inset:0;z-index:9999;
+  background:#08080f;
+  display:none;flex-direction:column;align-items:center;justify-content:center;gap:24px;
+  padding:40px;
+">
+  <div style="font-size:22px;font-weight:700;color:#ff4466;letter-spacing:.08em">Initialization Failed</div>
+  <div style="
+    max-width:600px;
+    background:#13131f;
+    border:1px solid #ff4466;
+    border-radius:6px;
+    padding:20px;
+    font-size:12px;
+    color:#aaaacc;
+    font-family:monospace;
+    max-height:300px;
+    overflow-y:auto;
+    word-break:break-word;
+    white-space:pre-wrap;
+  " id="error-message">Error details will appear here</div>
+  <button id="error-retry-btn" style="
+    background:#1a3a1a;
+    border:1px solid #39ff14;
+    color:#39ff14;
+    padding:8px 20px;
+    border-radius:4px;
+    cursor:pointer;
+    font-size:12px;
+    font-weight:bold;
+  ">Retry Initialization</button>
+</div>
+
 <script src="js/logger.js"></script>
 <script src="js/effects.js"></script>
 <script src="js/chart.js?v=2"></script>
