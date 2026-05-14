@@ -1,3 +1,10 @@
+@font-face {
+  font-family: 'APompadour';
+  src: url('fonts/APompadour.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
 :root {
   --bg:        #0d0d14;
   --bg2:       #13131f;
