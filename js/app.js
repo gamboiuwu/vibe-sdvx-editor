@@ -1867,12 +1867,21 @@ function _showErrorScreen(error) {
   const loadingOv = document.getElementById('loading-overlay');
   const errorScreen = document.getElementById('error-screen');
   const errorMsg = document.getElementById('error-message');
+  const errorCode = document.getElementById('error-code');
   if (loadingOv) loadingOv.style.display = 'none';
   if (errorScreen) {
     errorScreen.style.display = 'flex';
+    // Generate a pseudo error code from the error hash for aesthetics
+    if (errorCode) {
+      const str = error instanceof Error ? error.message : String(error);
+      let h = 0;
+      for (let i = 0; i < str.length; i++) h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
+      const code = Math.abs(h).toString(16).toUpperCase().padStart(8, '0');
+      errorCode.textContent = `E-${code.slice(0,4)}-${code.slice(4)}`;
+    }
     if (errorMsg) {
       const errText = error instanceof Error ? error.message : String(error);
-      const stack = error instanceof Error ? error.stack : '';
+      const stack = error instanceof Error ? (error.stack || '') : '';
       errorMsg.textContent = errText + (stack ? '\n\n' + stack : '');
     }
   }
