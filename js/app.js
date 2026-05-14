@@ -1463,10 +1463,11 @@ function toggleGameViewFullscreen() {
     gameWrap.style.zIndex = '10000';
     gameWrap.style.display = 'flex';
     // Hide other UI elements
-    document.getElementById('header')?.style.display = 'none';
-    document.getElementById('main')?.style.display = 'none';
-    document.getElementById('tab-bar')?.style.display = 'none';
-    document.getElementById('toolbar')?.style.display = 'none';
+    const _el = (id) => document.getElementById(id);
+    if (_el('header'))  _el('header').style.display  = 'none';
+    if (_el('main'))    _el('main').style.display    = 'none';
+    if (_el('tab-bar')) _el('tab-bar').style.display = 'none';
+    if (_el('toolbar')) _el('toolbar').style.display = 'none';
     // Update button state
     const btn = document.getElementById('btn-fullscreen');
     if (btn) btn.classList.add('fullscreen-active');
