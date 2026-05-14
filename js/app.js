@@ -1891,7 +1891,6 @@ function _showErrorScreen(error) {
 // ── Init ──────────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
   try {
-  throw new Error('TEST ERROR: This is a fake initialization error to preview the error screen.');
 
   _loadingShow('Initializing editor…', 5);
   buildLaneHeader();
