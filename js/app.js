@@ -4554,11 +4554,21 @@ function onKeyDown(e) {
 
     case '[':
       { const i = SNAP_VALUES.findIndex(v => Math.abs(v - snap) < 0.001);
-        if (i < SNAP_VALUES.length - 1) { snap = SNAP_VALUES[i + 1]; syncSnapUI(); } }
+        if (i < SNAP_VALUES.length - 1) {
+          const oldSnap = snap;
+          snap = SNAP_VALUES[i + 1];
+          syncSnapUI();
+          showSnapDisplay(oldSnap, snap, 'up');
+        } }
       break;
     case ']':
       { const i = SNAP_VALUES.findIndex(v => Math.abs(v - snap) < 0.001);
-        if (i > 0) { snap = SNAP_VALUES[i - 1]; syncSnapUI(); } }
+        if (i > 0) {
+          const oldSnap = snap;
+          snap = SNAP_VALUES[i - 1];
+          syncSnapUI();
+          showSnapDisplay(oldSnap, snap, 'down');
+        } }
       break;
 
     case '=': case '+':
@@ -4580,6 +4590,84 @@ function onKeyDown(e) {
       if (e.shiftKey) { e.preventDefault(); openGotoBeatModal(); }
       break;
   }
+}
+
+let _snapDisplayTimeout = null;
+
+function showSnapDisplay(oldSnap, newSnap, direction) {
+  const display = document.getElementById('snap-display');
+  const curr = document.getElementById('snap-display-curr');
+  const prev = document.getElementById('snap-display-prev');
+  const next = document.getElementById('snap-display-next');
+  const text = document.getElementById('snap-display-text');
+
+  if (!display || !curr || !prev || !next) return;
+
+  const oldLabel = SNAP_LABELS[oldSnap];
+  const newLabel = SNAP_LABELS[newSnap];
+
+  if (direction === 'up') {
+    // Snap gets tighter, new text slides down from above
+    prev.textContent = newLabel;
+    curr.textContent = oldLabel;
+    next.textContent = newLabel;
+
+    prev.style.top = '-24px';
+    curr.style.top = '0px';
+    next.style.top = '24px';
+
+    prev.style.opacity = '0';
+    curr.style.opacity = '1';
+    next.style.opacity = '0';
+  } else {
+    // Snap gets looser, new text slides up from below
+    prev.textContent = newLabel;
+    curr.textContent = oldLabel;
+    next.textContent = newLabel;
+
+    prev.style.top = '-24px';
+    curr.style.top = '0px';
+    next.style.top = '24px';
+
+    prev.style.opacity = '0';
+    curr.style.opacity = '1';
+    next.style.opacity = '0';
+  }
+
+  // Remove transition briefly to set initial state
+  text.style.transition = 'none';
+  text.offsetHeight; // Trigger reflow
+
+  // Apply transition and animate
+  text.style.transition = 'all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+
+  if (direction === 'up') {
+    // Old text moves down, new text comes from above
+    curr.style.top = '24px';
+    curr.style.opacity = '0';
+    prev.style.top = '0px';
+    prev.style.opacity = '1';
+  } else {
+    // Old text moves up, new text comes from below
+    curr.style.top = '-24px';
+    curr.style.opacity = '0';
+    next.style.top = '0px';
+    next.style.opacity = '1';
+  }
+
+  // Position next to cursor
+  display.style.left = (event?.clientX ?? window.innerWidth / 2) + 16 + 'px';
+  display.style.top = (event?.clientY ?? window.innerHeight / 2) - 12 + 'px';
+  display.style.display = 'block';
+
+  // Clear existing timeout
+  if (_snapDisplayTimeout) clearTimeout(_snapDisplayTimeout);
+
+  // Hide after animation completes
+  _snapDisplayTimeout = setTimeout(() => {
+    display.style.display = 'none';
+    text.style.transition = 'none';
+  }, 400);
 }
 
 function openGotoBeatModal() {
