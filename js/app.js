@@ -3135,6 +3135,7 @@ function selMirror(what) {
     chart.lasers[1] = [...chart.lasers[1].filter(s => !inSel(s.y)), ...snapLL];
     for (let s = 0; s < 2; s++) chart.lasers[s].sort((a, b) => a.y - b.y);
   }
+  updateTimeSigList();
   render();
 }
 
