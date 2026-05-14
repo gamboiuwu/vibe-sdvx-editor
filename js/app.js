@@ -93,6 +93,9 @@ let _camPopupPinned = false;
 let _camPopupFixedTick = null;
 // _fxPopupFixedLane: 0 or 1 while FX hold popup is open, null when closed
 let _fxPopupFixedLane = null;
+// ── Chart Velocity pill popup state ──────────────────────────────────────────
+let _velPopupPinned   = false;
+let _velPopupFixedTick = null;
 
 // ── Audio ─────────────────────────────────────────────────────────────────────
 let audioCtx         = null;
@@ -1882,10 +1885,12 @@ window.addEventListener('DOMContentLoaded', () => {
   canvas.addEventListener('contextmenu', onRightClick);
   canvas.addEventListener('dblclick',    onDblClick);
   canvas.addEventListener('mouseleave', () => {
-    // Clear hover highlight when leaving canvas; popup stays open (click-to-close)
-    if (renderer && renderer._hoveredCamTick !== null) {
-      renderer._hoveredCamTick = null;
-      render();
+    // Clear hover highlights when leaving canvas; popups stay open (click-to-close)
+    if (renderer) {
+      let dirty = false;
+      if (renderer._hoveredCamTick !== null) { renderer._hoveredCamTick = null; dirty = true; }
+      if (renderer._hoveredVelTick !== null) { renderer._hoveredVelTick = null; dirty = true; }
+      if (dirty) render();
     }
   });
   document.getElementById('canvas-wrap').addEventListener('wheel', onWheel, { passive: false });
@@ -3821,6 +3826,26 @@ function onMouseDown(e) {
     }
   }
 
+  // ── Chart Velocity pill click ─────────────────────────────────────────────
+  if (e.button === 0 && renderer) {
+    const velHit = _findVelPillAt(e.offsetX, e.offsetY);
+    if (velHit !== null) {
+      if (_velPopupFixedTick === velHit.tick) {
+        _velPopupFixedTick = null;
+        _hideVelPopup();
+      } else {
+        _velPopupFixedTick = velHit.tick;
+        _showVelPopup(velHit.tick, e.clientX, e.clientY);
+      }
+      return;
+    } else {
+      if (_velPopupFixedTick !== null) {
+        _velPopupFixedTick = null;
+        _hideVelPopup();
+      }
+    }
+  }
+
   // ── FX hold click: open param popup (left-click, not during playback) ────
   if (e.button === 0 && renderer && !playing) {
     const fxHit = _findFxHoldAt(e.offsetX, e.offsetY);
@@ -4068,6 +4093,14 @@ function onMouseMove(e) {
       const prevTick = renderer._hoveredCamTick;
       renderer._hoveredCamTick = camHit !== null ? camHit.tick : null;
       if (prevTick !== renderer._hoveredCamTick) render();
+    }
+
+    // ── Chart Velocity pill highlight ─────────────────────────────────────
+    if (renderer) {
+      const velHit  = _findVelPillAt(e.offsetX, e.offsetY);
+      const prevVel = renderer._hoveredVelTick;
+      renderer._hoveredVelTick = velHit !== null ? velHit.tick : null;
+      if (prevVel !== renderer._hoveredVelTick) render();
     }
 
     // ── FX hold highlight (hover only — popup fixed by click) ─────────────
@@ -5075,6 +5108,97 @@ function _findCamPillAt(cx, cy) {
     if (cx >= z.x && cx <= z.x + z.w && cy >= z.y && cy <= z.y + z.h) return z;
   }
   return null;
+}
+
+function _findVelPillAt(cx, cy) {
+  if (!renderer?._velPillHitZones?.length) return null;
+  for (const z of renderer._velPillHitZones) {
+    if (cx >= z.x && cx <= z.x + z.w && cy >= z.y && cy <= z.y + z.h) return z;
+  }
+  return null;
+}
+
+function _showVelPopup(tick, clientX, clientY) {
+  let pop = document.getElementById('vel-hover-popup');
+  if (!pop) {
+    pop = document.createElement('div');
+    pop.id = 'vel-hover-popup';
+    pop.style.cssText = [
+      'position:fixed', 'z-index:9999', 'background:#0d0d22',
+      'border:1.5px solid #ff9900', 'border-radius:6px', 'padding:10px 12px',
+      'min-width:200px', 'font-size:12px', 'color:#ddd',
+      'box-shadow:0 4px 16px #ff990033', 'display:none',
+    ].join(';');
+    document.body.appendChild(pop);
+    pop.addEventListener('mouseenter', () => { _velPopupPinned = true; });
+    pop.addEventListener('mouseleave', () => {
+      _velPopupPinned = false;
+      if (_velPopupFixedTick === null) _hideVelPopup();
+    });
+  }
+
+  const ev = (chart?.scrollSpeedEvents ?? []).find(e => e.y === tick);
+  if (!ev) { pop.style.display = 'none'; return; }
+
+  const m = Math.floor(tick / TICKS_PER_MEASURE) + 1;
+  const b = Math.floor((tick % TICKS_PER_MEASURE) / TICKS_PER_BEAT) + 1;
+
+  pop.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <span style="color:#ff9900;font-weight:700;font-size:11px;letter-spacing:1px">CHART VELOCITY</span>
+      <span style="color:#666;font-size:10px">M${m} B${b}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+      <span style="color:#888;font-size:10px">×</span>
+      <input type="range" id="vel-pop-slider" min="0.05" max="5" step="0.05"
+        value="${ev.speed}" style="flex:1;accent-color:#ff9900">
+      <input type="number" id="vel-pop-num" min="0.05" max="5" step="0.05"
+        value="${ev.speed.toFixed(2)}"
+        style="width:54px;background:#111;border:1px solid #333;border-radius:3px;color:#ddd;padding:2px 4px;font-size:11px">
+    </div>
+    <div style="text-align:right">
+      <button id="vel-pop-del"
+        style="font-size:10px;background:#3a1010;border:1px solid #aa3333;border-radius:3px;color:#ff6666;padding:2px 8px;cursor:pointer">
+        Delete
+      </button>
+    </div>`;
+
+  const slider = pop.querySelector('#vel-pop-slider');
+  const numInp = pop.querySelector('#vel-pop-num');
+  const delBtn = pop.querySelector('#vel-pop-del');
+
+  const _sync = val => {
+    const v = Math.max(0.05, Math.min(5, parseFloat(val) || 1));
+    ev.speed = v;
+    if (slider !== document.activeElement) slider.value = v;
+    if (numInp !== document.activeElement) numInp.value = v.toFixed(2);
+    updateScrollSpeedEventList();
+    render();
+  };
+  slider.addEventListener('input', () => _sync(slider.value));
+  numInp.addEventListener('input', () => _sync(numInp.value));
+  delBtn.addEventListener('click', () => {
+    saveUndo(`Deleted Chart Velocity at M${m}`);
+    chart.removeScrollSpeedEvent(tick);
+    updateScrollSpeedEventList();
+    render();
+    _velPopupFixedTick = null;
+    _velPopupPinned    = false;
+    _hideVelPopup();
+  });
+
+  const px = Math.min(clientX + 12, window.innerWidth  - 220);
+  const py = Math.min(clientY - 10, window.innerHeight - 120);
+  pop.style.left    = px + 'px';
+  pop.style.top     = py + 'px';
+  pop.style.display = 'block';
+}
+
+function _hideVelPopup() {
+  if (_velPopupPinned || _velPopupFixedTick !== null) return;
+  const pop = document.getElementById('vel-hover-popup');
+  if (pop) pop.style.display = 'none';
+  if (renderer) { renderer._hoveredVelTick = null; render(); }
 }
 
 // Build and display the hover popup for all camera events at `tick`.

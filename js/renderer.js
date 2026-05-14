@@ -131,6 +131,11 @@ class Renderer {
     this._camPillHitZones = [];
     this._hoveredCamTick  = null;
 
+    // _velPillHitZones: rebuilt every draw(); { x, y, w, h, tick }
+    // _hoveredVelTick: set by app.js; pill at this tick gets highlight border
+    this._velPillHitZones = [];
+    this._hoveredVelTick  = null;
+
     // FX hold hit zones — rebuilt every draw(); each entry is a canvas-space rect
     //   { x, y, w, h, li, note }  for click-to-popup
     this._fxHoldHitZones = [];
@@ -223,6 +228,7 @@ class Renderer {
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     // Rebuild hit-zones every frame so they stay in sync with scroll/zoom
     this._camPillHitZones = [];
+    this._velPillHitZones = [];
     this._fxHoldHitZones  = [];
 
     for (let vi = 0; vi < this.numCols; vi++) {
@@ -695,6 +701,78 @@ class Renderer {
 
         if (isLeft) leftOff += PILL_STEP; else rightOff += PILL_STEP;
       }
+    }
+
+    // ── Chart Velocity (scroll speed) pills — centered on BT track ──────────
+    // Amber pill spanning the BT lane width with a dashed guide line.
+    const VEL_COLOR  = '#ff9900';
+    const velEvs = this.chart?.scrollSpeedEvents ?? [];
+    for (const ev of velEvs) {
+      if (ev.y === 0 || ev.y < startY || ev.y >= endY) continue;
+      const yBase   = this.colH - (ev.y - startY) * this.zoom;
+      const pillTop = yBase - PILL_H;
+      const pillX   = trackX;
+      const pillW   = TRACK_W;
+      const isHov   = this._hoveredVelTick === ev.y;
+
+      ctx.save();
+
+      // Dashed guide line across full column width
+      ctx.globalAlpha = 0.4;
+      ctx.strokeStyle = VEL_COLOR;
+      ctx.lineWidth   = 1;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(leftExtX, yBase);
+      ctx.lineTo(rightExtX + EXTEND_W, yBase);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+
+      // Pill background
+      ctx.fillStyle = isHov ? '#1c1c38' : '#0d0d22';
+      ctx.fillRect(pillX, pillTop, pillW, PILL_H);
+
+      // Left accent bar
+      ctx.fillStyle = VEL_COLOR;
+      ctx.fillRect(pillX, pillTop, 3, PILL_H);
+
+      // Magnitude bar proportional to speed (0–3× range)
+      const mag    = Math.min(1, ev.speed / 3);
+      const barMax = pillW - 14;
+      const barW   = Math.round(mag * barMax);
+      if (barW > 0) {
+        ctx.globalAlpha = 0.22;
+        ctx.fillStyle   = VEL_COLOR;
+        ctx.fillRect(pillX + 5, pillTop + 2, barW, PILL_H - 4);
+      }
+      ctx.globalAlpha = 1;
+
+      // "vel" label
+      ctx.font         = 'bold 7px monospace';
+      ctx.fillStyle    = isHov ? '#ffffff' : VEL_COLOR;
+      ctx.textAlign    = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('vel', pillX + 6, yBase - PILL_H / 2);
+
+      // Speed value right-aligned
+      const valStr = `×${ev.speed.toFixed(2).replace(/\.?0+$/, '')}`;
+      ctx.font      = '7px monospace';
+      ctx.fillStyle = '#b0b0cc';
+      ctx.textAlign = 'right';
+      ctx.fillText(valStr, pillX + pillW, yBase - PILL_H / 2);
+
+      // Hover highlight border
+      if (isHov) {
+        ctx.strokeStyle = VEL_COLOR;
+        ctx.lineWidth   = 1;
+        ctx.strokeRect(pillX + 0.5, pillTop + 0.5, pillW - 1, PILL_H - 1);
+      }
+
+      ctx.restore();
+
+      // Register hit zone for mouse detection in app.js
+      this._velPillHitZones.push({ x: pillX, y: pillTop, w: pillW, h: PILL_H, tick: ev.y });
     }
   }
 
