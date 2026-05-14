@@ -93,6 +93,9 @@ let _camPopupPinned = false;
 let _camPopupFixedTick = null;
 // _fxPopupFixedLane: 0 or 1 while FX hold popup is open, null when closed
 let _fxPopupFixedLane = null;
+// ── Chart Velocity pill popup state ──────────────────────────────────────────
+let _velPopupPinned   = false;
+let _velPopupFixedTick = null;
 
 // ── Audio ─────────────────────────────────────────────────────────────────────
 let audioCtx         = null;
@@ -309,6 +312,7 @@ function renderTabBar() {
     });
     tab.querySelector('.tab-name').addEventListener('dblclick', () => renameTab(i));
     tab.addEventListener('click', e => { if (!e.target.closest('.tab-close')) switchToTab(i); });
+    tab.addEventListener('contextmenu', e => { e.preventDefault(); showTabContextMenu(i, e.clientX, e.clientY); });
 
     // Drag-and-drop reorder
     tab.addEventListener('dragstart', e => {
@@ -351,6 +355,66 @@ function renderTabBar() {
 function renameTab(idx) {
   const name = prompt('Tab name:', tabs[idx].name);
   if (name) { tabs[idx].name = name; renderTabBar(); _multiUpdateTabButtons(); }
+}
+
+function duplicateTab(idx) {
+  const src = tabs[idx];
+  // Deep-copy chart data into a fresh ChartData so all methods are available
+  const srcData  = JSON.parse(JSON.stringify(src.chart));
+  const newChart = new ChartData();
+  Object.assign(newChart, srcData);
+  tabs.splice(idx + 1, 0, {
+    name: src.name + ' (copy)',
+    chart: newChart,
+    audioBuffer: src.audioBuffer,
+  });
+  switchToTab(idx + 1);
+}
+
+function showTabContextMenu(idx, x, y) {
+  document.getElementById('tab-ctx-menu')?.remove();
+  const menu = document.createElement('div');
+  menu.id = 'tab-ctx-menu';
+  menu.style.cssText = [
+    'position:fixed', 'z-index:10000', 'background:#1a1a2e',
+    'border:1px solid #303060', 'border-radius:6px', 'padding:4px 0',
+    'min-width:140px', 'box-shadow:0 4px 16px rgba(0,0,0,0.6)',
+    'font-size:12px',
+  ].join(';');
+
+  const items = [
+    { label: 'Rename',    action: () => renameTab(idx) },
+    { label: 'Duplicate', action: () => duplicateTab(idx) },
+    { sep: true },
+    { label: 'Close', action: () => closeTab(idx), danger: true },
+  ];
+  for (const item of items) {
+    if (item.sep) {
+      const hr = document.createElement('div');
+      hr.style.cssText = 'height:1px;background:#303060;margin:3px 0';
+      menu.appendChild(hr); continue;
+    }
+    const el = document.createElement('div');
+    el.textContent = item.label;
+    el.style.cssText = `padding:6px 16px;cursor:pointer;color:${item.danger ? '#ff6666' : '#c8c8ff'}`;
+    el.addEventListener('mouseenter', () => { el.style.background = '#252548'; });
+    el.addEventListener('mouseleave', () => { el.style.background = 'transparent'; });
+    el.addEventListener('click', () => { menu.remove(); item.action(); });
+    menu.appendChild(el);
+  }
+
+  document.body.appendChild(menu);
+  // Constrain to viewport after render
+  requestAnimationFrame(() => {
+    const mw = menu.offsetWidth, mh = menu.offsetHeight;
+    menu.style.left = Math.min(x, window.innerWidth  - mw - 6) + 'px';
+    menu.style.top  = Math.min(y, window.innerHeight - mh - 6) + 'px';
+  });
+
+  const dismiss = e => {
+    if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('mousedown', dismiss, true); }
+  };
+  setTimeout(() => document.addEventListener('mousedown', dismiss, true), 0);
 }
 
 // ── Tick / Second conversion (uses chartSpeed) ───────────────────────────────
@@ -1882,10 +1946,12 @@ window.addEventListener('DOMContentLoaded', () => {
   canvas.addEventListener('contextmenu', onRightClick);
   canvas.addEventListener('dblclick',    onDblClick);
   canvas.addEventListener('mouseleave', () => {
-    // Clear hover highlight when leaving canvas; popup stays open (click-to-close)
-    if (renderer && renderer._hoveredCamTick !== null) {
-      renderer._hoveredCamTick = null;
-      render();
+    // Clear hover highlights when leaving canvas; popups stay open (click-to-close)
+    if (renderer) {
+      let dirty = false;
+      if (renderer._hoveredCamTick !== null) { renderer._hoveredCamTick = null; dirty = true; }
+      if (renderer._hoveredVelTick !== null) { renderer._hoveredVelTick = null; dirty = true; }
+      if (dirty) render();
     }
   });
   document.getElementById('canvas-wrap').addEventListener('wheel', onWheel, { passive: false });
@@ -2901,40 +2967,134 @@ function ensureFxTooltip() {
 
 let _fxHoverTimer = null;
 let _fxPinned = false;
+let _fxHoverNote = null; // tracks which note the timer is currently counting for
 
 function showFxTooltip(clientX, clientY, note, lane) {
   ensureFxTooltip();
-  if (_fxPinned && fxTooltipNote === note) return; // already pinned on this note
-  if (_fxPinned) return; // pinned on different note, don't change
+  if (_fxPinned) return;
+  if (_fxHoverNote === note) return; // already counting for this note, don't reset timer
   clearTimeout(_fxHoverTimer);
+  _fxHoverNote = note;
   _fxHoverTimer = setTimeout(() => {
+    _fxHoverNote = null;
     _doShowFxTooltip(clientX, clientY, note, lane);
-  }, 900);
+  }, 300);
 }
 
 function _doShowFxTooltip(clientX, clientY, note, lane) {
   ensureFxTooltip();
   fxTooltipNote = note;
   _fxPinned = true;
-  const current = note.effect || 'none';
-  const opts = FX_EFFECT_OPTIONS.map(e =>
-    `<option value="${e.value}"${e.value === current ? ' selected' : ''}>${e.label}</option>`
+  _fxHoverNote = null;
+
+  const chain     = chart?.fxChains?.[lane] ?? [];
+  const laneName  = lane === 0 ? 'FX-L' : 'FX-R';
+  const curType   = chain.length > 0 ? chain[0].type : 'retrigger';
+
+  const typeOpts = Object.entries(EFFECT_DEFS).map(([k, d]) =>
+    `<option value="${k}"${k === curType ? ' selected' : ''}>${d.label}</option>`
   ).join('');
+
+  let paramHtml = '';
+  if (chain.length > 0) {
+    const inst = chain[0];
+    const def  = EFFECT_DEFS[inst.type];
+    if (def) {
+      for (const [k, p] of Object.entries(def.params)) {
+        const val = inst.params[k] ?? p.def;
+        paramHtml += `
+          <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px">
+            <span style="min-width:68px;font-size:10px;color:#aaa">${p.label}</span>
+            <input type="range" class="fx-tt-sl" data-key="${k}"
+              min="${p.min}" max="${p.max}" step="${p.step}" value="${val}"
+              style="flex:1;accent-color:#ff8800;height:14px">
+            <input type="number" class="fx-tt-num" data-key="${k}"
+              min="${p.min}" max="${p.max}" step="${p.step}" value="${val}"
+              style="width:46px;background:#111;border:1px solid #333;border-radius:3px;color:#ddd;padding:1px 3px;font-size:10px">
+            <span style="min-width:20px;font-size:9px;color:#666">${p.unit || ''}</span>
+          </div>`;
+      }
+    }
+  } else {
+    paramHtml = `<div style="color:#666;font-size:10px;margin:4px 0">No effect. Select type above, then click Add.</div>
+      <button class="fx-tt-add" style="background:#1a2a1a;border:1px solid #448844;border-radius:3px;color:#88cc88;padding:2px 8px;font-size:10px;cursor:pointer">Add Effect</button>`;
+  }
+
   fxTooltipEl.innerHTML = `
-    <div class="fx-tt-label">FX-${lane === 0 ? 'L' : 'R'} Effect</div>
-    <select class="fx-tt-select">${opts}</select>
-    <div class="fx-tt-close" title="Close">✕</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <span class="fx-tt-label">${laneName}</span>
+      <div class="fx-tt-close" title="Close" style="cursor:pointer;padding:0 2px;color:#888">✕</div>
+    </div>
+    <div style="margin-bottom:6px">
+      <select class="fx-tt-type-sel"
+        style="width:100%;background:#111;border:1px solid #444;color:#ddd;border-radius:3px;padding:2px 4px;font-size:11px">
+        ${typeOpts}
+      </select>
+    </div>
+    ${paramHtml}
   `;
-  fxTooltipEl.querySelector('.fx-tt-select').addEventListener('change', ev => {
-    if (fxTooltipNote) fxTooltipNote.effect = ev.target.value || null;
-    render();
+
+  // Type selector: change type or create a new instance
+  fxTooltipEl.querySelector('.fx-tt-type-sel')?.addEventListener('change', ev => {
+    const newType = ev.target.value;
+    if (!chart.fxChains[lane]) chart.fxChains[lane] = [];
+    const newInst = makeEffectInstance(newType);
+    if (chart.fxChains[lane].length > 0) {
+      chart.fxChains[lane][0] = newInst;
+    } else {
+      chart.fxChains[lane].push(newInst);
+    }
+    renderFxChain(lane);
+    _doShowFxTooltip(clientX, clientY, note, lane);
   });
-  fxTooltipEl.querySelector('.fx-tt-close').addEventListener('click', () => {
+
+  // Add button for empty chain
+  fxTooltipEl.querySelector('.fx-tt-add')?.addEventListener('click', () => {
+    const sel = fxTooltipEl.querySelector('.fx-tt-type-sel');
+    if (!chart.fxChains[lane]) chart.fxChains[lane] = [];
+    const newInst = makeEffectInstance(sel?.value || 'retrigger');
+    chart.fxChains[lane].push(newInst);
+    renderFxChain(lane);
+    _doShowFxTooltip(clientX, clientY, note, lane);
+  });
+
+  // Parameter sliders
+  fxTooltipEl.querySelectorAll('.fx-tt-sl').forEach(sl => {
+    sl.addEventListener('input', () => {
+      const inst = chart.fxChains[lane]?.[0];
+      if (!inst) return;
+      const p = EFFECT_DEFS[inst.type]?.params?.[sl.dataset.key];
+      if (!p) return;
+      const v = Math.max(p.min, Math.min(p.max, parseFloat(sl.value)));
+      inst.params[sl.dataset.key] = v;
+      const num = fxTooltipEl.querySelector(`.fx-tt-num[data-key="${sl.dataset.key}"]`);
+      if (num && num !== document.activeElement) num.value = v;
+      renderFxChain(lane);
+    });
+  });
+
+  // Parameter number inputs
+  fxTooltipEl.querySelectorAll('.fx-tt-num').forEach(ni => {
+    ni.addEventListener('input', () => {
+      const inst = chart.fxChains[lane]?.[0];
+      if (!inst) return;
+      const p = EFFECT_DEFS[inst.type]?.params?.[ni.dataset.key];
+      if (!p) return;
+      const v = Math.max(p.min, Math.min(p.max, parseFloat(ni.value) || p.def));
+      inst.params[ni.dataset.key] = v;
+      const sl = fxTooltipEl.querySelector(`.fx-tt-sl[data-key="${ni.dataset.key}"]`);
+      if (sl && sl !== document.activeElement) sl.value = v;
+      renderFxChain(lane);
+    });
+  });
+
+  fxTooltipEl.querySelector('.fx-tt-close')?.addEventListener('click', () => {
     _fxPinned = false;
+    _fxHoverNote = null;
     hideFxTooltip();
   });
+
   fxTooltipEl.style.display = 'block';
-  // Position after display so offsetWidth is valid
   requestAnimationFrame(() => {
     const tw = fxTooltipEl.offsetWidth, th = fxTooltipEl.offsetHeight;
     fxTooltipEl.style.left = Math.min(clientX + 14, window.innerWidth  - tw - 8) + 'px';
@@ -2943,8 +3103,9 @@ function _doShowFxTooltip(clientX, clientY, note, lane) {
 }
 
 function hideFxTooltip() {
-  if (_fxPinned) return; // don't hide while pinned
+  if (_fxPinned) return;
   clearTimeout(_fxHoverTimer);
+  _fxHoverNote = null;
   if (fxTooltipEl) fxTooltipEl.style.display = 'none';
   fxTooltipNote = null;
 }
@@ -3821,6 +3982,26 @@ function onMouseDown(e) {
     }
   }
 
+  // ── Chart Velocity pill click ─────────────────────────────────────────────
+  if (e.button === 0 && renderer) {
+    const velHit = _findVelPillAt(e.offsetX, e.offsetY);
+    if (velHit !== null) {
+      if (_velPopupFixedTick === velHit.tick) {
+        _velPopupFixedTick = null;
+        _hideVelPopup();
+      } else {
+        _velPopupFixedTick = velHit.tick;
+        _showVelPopup(velHit.tick, e.clientX, e.clientY);
+      }
+      return;
+    } else {
+      if (_velPopupFixedTick !== null) {
+        _velPopupFixedTick = null;
+        _hideVelPopup();
+      }
+    }
+  }
+
   // ── FX hold click: open param popup (left-click, not during playback) ────
   if (e.button === 0 && renderer && !playing) {
     const fxHit = _findFxHoldAt(e.offsetX, e.offsetY);
@@ -4023,8 +4204,7 @@ function onMouseMove(e) {
   }
   if (!drag.active) {
     updateStatusFromEvent(e);
-    if (tool === 'select') checkFxHover(e);
-    else hideFxTooltip();
+    checkFxHover(e);
     // Show grab cursor and highlight handle when hovering over a bezier diamond
     if ((tool === 'laser-l' || tool === 'laser-r') && renderer) {
       const side = tool === 'laser-l' ? 0 : 1;
@@ -4068,6 +4248,14 @@ function onMouseMove(e) {
       const prevTick = renderer._hoveredCamTick;
       renderer._hoveredCamTick = camHit !== null ? camHit.tick : null;
       if (prevTick !== renderer._hoveredCamTick) render();
+    }
+
+    // ── Chart Velocity pill highlight ─────────────────────────────────────
+    if (renderer) {
+      const velHit  = _findVelPillAt(e.offsetX, e.offsetY);
+      const prevVel = renderer._hoveredVelTick;
+      renderer._hoveredVelTick = velHit !== null ? velHit.tick : null;
+      if (prevVel !== renderer._hoveredVelTick) render();
     }
 
     // ── FX hold highlight (hover only — popup fixed by click) ─────────────
@@ -4303,35 +4491,39 @@ function onRightClick(e) {
   }
 
   // Default: erase note at cursor.
+  // BT/FX tools constrain erasing to their own note type.
+  const typeFilter = tool === 'bt' ? 'bt' : tool === 'fx' ? 'fx' : undefined;
   const h = getHit(e);
   if (h.laneIdx < 0) return;
   saveUndo(`Deleted at M${Math.floor(h.tick / TICKS_PER_MEASURE) + 1}`);
-  eraseAt(h.laneIdx, h.tick);
+  eraseAt(h.laneIdx, h.tick, typeFilter);
   // Clear selection if we erased a laser
-  if (h.laneIdx === 4 || h.laneIdx === 5) {
+  if (!typeFilter && (h.laneIdx === 4 || h.laneIdx === 5)) {
     _laserSel = null;
     if (renderer) renderer.selectedLaserPoint = null;
   }
   render();
 }
 
-function eraseAt(laneIdx, tick) {
-  // Also erase camera/stop events near tick (within half a beat)
-  const hitRadius = TICKS_PER_BEAT / 2;
-  const prevCamLen = (chart.cameraEvents ?? []).length;
-  chart.cameraEvents = (chart.cameraEvents ?? []).filter(ev => Math.abs(ev.y - tick) > hitRadius);
-  const prevStopLen = (chart.stopEvents ?? []).length;
-  chart.stopEvents   = (chart.stopEvents ?? []).filter(ev => !(tick >= ev.y && tick <= ev.y + ev.len));
-  if ((chart.cameraEvents ?? []).length !== prevCamLen)  updateCameraEventList();
-  if ((chart.stopEvents   ?? []).length !== prevStopLen) updateStopEventList();
+// typeFilter: 'bt' | 'fx' | undefined (undefined = erase everything)
+function eraseAt(laneIdx, tick, typeFilter) {
+  // Camera/stop events are only erased when using the dedicated erase tool
+  if (!typeFilter) {
+    const hitRadius = TICKS_PER_BEAT / 2;
+    const prevCamLen = (chart.cameraEvents ?? []).length;
+    chart.cameraEvents = (chart.cameraEvents ?? []).filter(ev => Math.abs(ev.y - tick) > hitRadius);
+    const prevStopLen = (chart.stopEvents ?? []).length;
+    chart.stopEvents   = (chart.stopEvents ?? []).filter(ev => !(tick >= ev.y && tick <= ev.y + ev.len));
+    if ((chart.cameraEvents ?? []).length !== prevCamLen)  updateCameraEventList();
+    if ((chart.stopEvents   ?? []).length !== prevStopLen) updateStopEventList();
+  }
 
   if (laneIdx >= 0 && laneIdx <= 3) {
-    chart.removeNote(chart.bt[laneIdx], tick);
-    chart.removeNote(chart.fx[laneIdx <= 1 ? 0 : 1], tick);
-  } else if (laneIdx === 4) {
-    chart.removeLaserAt(0, tick);
-  } else if (laneIdx === 5) {
-    chart.removeLaserAt(1, tick);
+    if (!typeFilter || typeFilter === 'bt') chart.removeNote(chart.bt[laneIdx], tick);
+    if (!typeFilter || typeFilter === 'fx') chart.removeNote(chart.fx[laneIdx <= 1 ? 0 : 1], tick);
+  } else if (!typeFilter) {
+    if (laneIdx === 4) chart.removeLaserAt(0, tick);
+    if (laneIdx === 5) chart.removeLaserAt(1, tick);
   }
 }
 
@@ -4594,81 +4786,63 @@ function onKeyDown(e) {
 }
 
 let _snapDisplayTimeout = null;
+let _lastMouseX = window.innerWidth / 2;
+let _lastMouseY = window.innerHeight / 2;
+document.addEventListener('mousemove', e => { _lastMouseX = e.clientX; _lastMouseY = e.clientY; }, { passive: true });
 
 function showSnapDisplay(oldSnap, newSnap, direction) {
   const display = document.getElementById('snap-display');
-  const curr = document.getElementById('snap-display-curr');
-  const prev = document.getElementById('snap-display-prev');
-  const next = document.getElementById('snap-display-next');
-  const text = document.getElementById('snap-display-text');
-
+  const curr    = document.getElementById('snap-display-curr');
+  const prev    = document.getElementById('snap-display-prev');
+  const next    = document.getElementById('snap-display-next');
   if (!display || !curr || !prev || !next) return;
 
   const oldLabel = SNAP_LABELS[oldSnap];
   const newLabel = SNAP_LABELS[newSnap];
+  const EASE = 'cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+  const T = '0.22s';
+  const ANIM = `top ${T} ${EASE}, opacity ${T} ${EASE}`;
+
+  // Disable transitions and reset ALL three to hidden so leftover state from
+  // the previous animation direction doesn't bleed through as a ghost text.
+  [prev, curr, next].forEach(el => {
+    el.style.transition = 'none';
+    el.style.opacity    = '0';
+    el.style.top        = '0px';
+  });
 
   if (direction === 'up') {
-    // Snap gets tighter, new text slides down from above
-    prev.textContent = newLabel;
-    curr.textContent = oldLabel;
-    next.textContent = newLabel;
-
-    prev.style.top = '-24px';
-    curr.style.top = '0px';
-    next.style.top = '24px';
-
-    prev.style.opacity = '0';
-    curr.style.opacity = '1';
-    next.style.opacity = '0';
+    // [ key: finer snap (1/4 → 1/8). Old exits up, new enters from below.
+    curr.textContent = oldLabel; curr.style.top = '0px';   curr.style.opacity = '1';
+    next.textContent = newLabel; next.style.top = '24px';  next.style.opacity = '0';
   } else {
-    // Snap gets looser, new text slides up from below
-    prev.textContent = newLabel;
-    curr.textContent = oldLabel;
-    next.textContent = newLabel;
-
-    prev.style.top = '-24px';
-    curr.style.top = '0px';
-    next.style.top = '24px';
-
-    prev.style.opacity = '0';
-    curr.style.opacity = '1';
-    next.style.opacity = '0';
+    // ] key: coarser snap (1/8 → 1/4). Old exits down, new enters from above.
+    curr.textContent = oldLabel; curr.style.top = '0px';   curr.style.opacity = '1';
+    prev.textContent = newLabel; prev.style.top = '-24px'; prev.style.opacity = '0';
   }
 
-  // Remove transition briefly to set initial state
-  text.style.transition = 'none';
-  text.offsetHeight; // Trigger reflow
+  // Force reflow so initial positions are committed before transitions start
+  display.offsetHeight;
 
-  // Apply transition and animate
-  text.style.transition = 'all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
-
+  // Enable transitions on the relevant children and animate to final state
   if (direction === 'up') {
-    // Old text moves down, new text comes from above
-    curr.style.top = '24px';
-    curr.style.opacity = '0';
-    prev.style.top = '0px';
-    prev.style.opacity = '1';
+    curr.style.transition = ANIM; curr.style.top = '-24px'; curr.style.opacity = '0';
+    next.style.transition = ANIM; next.style.top = '0px';   next.style.opacity = '1';
   } else {
-    // Old text moves up, new text comes from below
-    curr.style.top = '-24px';
-    curr.style.opacity = '0';
-    next.style.top = '0px';
-    next.style.opacity = '1';
+    curr.style.transition = ANIM; curr.style.top = '24px'; curr.style.opacity = '0';
+    prev.style.transition = ANIM; prev.style.top = '0px';  prev.style.opacity = '1';
   }
 
   // Position next to cursor
-  display.style.left = (event?.clientX ?? window.innerWidth / 2) + 16 + 'px';
-  display.style.top = (event?.clientY ?? window.innerHeight / 2) - 12 + 'px';
+  display.style.left = (_lastMouseX + 16) + 'px';
+  display.style.top  = (_lastMouseY - 12) + 'px';
   display.style.display = 'block';
 
-  // Clear existing timeout
   if (_snapDisplayTimeout) clearTimeout(_snapDisplayTimeout);
-
-  // Hide after animation completes
   _snapDisplayTimeout = setTimeout(() => {
     display.style.display = 'none';
-    text.style.transition = 'none';
-  }, 400);
+    [prev, curr, next].forEach(el => { el.style.transition = 'none'; });
+  }, 500);
 }
 
 function openGotoBeatModal() {
@@ -5094,6 +5268,97 @@ function _findCamPillAt(cx, cy) {
     if (cx >= z.x && cx <= z.x + z.w && cy >= z.y && cy <= z.y + z.h) return z;
   }
   return null;
+}
+
+function _findVelPillAt(cx, cy) {
+  if (!renderer?._velPillHitZones?.length) return null;
+  for (const z of renderer._velPillHitZones) {
+    if (cx >= z.x && cx <= z.x + z.w && cy >= z.y && cy <= z.y + z.h) return z;
+  }
+  return null;
+}
+
+function _showVelPopup(tick, clientX, clientY) {
+  let pop = document.getElementById('vel-hover-popup');
+  if (!pop) {
+    pop = document.createElement('div');
+    pop.id = 'vel-hover-popup';
+    pop.style.cssText = [
+      'position:fixed', 'z-index:9999', 'background:#0d0d22',
+      'border:1.5px solid #ff9900', 'border-radius:6px', 'padding:10px 12px',
+      'min-width:200px', 'font-size:12px', 'color:#ddd',
+      'box-shadow:0 4px 16px #ff990033', 'display:none',
+    ].join(';');
+    document.body.appendChild(pop);
+    pop.addEventListener('mouseenter', () => { _velPopupPinned = true; });
+    pop.addEventListener('mouseleave', () => {
+      _velPopupPinned = false;
+      if (_velPopupFixedTick === null) _hideVelPopup();
+    });
+  }
+
+  const ev = (chart?.scrollSpeedEvents ?? []).find(e => e.y === tick);
+  if (!ev) { pop.style.display = 'none'; return; }
+
+  const m = Math.floor(tick / TICKS_PER_MEASURE) + 1;
+  const b = Math.floor((tick % TICKS_PER_MEASURE) / TICKS_PER_BEAT) + 1;
+
+  pop.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <span style="color:#ff9900;font-weight:700;font-size:11px;letter-spacing:1px">CHART VELOCITY</span>
+      <span style="color:#666;font-size:10px">M${m} B${b}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+      <span style="color:#888;font-size:10px">×</span>
+      <input type="range" id="vel-pop-slider" min="0.05" max="5" step="0.05"
+        value="${ev.speed}" style="flex:1;accent-color:#ff9900">
+      <input type="number" id="vel-pop-num" min="0.05" max="5" step="0.05"
+        value="${ev.speed.toFixed(2)}"
+        style="width:54px;background:#111;border:1px solid #333;border-radius:3px;color:#ddd;padding:2px 4px;font-size:11px">
+    </div>
+    <div style="text-align:right">
+      <button id="vel-pop-del"
+        style="font-size:10px;background:#3a1010;border:1px solid #aa3333;border-radius:3px;color:#ff6666;padding:2px 8px;cursor:pointer">
+        Delete
+      </button>
+    </div>`;
+
+  const slider = pop.querySelector('#vel-pop-slider');
+  const numInp = pop.querySelector('#vel-pop-num');
+  const delBtn = pop.querySelector('#vel-pop-del');
+
+  const _sync = val => {
+    const v = Math.max(0.05, Math.min(5, parseFloat(val) || 1));
+    ev.speed = v;
+    if (slider !== document.activeElement) slider.value = v;
+    if (numInp !== document.activeElement) numInp.value = v.toFixed(2);
+    updateScrollSpeedEventList();
+    render();
+  };
+  slider.addEventListener('input', () => _sync(slider.value));
+  numInp.addEventListener('input', () => _sync(numInp.value));
+  delBtn.addEventListener('click', () => {
+    saveUndo(`Deleted Chart Velocity at M${m}`);
+    chart.removeScrollSpeedEvent(tick);
+    updateScrollSpeedEventList();
+    render();
+    _velPopupFixedTick = null;
+    _velPopupPinned    = false;
+    _hideVelPopup();
+  });
+
+  const px = Math.min(clientX + 12, window.innerWidth  - 220);
+  const py = Math.min(clientY - 10, window.innerHeight - 120);
+  pop.style.left    = px + 'px';
+  pop.style.top     = py + 'px';
+  pop.style.display = 'block';
+}
+
+function _hideVelPopup() {
+  if (_velPopupPinned || _velPopupFixedTick !== null) return;
+  const pop = document.getElementById('vel-hover-popup');
+  if (pop) pop.style.display = 'none';
+  if (renderer) { renderer._hoveredVelTick = null; render(); }
 }
 
 // Build and display the hover popup for all camera events at `tick`.
@@ -6766,8 +7031,23 @@ const DisclaimerGate = (function() {
 // ──────────────────────────────────────────────────────────────────────────────
 // v1.4.1: app version, changelog data, "What's New" modal
 // ──────────────────────────────────────────────────────────────────────────────
-const APP_VERSION = '1.4.1';
+const APP_VERSION = '1.5';
 const CHANGELOG = [
+  {
+    version: '1.5',
+    title: 'Chart Velocity, KSON autosave &amp; export pipeline',
+    entries: [
+      ['add', 'Chart Velocity event management — create, edit, and delete velocity events from the right-click menu or <strong>Chart → Chart Velocity…</strong>. KSON-only.'],
+      ['add', 'Export progress bar with debug terminal — shows decoding / encoding / finalizing stages during KSH and KSON export.'],
+      ['chg', 'Autosave now writes <code>.kson</code> instead of <code>.ksh</code>, preserving the full KSON data model.'],
+      ['add', 'Confirmation prompts on KSH and KSON export to prevent accidental overwrites.'],
+      ['add', 'Animated snap indicator — pressing <kbd>[</kbd> or <kbd>]</kbd> briefly shows the new snap value next to the cursor.'],
+      ['fix', 'FX hold tick now fires once on press instead of repeating through the hold duration.'],
+      ['fix', 'Horizontal lasers are now auto-marked as slams on import and during editing.'],
+      ['fix', 'Time signature display no longer de-syncs after mirroring a selection.'],
+      ['fix', 'Zoom level and editor UI layout are now persisted across page reloads.'],
+    ],
+  },
   {
     version: '1.4.1',
     title: 'Statistics, bookmarks &amp; update notifications',

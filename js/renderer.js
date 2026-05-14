@@ -131,6 +131,11 @@ class Renderer {
     this._camPillHitZones = [];
     this._hoveredCamTick  = null;
 
+    // _velPillHitZones: rebuilt every draw(); { x, y, w, h, tick }
+    // _hoveredVelTick: set by app.js; pill at this tick gets highlight border
+    this._velPillHitZones = [];
+    this._hoveredVelTick  = null;
+
     // FX hold hit zones — rebuilt every draw(); each entry is a canvas-space rect
     //   { x, y, w, h, li, note }  for click-to-popup
     this._fxHoldHitZones = [];
@@ -169,24 +174,51 @@ class Renderer {
 
   // ── Coordinate helpers ────────────────────────────────────────────────────
 
+  // Velocity-aware canvas-Y for a given tick within a column that starts at startY.
+  // If no scroll-speed events exist this is identical to the linear formula.
+  _pyAt(tick, startY) {
+    if (!this.chart?.scrollSpeedEvents?.length) {
+      return this.colH - (tick - startY) * this.zoom;
+    }
+    return this.colH - this.chart.scrollDistanceBetween(tick, startY) * this.zoom;
+  }
+
+  // Inverse of _pyAt: given a visual distance from column bottom (in "zoom units"),
+  // return the tick that lands at that position.
+  _scrollDistToTick(targetDist) {
+    const evs = this.chart?.scrollSpeedEvents;
+    if (!evs?.length) return targetDist;
+    let dist = 0, lastY = 0, speed = evs[0].speed ?? 1.0;
+    for (let i = 1; i < evs.length; i++) {
+      const segDist = (evs[i].y - lastY) * speed;
+      if (dist + segDist >= targetDist) break;
+      dist  += segDist;
+      lastY  = evs[i].y;
+      speed  = evs[i].speed ?? 1.0;
+    }
+    return lastY + (targetDist - dist) / Math.max(0.001, speed);
+  }
+
   tickToCanvas(tick) {
     const colLen    = this.colTicks;
     const colIdx    = Math.floor(tick / colLen);
-    const tickInCol = tick - colIdx * colLen;
+    const startY    = colIdx * colLen;
     const visColIdx = colIdx - this.scrollCol;
     const cx = visColIdx * (SINGLE_COL_W + COL_GAP);
-    const cy = this.colH - tickInCol * this.zoom;
+    const cy = this._pyAt(tick, startY);
     return { cx, cy, colIdx, visColIdx, visible: visColIdx >= 0 && visColIdx < this.numCols };
   }
 
   canvasToTick(cx, cy) {
-    const visColIdx = Math.max(0, Math.floor(cx / (SINGLE_COL_W + COL_GAP)));
-    const colIdx    = visColIdx + this.scrollCol;
-    const localX    = cx - visColIdx * (SINGLE_COL_W + COL_GAP);
-    const colLen    = this.colTicks;
-    const tickInCol = Math.max(0, (this.colH - cy) / this.zoom);
-    const tick      = colIdx * colLen + tickInCol;
-    const laneIdx   = this._localXToLane(localX);
+    const visColIdx  = Math.max(0, Math.floor(cx / (SINGLE_COL_W + COL_GAP)));
+    const colIdx     = visColIdx + this.scrollCol;
+    const localX     = cx - visColIdx * (SINGLE_COL_W + COL_GAP);
+    const colLen     = this.colTicks;
+    const startY     = colIdx * colLen;
+    const dist       = Math.max(0, (this.colH - cy) / this.zoom);
+    const baseDist   = this.chart ? this.chart.scrollDistanceTo(startY) : startY;
+    const tick       = this.chart ? this._scrollDistToTick(baseDist + dist) : (startY + dist);
+    const laneIdx    = this._localXToLane(localX);
     return { tick, laneIdx, localX, colIdx };
   }
 
@@ -223,6 +255,7 @@ class Renderer {
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     // Rebuild hit-zones every frame so they stay in sync with scroll/zoom
     this._camPillHitZones = [];
+    this._velPillHitZones = [];
     this._fxHoldHitZones  = [];
 
     for (let vi = 0; vi < this.numCols; vi++) {
@@ -329,8 +362,10 @@ class Renderer {
 
     const localCX = CX - stripX;  // center X within the strip
 
+    const _waveBaseDist = this.chart ? this.chart.scrollDistanceTo(startY) : startY;
     for (let py = 0; py < colH; py++) {
-      const tick  = startY + (colH - 1 - py) / this.zoom;
+      const dist  = (colH - 1 - py) / this.zoom;
+      const tick  = this.chart ? this._scrollDistToTick(_waveBaseDist + dist) : (startY + dist);
       const sec   = tickToSec(tick) + offSec;
       if (sec < 0 || sec > duration) continue;
 
@@ -385,7 +420,7 @@ class Renderer {
       const beatTicks = TICKS_PER_BEAT;
       const firstBeat = Math.floor(startY / beatTicks) * beatTicks;
       for (let bt = firstBeat; bt <= endY; bt += beatTicks) {
-        const py = colH - (bt - startY) * this.zoom;
+        const py = this._pyAt(bt, startY);
         if (py < 0 || py > colH) continue;
         ctx.beginPath();
         ctx.moveTo(ox + BT_AREA_X - EXTEND_W, py);
@@ -413,7 +448,7 @@ class Renderer {
           return t + (tSec - prevSec) * prevBpm / 60 * TICKS_PER_BEAT;
         })() : 0;
         if (tick < startY || tick > endY) continue;
-        const py = colH - (tick - startY) * this.zoom;
+        const py = this._pyAt(tick, startY);
         ctx.beginPath();
         ctx.moveTo(ox + BT_AREA_X - 4, py);
         ctx.lineTo(ox + BT_AREA_X + TRACK_W + 4, py);
@@ -440,7 +475,7 @@ class Renderer {
     // This handles any beatsPerCol value, including sub-measure columns.
     for (let sub = 0; sub * 12 < colTicks; sub++) {
       const relTick = sub * 12;
-      const y       = this.colH - relTick * this.zoom;
+      const y       = this._pyAt(startY + relTick, startY);
       if (y < 0) break;
 
       const isMeasBound = ((startY + relTick) % TICKS_PER_MEASURE === 0);
@@ -476,7 +511,7 @@ class Renderer {
 
     for (let relTick = 0; relTick < colTicks; relTick += TICKS_PER_BEAT) {
       const absTick = startY + relTick;
-      const y       = this.colH - relTick * this.zoom;
+      const y       = this._pyAt(absTick, startY);
       if (y < 0) break;
 
       const isMeasBound = (absTick % TICKS_PER_MEASURE === 0);
@@ -505,7 +540,7 @@ class Renderer {
     ctx.textAlign = 'left';
     for (const ev of (this.chart?.bpmEvents ?? [])) {
       if (ev.y < startY || ev.y >= endY) continue;
-      const y = this.colH - (ev.y - startY) * this.zoom;
+      const y = this._pyAt(ev.y, startY);
       ctx.fillStyle = C.bpmTxt;
       ctx.fillText(`${ev.bpm}`, ox + 2, y - 2);
     }
@@ -513,7 +548,7 @@ class Renderer {
     for (const ev of (this.chart?.timeSigEvents ?? [])) {
       const evTick = (ev.measure ?? 0) * TICKS_PER_MEASURE;
       if (evTick < startY || evTick >= endY) continue;
-      const y = this.colH - (evTick - startY) * this.zoom;
+      const y = this._pyAt(evTick, startY);
       ctx.fillStyle = '#bb44ff';
       ctx.fillText(`${ev.num}/${ev.den}`, ox + 2, y - 2 - 9); // offset up from BPM row
     }
@@ -540,8 +575,8 @@ class Renderer {
       if (evEnd <= startY || ev.y >= endY) continue;
       const cStart = Math.max(ev.y, startY);
       const cEnd   = Math.min(evEnd, endY);
-      const yTop   = this.colH - (cEnd   - startY) * this.zoom;
-      const yBot   = this.colH - (cStart - startY) * this.zoom;
+      const yTop   = this._pyAt(cEnd,   startY);
+      const yBot   = this._pyAt(cStart, startY);
       const bh     = Math.max(2, yBot - yTop);
 
       ctx.save();
@@ -566,7 +601,7 @@ class Renderer {
     // ── BPM change markers — yellow line across full width ───────────────────
     for (const ev of (this.chart?.bpmEvents ?? [])) {
       if (ev.y < startY || ev.y >= endY) continue;
-      const y = this.colH - (ev.y - startY) * this.zoom;
+      const y = this._pyAt(ev.y, startY);
       ctx.save();
       ctx.strokeStyle = '#ffdd44';
       ctx.lineWidth   = 1.5;
@@ -585,7 +620,7 @@ class Renderer {
     for (const ev of (this.chart?.timeSigEvents ?? [])) {
       const evTick = (ev.measure ?? 0) * TICKS_PER_MEASURE;
       if (evTick < startY || evTick >= endY) continue;
-      const y = this.colH - (evTick - startY) * this.zoom;
+      const y = this._pyAt(evTick, startY);
       ctx.save();
       ctx.strokeStyle = '#bb44ff';
       ctx.lineWidth   = 1.5;
@@ -623,7 +658,7 @@ class Renderer {
     }
 
     for (const [tick, entries] of camEvsByTick) {
-      const yBase   = this.colH - (tick - startY) * this.zoom;
+      const yBase   = this._pyAt(tick, startY);
       const hovered = this._hoveredCamTick === tick;
       let leftOff = 0, rightOff = 0;
 
@@ -696,6 +731,78 @@ class Renderer {
         if (isLeft) leftOff += PILL_STEP; else rightOff += PILL_STEP;
       }
     }
+
+    // ── Chart Velocity (scroll speed) pills — centered on BT track ──────────
+    // Amber pill spanning the BT lane width with a dashed guide line.
+    const VEL_COLOR  = '#ff9900';
+    const velEvs = this.chart?.scrollSpeedEvents ?? [];
+    for (const ev of velEvs) {
+      if (ev.y === 0 || ev.y < startY || ev.y >= endY) continue;
+      const yBase   = this._pyAt(ev.y, startY);
+      const pillTop = yBase - PILL_H;
+      const pillX   = trackX;
+      const pillW   = TRACK_W;
+      const isHov   = this._hoveredVelTick === ev.y;
+
+      ctx.save();
+
+      // Dashed guide line across full column width
+      ctx.globalAlpha = 0.4;
+      ctx.strokeStyle = VEL_COLOR;
+      ctx.lineWidth   = 1;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(leftExtX, yBase);
+      ctx.lineTo(rightExtX + EXTEND_W, yBase);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+
+      // Pill background
+      ctx.fillStyle = isHov ? '#1c1c38' : '#0d0d22';
+      ctx.fillRect(pillX, pillTop, pillW, PILL_H);
+
+      // Left accent bar
+      ctx.fillStyle = VEL_COLOR;
+      ctx.fillRect(pillX, pillTop, 3, PILL_H);
+
+      // Magnitude bar proportional to speed (0–3× range)
+      const mag    = Math.min(1, ev.speed / 3);
+      const barMax = pillW - 14;
+      const barW   = Math.round(mag * barMax);
+      if (barW > 0) {
+        ctx.globalAlpha = 0.22;
+        ctx.fillStyle   = VEL_COLOR;
+        ctx.fillRect(pillX + 5, pillTop + 2, barW, PILL_H - 4);
+      }
+      ctx.globalAlpha = 1;
+
+      // "vel" label
+      ctx.font         = 'bold 7px monospace';
+      ctx.fillStyle    = isHov ? '#ffffff' : VEL_COLOR;
+      ctx.textAlign    = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('vel', pillX + 6, yBase - PILL_H / 2);
+
+      // Speed value right-aligned
+      const valStr = `×${ev.speed.toFixed(2).replace(/\.?0+$/, '')}`;
+      ctx.font      = '7px monospace';
+      ctx.fillStyle = '#b0b0cc';
+      ctx.textAlign = 'right';
+      ctx.fillText(valStr, pillX + pillW, yBase - PILL_H / 2);
+
+      // Hover highlight border
+      if (isHov) {
+        ctx.strokeStyle = VEL_COLOR;
+        ctx.lineWidth   = 1;
+        ctx.strokeRect(pillX + 0.5, pillTop + 0.5, pillW - 1, PILL_H - 1);
+      }
+
+      ctx.restore();
+
+      // Register hit zone for mouse detection in app.js
+      this._velPillHitZones.push({ x: pillX, y: pillTop, w: pillW, h: PILL_H, tick: ev.y });
+    }
   }
 
   _drawColFxHolds(ox, startY, endY) {
@@ -712,8 +819,8 @@ class Renderer {
 
         const cStart = Math.max(n.y, startY);
         const cEnd   = Math.min(nEnd, endY);
-        const yTop   = this.colH - (cEnd   - startY) * this.zoom;
-        const yBot   = this.colH - (cStart - startY) * this.zoom;
+        const yTop   = this._pyAt(cEnd,   startY);
+        const yBot   = this._pyAt(cStart, startY);
         const bh     = Math.max(1, yBot - yTop);
 
         const g = ctx.createLinearGradient(x, 0, x + w, 0);
@@ -773,7 +880,7 @@ class Renderer {
 
       for (const n of (this.chart?.fx[span.li] ?? [])) {
         if (n.len !== 0 || n.y < startY || n.y >= endY) continue;
-        const yBot = this.colH - (n.y - startY) * this.zoom;
+        const yBot = this._pyAt(n.y, startY);
 
         const g = ctx.createLinearGradient(x, 0, x + w, 0);
         g.addColorStop(0,   C.fxEdge);
@@ -801,7 +908,7 @@ class Renderer {
         if (nEnd < startY || n.y >= endY) continue;
 
         if (n.len === 0) {
-          const y = this.colH - (n.y - startY) * this.zoom;
+          const y = this._pyAt(n.y, startY);
           ctx.fillStyle   = C.btChip;
           ctx.shadowColor = '#ffffff88';
           ctx.shadowBlur  = 4;
@@ -810,8 +917,8 @@ class Renderer {
         } else {
           const cStart = Math.max(n.y, startY);
           const cEnd   = Math.min(nEnd, endY);
-          const yTop   = this.colH - (cEnd   - startY) * this.zoom;
-          const yBot   = this.colH - (cStart - startY) * this.zoom;
+          const yTop   = this._pyAt(cEnd,   startY);
+          const yBot   = this._pyAt(cStart, startY);
 
           ctx.fillStyle = C.btHoldBg;
           ctx.fillRect(x + 2, yTop, BT_W - 4, Math.max(1, yBot - yTop));
@@ -853,7 +960,7 @@ class Renderer {
         const wide = sec.wide || laserWideMode;
         const HALF = wide ? BASE_HALF * 2 : BASE_HALF;
         const pxAt = (v) => this._laserVtoX(ox, v, wide);
-        const pyAt = (t) => this.colH - (t - startY) * this.zoom;
+        const pyAt = (t) => this._pyAt(t, startY);
 
         // ── Build flat segment list (clamped to column) ───────────────────────
         // Each segment carries: interpolation type (from p0, outgoing),
@@ -1119,7 +1226,7 @@ class Renderer {
           const color    = side === 0 ? laserColors.L : laserColors.R;
           const wide     = sec.wide || laserWideMode;
           const pxAt     = (v) => this._laserVtoX(ox, v, wide);
-          const pyAt     = (t) => this.colH - (t - startY) * this.zoom;
+          const pyAt     = (t) => this._pyAt(t, startY);
           const prevTick = prev.tick;
           const inCol = (lastTick >= startY && lastTick <= endY) ||
                         (prevTick  >= startY && prevTick  <= endY);
@@ -1159,7 +1266,7 @@ class Renderer {
     const colLen    = this.colTicks;
     const startY    = colIdx * colLen;
     const endY      = startY + colLen;
-    const pyAt      = (t) => this.colH - (t - startY) * this.zoom;
+    const pyAt      = (t) => this._pyAt(t, startY);
     const HR2       = hitRadius * hitRadius;
 
     for (let s = 0; s < 2; s++) {
@@ -1209,7 +1316,7 @@ class Renderer {
           const t  = sec.y + pt.ry;
           if (t < colStartY || t > colEndY) continue;
           const dotX = this._laserVtoX(ox, pt.v, wide);
-          const dotY = this.colH - (t - colStartY) * this.zoom;
+          const dotY = this._pyAt(t, colStartY);
           if (dotY < 0 || dotY > this.colH) continue;
           const dx = canvasX - dotX, dy = canvasY - dotY;
           if (dx * dx + dy * dy <= HR2) {
@@ -1226,9 +1333,7 @@ class Renderer {
     const pos = this.tickToCanvas(this.playTick);
     if (!pos.visible) return;
 
-    const colLen    = this.colTicks;
-    const tickInCol = this.playTick - pos.colIdx * colLen;
-    const cy = this.colH - tickInCol * this.zoom;
+    const cy = pos.cy;
     const ox = pos.visColIdx * (SINGLE_COL_W + COL_GAP);
 
     ctx.save();
@@ -1265,8 +1370,8 @@ Renderer.prototype.drawSelection = function(sel) {
     const ox     = vi * (SINGLE_COL_W + COL_GAP);
     const clampLo = Math.max(lo, cStart);
     const clampHi = Math.min(hi, cEnd);
-    const yTop = this.colH - (clampHi - cStart) * this.zoom;
-    const yBot = this.colH - (clampLo - cStart) * this.zoom;
+    const yTop = this._pyAt(clampHi, cStart);
+    const yBot = this._pyAt(clampLo, cStart);
     const height = Math.max(2, yBot - yTop);
 
     ctx.save();
@@ -1302,9 +1407,7 @@ Renderer.prototype._drawOverlapFlashes = function() {
     if (f.alpha <= 0) return false;
     const pos = this.tickToCanvas(f.tick);
     if (!pos.visible) return true;
-    const colLen = this.colTicks;
-    const tickInCol = f.tick - pos.colIdx * colLen;
-    const cy = this.colH - tickInCol * this.zoom;
+    const cy = pos.cy;
     const ox = pos.visColIdx * (SINGLE_COL_W + COL_GAP);
     ctx.save();
     ctx.globalAlpha = f.alpha * 0.6;
