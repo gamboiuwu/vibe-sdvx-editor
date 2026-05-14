@@ -312,6 +312,7 @@ function renderTabBar() {
     });
     tab.querySelector('.tab-name').addEventListener('dblclick', () => renameTab(i));
     tab.addEventListener('click', e => { if (!e.target.closest('.tab-close')) switchToTab(i); });
+    tab.addEventListener('contextmenu', e => { e.preventDefault(); showTabContextMenu(i, e.clientX, e.clientY); });
 
     // Drag-and-drop reorder
     tab.addEventListener('dragstart', e => {
@@ -354,6 +355,66 @@ function renderTabBar() {
 function renameTab(idx) {
   const name = prompt('Tab name:', tabs[idx].name);
   if (name) { tabs[idx].name = name; renderTabBar(); _multiUpdateTabButtons(); }
+}
+
+function duplicateTab(idx) {
+  const src = tabs[idx];
+  // Deep-copy chart data into a fresh ChartData so all methods are available
+  const srcData  = JSON.parse(JSON.stringify(src.chart));
+  const newChart = new ChartData();
+  Object.assign(newChart, srcData);
+  tabs.splice(idx + 1, 0, {
+    name: src.name + ' (copy)',
+    chart: newChart,
+    audioBuffer: src.audioBuffer,
+  });
+  switchToTab(idx + 1);
+}
+
+function showTabContextMenu(idx, x, y) {
+  document.getElementById('tab-ctx-menu')?.remove();
+  const menu = document.createElement('div');
+  menu.id = 'tab-ctx-menu';
+  menu.style.cssText = [
+    'position:fixed', 'z-index:10000', 'background:#1a1a2e',
+    'border:1px solid #303060', 'border-radius:6px', 'padding:4px 0',
+    'min-width:140px', 'box-shadow:0 4px 16px rgba(0,0,0,0.6)',
+    'font-size:12px',
+  ].join(';');
+
+  const items = [
+    { label: 'Rename',    action: () => renameTab(idx) },
+    { label: 'Duplicate', action: () => duplicateTab(idx) },
+    { sep: true },
+    { label: 'Close', action: () => closeTab(idx), danger: true },
+  ];
+  for (const item of items) {
+    if (item.sep) {
+      const hr = document.createElement('div');
+      hr.style.cssText = 'height:1px;background:#303060;margin:3px 0';
+      menu.appendChild(hr); continue;
+    }
+    const el = document.createElement('div');
+    el.textContent = item.label;
+    el.style.cssText = `padding:6px 16px;cursor:pointer;color:${item.danger ? '#ff6666' : '#c8c8ff'}`;
+    el.addEventListener('mouseenter', () => { el.style.background = '#252548'; });
+    el.addEventListener('mouseleave', () => { el.style.background = 'transparent'; });
+    el.addEventListener('click', () => { menu.remove(); item.action(); });
+    menu.appendChild(el);
+  }
+
+  document.body.appendChild(menu);
+  // Constrain to viewport after render
+  requestAnimationFrame(() => {
+    const mw = menu.offsetWidth, mh = menu.offsetHeight;
+    menu.style.left = Math.min(x, window.innerWidth  - mw - 6) + 'px';
+    menu.style.top  = Math.min(y, window.innerHeight - mh - 6) + 'px';
+  });
+
+  const dismiss = e => {
+    if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('mousedown', dismiss, true); }
+  };
+  setTimeout(() => document.addEventListener('mousedown', dismiss, true), 0);
 }
 
 // ── Tick / Second conversion (uses chartSpeed) ───────────────────────────────
@@ -2906,40 +2967,134 @@ function ensureFxTooltip() {
 
 let _fxHoverTimer = null;
 let _fxPinned = false;
+let _fxHoverNote = null; // tracks which note the timer is currently counting for
 
 function showFxTooltip(clientX, clientY, note, lane) {
   ensureFxTooltip();
-  if (_fxPinned && fxTooltipNote === note) return; // already pinned on this note
-  if (_fxPinned) return; // pinned on different note, don't change
+  if (_fxPinned) return;
+  if (_fxHoverNote === note) return; // already counting for this note, don't reset timer
   clearTimeout(_fxHoverTimer);
+  _fxHoverNote = note;
   _fxHoverTimer = setTimeout(() => {
+    _fxHoverNote = null;
     _doShowFxTooltip(clientX, clientY, note, lane);
-  }, 900);
+  }, 300);
 }
 
 function _doShowFxTooltip(clientX, clientY, note, lane) {
   ensureFxTooltip();
   fxTooltipNote = note;
   _fxPinned = true;
-  const current = note.effect || 'none';
-  const opts = FX_EFFECT_OPTIONS.map(e =>
-    `<option value="${e.value}"${e.value === current ? ' selected' : ''}>${e.label}</option>`
+  _fxHoverNote = null;
+
+  const chain     = chart?.fxChains?.[lane] ?? [];
+  const laneName  = lane === 0 ? 'FX-L' : 'FX-R';
+  const curType   = chain.length > 0 ? chain[0].type : 'retrigger';
+
+  const typeOpts = Object.entries(EFFECT_DEFS).map(([k, d]) =>
+    `<option value="${k}"${k === curType ? ' selected' : ''}>${d.label}</option>`
   ).join('');
+
+  let paramHtml = '';
+  if (chain.length > 0) {
+    const inst = chain[0];
+    const def  = EFFECT_DEFS[inst.type];
+    if (def) {
+      for (const [k, p] of Object.entries(def.params)) {
+        const val = inst.params[k] ?? p.def;
+        paramHtml += `
+          <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px">
+            <span style="min-width:68px;font-size:10px;color:#aaa">${p.label}</span>
+            <input type="range" class="fx-tt-sl" data-key="${k}"
+              min="${p.min}" max="${p.max}" step="${p.step}" value="${val}"
+              style="flex:1;accent-color:#ff8800;height:14px">
+            <input type="number" class="fx-tt-num" data-key="${k}"
+              min="${p.min}" max="${p.max}" step="${p.step}" value="${val}"
+              style="width:46px;background:#111;border:1px solid #333;border-radius:3px;color:#ddd;padding:1px 3px;font-size:10px">
+            <span style="min-width:20px;font-size:9px;color:#666">${p.unit || ''}</span>
+          </div>`;
+      }
+    }
+  } else {
+    paramHtml = `<div style="color:#666;font-size:10px;margin:4px 0">No effect. Select type above, then click Add.</div>
+      <button class="fx-tt-add" style="background:#1a2a1a;border:1px solid #448844;border-radius:3px;color:#88cc88;padding:2px 8px;font-size:10px;cursor:pointer">Add Effect</button>`;
+  }
+
   fxTooltipEl.innerHTML = `
-    <div class="fx-tt-label">FX-${lane === 0 ? 'L' : 'R'} Effect</div>
-    <select class="fx-tt-select">${opts}</select>
-    <div class="fx-tt-close" title="Close">✕</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <span class="fx-tt-label">${laneName}</span>
+      <div class="fx-tt-close" title="Close" style="cursor:pointer;padding:0 2px;color:#888">✕</div>
+    </div>
+    <div style="margin-bottom:6px">
+      <select class="fx-tt-type-sel"
+        style="width:100%;background:#111;border:1px solid #444;color:#ddd;border-radius:3px;padding:2px 4px;font-size:11px">
+        ${typeOpts}
+      </select>
+    </div>
+    ${paramHtml}
   `;
-  fxTooltipEl.querySelector('.fx-tt-select').addEventListener('change', ev => {
-    if (fxTooltipNote) fxTooltipNote.effect = ev.target.value || null;
-    render();
+
+  // Type selector: change type or create a new instance
+  fxTooltipEl.querySelector('.fx-tt-type-sel')?.addEventListener('change', ev => {
+    const newType = ev.target.value;
+    if (!chart.fxChains[lane]) chart.fxChains[lane] = [];
+    const newInst = makeEffectInstance(newType);
+    if (chart.fxChains[lane].length > 0) {
+      chart.fxChains[lane][0] = newInst;
+    } else {
+      chart.fxChains[lane].push(newInst);
+    }
+    renderFxChain(lane);
+    _doShowFxTooltip(clientX, clientY, note, lane);
   });
-  fxTooltipEl.querySelector('.fx-tt-close').addEventListener('click', () => {
+
+  // Add button for empty chain
+  fxTooltipEl.querySelector('.fx-tt-add')?.addEventListener('click', () => {
+    const sel = fxTooltipEl.querySelector('.fx-tt-type-sel');
+    if (!chart.fxChains[lane]) chart.fxChains[lane] = [];
+    const newInst = makeEffectInstance(sel?.value || 'retrigger');
+    chart.fxChains[lane].push(newInst);
+    renderFxChain(lane);
+    _doShowFxTooltip(clientX, clientY, note, lane);
+  });
+
+  // Parameter sliders
+  fxTooltipEl.querySelectorAll('.fx-tt-sl').forEach(sl => {
+    sl.addEventListener('input', () => {
+      const inst = chart.fxChains[lane]?.[0];
+      if (!inst) return;
+      const p = EFFECT_DEFS[inst.type]?.params?.[sl.dataset.key];
+      if (!p) return;
+      const v = Math.max(p.min, Math.min(p.max, parseFloat(sl.value)));
+      inst.params[sl.dataset.key] = v;
+      const num = fxTooltipEl.querySelector(`.fx-tt-num[data-key="${sl.dataset.key}"]`);
+      if (num && num !== document.activeElement) num.value = v;
+      renderFxChain(lane);
+    });
+  });
+
+  // Parameter number inputs
+  fxTooltipEl.querySelectorAll('.fx-tt-num').forEach(ni => {
+    ni.addEventListener('input', () => {
+      const inst = chart.fxChains[lane]?.[0];
+      if (!inst) return;
+      const p = EFFECT_DEFS[inst.type]?.params?.[ni.dataset.key];
+      if (!p) return;
+      const v = Math.max(p.min, Math.min(p.max, parseFloat(ni.value) || p.def));
+      inst.params[ni.dataset.key] = v;
+      const sl = fxTooltipEl.querySelector(`.fx-tt-sl[data-key="${ni.dataset.key}"]`);
+      if (sl && sl !== document.activeElement) sl.value = v;
+      renderFxChain(lane);
+    });
+  });
+
+  fxTooltipEl.querySelector('.fx-tt-close')?.addEventListener('click', () => {
     _fxPinned = false;
+    _fxHoverNote = null;
     hideFxTooltip();
   });
+
   fxTooltipEl.style.display = 'block';
-  // Position after display so offsetWidth is valid
   requestAnimationFrame(() => {
     const tw = fxTooltipEl.offsetWidth, th = fxTooltipEl.offsetHeight;
     fxTooltipEl.style.left = Math.min(clientX + 14, window.innerWidth  - tw - 8) + 'px';
@@ -2948,8 +3103,9 @@ function _doShowFxTooltip(clientX, clientY, note, lane) {
 }
 
 function hideFxTooltip() {
-  if (_fxPinned) return; // don't hide while pinned
+  if (_fxPinned) return;
   clearTimeout(_fxHoverTimer);
+  _fxHoverNote = null;
   if (fxTooltipEl) fxTooltipEl.style.display = 'none';
   fxTooltipNote = null;
 }
@@ -4048,8 +4204,7 @@ function onMouseMove(e) {
   }
   if (!drag.active) {
     updateStatusFromEvent(e);
-    if (tool === 'select') checkFxHover(e);
-    else hideFxTooltip();
+    checkFxHover(e);
     // Show grab cursor and highlight handle when hovering over a bezier diamond
     if ((tool === 'laser-l' || tool === 'laser-r') && renderer) {
       const side = tool === 'laser-l' ? 0 : 1;
@@ -4648,8 +4803,13 @@ function showSnapDisplay(oldSnap, newSnap, direction) {
   const T = '0.22s';
   const ANIM = `top ${T} ${EASE}, opacity ${T} ${EASE}`;
 
-  // Disable transitions on all children so initial positions apply instantly
-  [prev, curr, next].forEach(el => { el.style.transition = 'none'; });
+  // Disable transitions and reset ALL three to hidden so leftover state from
+  // the previous animation direction doesn't bleed through as a ghost text.
+  [prev, curr, next].forEach(el => {
+    el.style.transition = 'none';
+    el.style.opacity    = '0';
+    el.style.top        = '0px';
+  });
 
   if (direction === 'up') {
     // [ key: finer snap (1/4 → 1/8). Old exits up, new enters from below.
