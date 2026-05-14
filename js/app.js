@@ -4303,35 +4303,39 @@ function onRightClick(e) {
   }
 
   // Default: erase note at cursor.
+  // BT/FX tools constrain erasing to their own note type.
+  const typeFilter = tool === 'bt' ? 'bt' : tool === 'fx' ? 'fx' : undefined;
   const h = getHit(e);
   if (h.laneIdx < 0) return;
   saveUndo(`Deleted at M${Math.floor(h.tick / TICKS_PER_MEASURE) + 1}`);
-  eraseAt(h.laneIdx, h.tick);
+  eraseAt(h.laneIdx, h.tick, typeFilter);
   // Clear selection if we erased a laser
-  if (h.laneIdx === 4 || h.laneIdx === 5) {
+  if (!typeFilter && (h.laneIdx === 4 || h.laneIdx === 5)) {
     _laserSel = null;
     if (renderer) renderer.selectedLaserPoint = null;
   }
   render();
 }
 
-function eraseAt(laneIdx, tick) {
-  // Also erase camera/stop events near tick (within half a beat)
-  const hitRadius = TICKS_PER_BEAT / 2;
-  const prevCamLen = (chart.cameraEvents ?? []).length;
-  chart.cameraEvents = (chart.cameraEvents ?? []).filter(ev => Math.abs(ev.y - tick) > hitRadius);
-  const prevStopLen = (chart.stopEvents ?? []).length;
-  chart.stopEvents   = (chart.stopEvents ?? []).filter(ev => !(tick >= ev.y && tick <= ev.y + ev.len));
-  if ((chart.cameraEvents ?? []).length !== prevCamLen)  updateCameraEventList();
-  if ((chart.stopEvents   ?? []).length !== prevStopLen) updateStopEventList();
+// typeFilter: 'bt' | 'fx' | undefined (undefined = erase everything)
+function eraseAt(laneIdx, tick, typeFilter) {
+  // Camera/stop events are only erased when using the dedicated erase tool
+  if (!typeFilter) {
+    const hitRadius = TICKS_PER_BEAT / 2;
+    const prevCamLen = (chart.cameraEvents ?? []).length;
+    chart.cameraEvents = (chart.cameraEvents ?? []).filter(ev => Math.abs(ev.y - tick) > hitRadius);
+    const prevStopLen = (chart.stopEvents ?? []).length;
+    chart.stopEvents   = (chart.stopEvents ?? []).filter(ev => !(tick >= ev.y && tick <= ev.y + ev.len));
+    if ((chart.cameraEvents ?? []).length !== prevCamLen)  updateCameraEventList();
+    if ((chart.stopEvents   ?? []).length !== prevStopLen) updateStopEventList();
+  }
 
   if (laneIdx >= 0 && laneIdx <= 3) {
-    chart.removeNote(chart.bt[laneIdx], tick);
-    chart.removeNote(chart.fx[laneIdx <= 1 ? 0 : 1], tick);
-  } else if (laneIdx === 4) {
-    chart.removeLaserAt(0, tick);
-  } else if (laneIdx === 5) {
-    chart.removeLaserAt(1, tick);
+    if (!typeFilter || typeFilter === 'bt') chart.removeNote(chart.bt[laneIdx], tick);
+    if (!typeFilter || typeFilter === 'fx') chart.removeNote(chart.fx[laneIdx <= 1 ? 0 : 1], tick);
+  } else if (!typeFilter) {
+    if (laneIdx === 4) chart.removeLaserAt(0, tick);
+    if (laneIdx === 5) chart.removeLaserAt(1, tick);
   }
 }
 
