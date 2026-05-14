@@ -1446,6 +1446,48 @@ function setViewMode(mode) {
   document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === mode));
 }
 
+let _isGameViewFullscreen = false;
+
+function toggleGameViewFullscreen() {
+  const gameWrap = document.getElementById('game-wrap');
+  if (!gameWrap) return;
+
+  if (!_isGameViewFullscreen) {
+    // Enter fullscreen
+    _isGameViewFullscreen = true;
+    gameWrap.style.position = 'fixed';
+    gameWrap.style.top = '0';
+    gameWrap.style.left = '0';
+    gameWrap.style.width = '100%';
+    gameWrap.style.height = '100%';
+    gameWrap.style.zIndex = '10000';
+    gameWrap.style.display = 'flex';
+    // Hide other UI elements
+    document.getElementById('header')?.style.display = 'none';
+    document.getElementById('main')?.style.display = 'none';
+    document.getElementById('tab-bar')?.style.display = 'none';
+    document.getElementById('toolbar')?.style.display = 'none';
+    // Update button state
+    const btn = document.getElementById('btn-fullscreen');
+    if (btn) btn.classList.add('fullscreen-active');
+    if (gameView) { gameView.resize(); gameView.draw(); }
+  } else {
+    // Exit fullscreen
+    _isGameViewFullscreen = false;
+    gameWrap.style.position = '';
+    gameWrap.style.top = '';
+    gameWrap.style.left = '';
+    gameWrap.style.width = '';
+    gameWrap.style.height = '';
+    gameWrap.style.zIndex = '';
+    // Restore view mode
+    setViewMode(viewMode);
+    // Update button state
+    const btn = document.getElementById('btn-fullscreen');
+    if (btn) btn.classList.remove('fullscreen-active');
+  }
+}
+
 // ── Multi-chart preview ───────────────────────────────────────────────────────
 // State
 let _multiMode   = false;
@@ -1910,6 +1952,9 @@ window.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('[data-view]').forEach(btn => {
     btn.addEventListener('click', () => setViewMode(btn.dataset.view));
   });
+
+  // Fullscreen button
+  document.getElementById('btn-fullscreen')?.addEventListener('click', toggleGameViewFullscreen);
 
   // Edit menu buttons
   document.getElementById('btn-undo')?.addEventListener('click', undo);
@@ -4601,6 +4646,13 @@ function onKeyDown(e) {
     case '6': setTool('cam-event');  break;
     case '7': setTool('stop-event'); break;
     case 'e': case 'E': setTool('erase'); break;
+
+    case 'f': case 'F':
+      if (!ctrl) {
+        e.preventDefault();
+        toggleGameViewFullscreen();
+      }
+      break;
 
     case 'Tab':
       e.preventDefault();

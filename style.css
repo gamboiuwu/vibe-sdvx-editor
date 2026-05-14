@@ -61,6 +61,7 @@ html, body {
 }
 .topbar-view-btn:hover { background: var(--bg2); color: var(--text); }
 .topbar-view-btn.active { background: var(--bg3); border-color: var(--accent); color: var(--accent); }
+.topbar-view-btn.fullscreen-active { background: #1a3a1a; border-color: #39ff14; color: #39ff14; }
 .topbar-play-btn {
   background: #1a2a1a;
   border: 1px solid #39ff14;
