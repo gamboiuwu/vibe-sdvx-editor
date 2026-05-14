@@ -1481,7 +1481,12 @@ function toggleGameViewFullscreen() {
     gameWrap.style.width = '';
     gameWrap.style.height = '';
     gameWrap.style.zIndex = '';
-    // Restore view mode
+    // Restore all hidden UI elements
+    const _el = (id) => document.getElementById(id);
+    if (_el('header'))  _el('header').style.display  = '';
+    if (_el('tab-bar')) _el('tab-bar').style.display = '';
+    if (_el('toolbar')) _el('toolbar').style.display = '';
+    // Restore view mode (handles main/game-wrap visibility)
     setViewMode(viewMode);
     // Update button state
     const btn = document.getElementById('btn-fullscreen');
