@@ -534,19 +534,69 @@ function downloadText(filename, text) {
   // Firefox (and some Safari builds) refuse to fire downloads when the anchor
   // isn't part of the DOM, and revoking the object URL synchronously can
   // cancel the transfer mid-flight. Attach, click, then revoke on a delay.
-  const blob = new Blob([text], { type: 'application/octet-stream' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href     = url;
-  a.download = filename;
-  a.rel      = 'noopener';
-  a.style.display = 'none';
-  document.body.appendChild(a);
-  try { a.click(); }
-  finally {
-    setTimeout(() => {
-      try { document.body.removeChild(a); } catch (_) {}
-      URL.revokeObjectURL(url);
-    }, 4000);
+  try {
+    const blob = new Blob([text], { type: 'application/octet-stream' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+
+    a.href     = url;
+    a.download = filename;
+    a.rel      = 'noopener';
+    a.style.display = 'none';
+
+    console.log(`[Download] Creating download: ${filename}, blob size: ${blob.size} bytes`);
+    console.log(`[Download] Object URL: ${url.substring(0, 60)}...`);
+
+    document.body.appendChild(a);
+    console.log(`[Download] Anchor appended to DOM`);
+
+    // Use requestAnimationFrame to ensure DOM update before click
+    let hasClickSucceeded = false;
+    requestAnimationFrame(() => {
+      try {
+        a.click();
+        hasClickSucceeded = true;
+        console.log(`[Download] click() invoked successfully`);
+      } catch (clickErr) {
+        console.error(`[Download] click() threw exception:`, clickErr);
+      }
+
+      // Provide fallback: create visible download link if click appears to fail
+      if (!hasClickSucceeded) {
+        console.warn(`[Download] Programmatic click failed, creating fallback link`);
+        const fallbackA = document.createElement('a');
+        fallbackA.href = url;
+        fallbackA.download = filename;
+        fallbackA.textContent = `📥 Download ${filename}`;
+        fallbackA.style.cssText = 'display:block;padding:12px 16px;background:#0066cc;color:white;text-decoration:none;border-radius:4px;text-align:center;z-index:99999;position:fixed;bottom:24px;right:24px;font-family:system-ui;font-size:14px;box-shadow:0 4px 8px rgba(0,0,0,0.3);';
+        document.body.appendChild(fallbackA);
+        console.log(`[Download] Fallback link added to page`);
+
+        // Auto-remove fallback after 60 seconds (user has time to click)
+        setTimeout(() => {
+          try { document.body.removeChild(fallbackA); } catch(_) {}
+          URL.revokeObjectURL(url);
+          console.log(`[Download] Fallback timeout, URL revoked`);
+        }, 60000);
+      } else {
+        // Normal cleanup: remove anchor and revoke URL after 4 seconds
+        setTimeout(() => {
+          try {
+            if (document.body.contains(a)) {
+              document.body.removeChild(a);
+            }
+          } catch (removeErr) {
+            console.warn(`[Download] Could not remove anchor:`, removeErr);
+          }
+          URL.revokeObjectURL(url);
+          console.log(`[Download] Object URL revoked`);
+        }, 4000);
+      }
+    });
+
+    console.log(`[Download] Download sequence initiated: ${filename}`);
+  } catch (err) {
+    console.error(`[Download] Fatal error:`, err);
+    alert(`Download failed: ${err.message}`);
   }
 }

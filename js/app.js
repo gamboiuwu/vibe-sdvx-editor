@@ -252,7 +252,7 @@ function switchToTab(idx) {
     renderer.playTick  = 0;
   }
   if (gameView) gameView.chart = chart;
-  pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList(); updateStopEventList();
+  pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList(); updateStopEventList(); updateScrollSpeedEventList();
   renderFxChain(0); renderFxChain(1);
   renderTabBar();
   _multiUpdateTabButtons();
@@ -282,7 +282,7 @@ function closeTab(idx) {
   audioBuffer = tabs[activeTabIdx].audioBuffer || null;
   if (renderer) { renderer.chart = chart; renderer.scrollCol = 0; renderer.playTick = 0; }
   if (gameView) gameView.chart = chart;
-  pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList(); updateStopEventList();
+  pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList(); updateStopEventList(); updateScrollSpeedEventList();
   renderFxChain(0); renderFxChain(1);
   renderTabBar();
   _multiUpdateTabButtons();
@@ -631,25 +631,17 @@ function detectFxHits(prevTick, curTick) {
         src.connect(tickGainNode || audioCtx.destination);
         src.start();
       }
-      // FX hold: play metronome tick on HOLD_SAMPLE intervals while holding
-      else if (n.len > 0 && n.y <= curTick && n.y + n.len >= prevTick) {
-        const HOLD_SAMPLE = TICKS_PER_BEAT / 8;  // 48/8 = 6 ticks
-        // Find all HOLD_SAMPLE grid points between prevTick..curTick
-        const firstSample = Math.ceil(Math.max(n.y, prevTick) / HOLD_SAMPLE) * HOLD_SAMPLE;
-        const lastSample  = Math.floor(Math.min(n.y + n.len, curTick) / HOLD_SAMPLE) * HOLD_SAMPLE;
-        for (let t = firstSample; t <= lastSample; t += HOLD_SAMPLE) {
-          if (t >= prevTick && t < curTick && t > n.y && t < n.y + n.len) {
-            // Play a quiet metronome tick on FX holds
-            if (audioCtx && tickBuffer) {
-              const src = audioCtx.createBufferSource();
-              src.buffer = tickBuffer;
-              const g = audioCtx.createGain();
-              g.gain.value = 0.4;  // quieter than regular ticks
-              src.connect(g);
-              g.connect(tickGainNode || audioCtx.destination);
-              src.start();
-            }
-          }
+      // FX hold: play tick once when hold starts
+      else if (n.len > 0 && n.y >= prevTick && n.y < curTick) {
+        // Play a tick when the hold is first pressed
+        if (audioCtx && tickBuffer) {
+          const src = audioCtx.createBufferSource();
+          src.buffer = tickBuffer;
+          const g = audioCtx.createGain();
+          g.gain.value = 0.4;  // quieter than regular ticks
+          src.connect(g);
+          g.connect(tickGainNode || audioCtx.destination);
+          src.start();
         }
       }
     }
@@ -1940,20 +1932,30 @@ window.addEventListener('DOMContentLoaded', () => {
 
   // Zoom slider (100% = 1.2× internal zoom)
   document.getElementById('zoom-slider').addEventListener('input', e => {
-    renderer.zoom = +e.target.value / 100 * 1.2;
-    document.getElementById('zoom-label').textContent = e.target.value + '%';
+    const val = +e.target.value;
+    prefs.zoom = val;
+    renderer.zoom = val / 100 * 1.2;
+    document.getElementById('zoom-label').textContent = val + '%';
     renderer.resize();
     render();
+    try { localStorage.setItem('vibe-editr-prefs', JSON.stringify(prefs)); } catch(_) {}
   });
 
   // Beats per lane slider
   const bplSlider = document.getElementById('beats-per-lane');
-  bplSlider?.addEventListener('input', () => applyBeatsPerLane(+bplSlider.value));
+  bplSlider?.addEventListener('input', () => {
+    const val = +bplSlider.value;
+    prefs.beatsPerLane = val;
+    applyBeatsPerLane(val);
+    try { localStorage.setItem('vibe-editr-prefs', JSON.stringify(prefs)); } catch(_) {}
+  });
   // Legacy meas-per-col input (Chart menu) — keep both in sync
   document.getElementById('meas-per-col')?.addEventListener('change', e => {
     const mpc = Math.max(1, Math.min(16, +e.target.value));
+    prefs.measPerCol = mpc;
     renderer.measPerCol = mpc;
     applyBeatsPerLane(renderer.beatsPerCol);
+    try { localStorage.setItem('vibe-editr-prefs', JSON.stringify(prefs)); } catch(_) {}
   });
 
   // Metadata
@@ -1962,27 +1964,123 @@ window.addEventListener('DOMContentLoaded', () => {
     el.addEventListener('input',  syncMetaToChart);
   });
 
+  // Export progress UI manager
+  let _exportAborted = false;
+  function showExportProgress(label = 'Exporting…') {
+    _exportAborted = false;
+    const modal = document.getElementById('export-progress-modal');
+    const status = document.getElementById('export-status');
+    const progressFill = document.getElementById('export-progress-fill');
+    const progressText = document.getElementById('export-progress-text');
+    const cancelBtn = document.getElementById('export-cancel-btn');
+    const doneBtn = document.getElementById('export-done-btn');
+    const debugLog = document.getElementById('export-debug');
+    if (!modal) return;
+    // Reset
+    status.textContent = label;
+    progressFill.style.width = '0%';
+    progressText.textContent = '';
+    debugLog.innerHTML = '<div style="color:#aaaadd;opacity:0.7">Debug log:</div>';
+    cancelBtn.style.display = 'block';
+    doneBtn.style.display = 'none';
+    modal.style.display = 'flex';
+  }
+  function updateExportProgress(pct, status = null, debugMsg = null) {
+    const modal = document.getElementById('export-progress-modal');
+    const statusEl = document.getElementById('export-status');
+    const progressFill = document.getElementById('export-progress-fill');
+    const progressText = document.getElementById('export-progress-text');
+    const debugLog = document.getElementById('export-debug');
+    if (!modal) return;
+    pct = Math.max(0, Math.min(100, pct));
+    progressFill.style.width = pct + '%';
+    if (pct > 10) progressText.textContent = pct + '%';
+    if (status) statusEl.textContent = status;
+    if (debugMsg) {
+      const line = document.createElement('div');
+      line.textContent = debugMsg;
+      line.style.color = debugMsg.includes('Error') || debugMsg.includes('error') ? '#ff8888' : '#88cc88';
+      debugLog.appendChild(line);
+      debugLog.scrollTop = debugLog.scrollHeight;
+    }
+  }
+  function closeExportProgress() {
+    const modal = document.getElementById('export-progress-modal');
+    if (modal) modal.style.display = 'none';
+  }
+  function finishExportProgress(success = true, msg = null) {
+    const statusEl = document.getElementById('export-status');
+    const cancelBtn = document.getElementById('export-cancel-btn');
+    const doneBtn = document.getElementById('export-done-btn');
+    if (success) {
+      statusEl.textContent = msg || '✓ Export complete';
+      statusEl.style.color = '#aaffaa';
+      updateExportProgress(100);
+    } else {
+      statusEl.textContent = msg || '✗ Export failed';
+      statusEl.style.color = '#ff8888';
+    }
+    cancelBtn.style.display = 'none';
+    doneBtn.style.display = 'block';
+  }
+  function cancelExport() {
+    _exportAborted = true;
+    const modal = document.getElementById('export-progress-modal');
+    if (modal) modal.style.display = 'none';
+  }
+  window.showExportProgress = showExportProgress;
+  window.updateExportProgress = updateExportProgress;
+  window.finishExportProgress = finishExportProgress;
+  window.cancelExport = cancelExport;
+  window.closeExportProgress = closeExportProgress;
+
   // Export
   document.getElementById('btn-export-ksh').addEventListener('click', () => {
+    const title = chart.meta.title || 'Untitled Chart';
+    if (!confirm(`Export "${title}" as KSH?`)) return;
     try {
+      showExportProgress('Exporting KSH…');
+      updateExportProgress(10, 'Preparing chart data…');
       const base = (chart.meta.title.replace(/[^a-zA-Z0-9_]/g, '_') || 'chart');
       const diff = (chart.meta.difficulty || '').toLowerCase();
       const suffix = diff ? `_${diff}` : '';
-      downloadText(base + suffix + '.ksh', exportKsh(chart));
+      const filename = base + suffix + '.ksh';
+      updateExportProgress(30, 'Generating KSH…', 'Serializing chart notes and events');
+      const ksh = exportKsh(chart);
+      updateExportProgress(80, 'Preparing download…', `Generated ${(ksh.length / 1024).toFixed(1)}KB KSH`);
+      console.log(`[Export] Calling downloadText('${filename}', ...)`);
+      updateExportProgress(85, 'Starting download…', `Triggering download of ${filename}`);
+      downloadText(filename, ksh);
+      updateExportProgress(95, 'Download initiated…', 'Your file should appear in your Downloads folder');
+      setTimeout(() => finishExportProgress(true, '✓ KSH exported: ' + filename), 500);
     } catch (err) {
       console.error('KSH export failed:', err);
-      alert('Failed to export KSH:\n' + (err?.message || err));
+      updateExportProgress(0, null, 'Error: ' + (err?.message || err));
+      finishExportProgress(false, '✗ ' + (err?.message || err));
     }
   });
   document.getElementById('btn-export-kson').addEventListener('click', () => {
+    const title = chart.meta.title || 'Untitled Chart';
+    if (!confirm(`Export "${title}" as KSON?`)) return;
     try {
+      showExportProgress('Exporting KSON…');
+      updateExportProgress(10, 'Preparing chart data…');
       const base = (chart.meta.title.replace(/[^a-zA-Z0-9_]/g, '_') || 'chart');
       const diff = (chart.meta.difficulty || '').toLowerCase();
       const suffix = diff ? `_${diff}` : '';
-      downloadText(base + suffix + '.kson', exportKson(chart));
+      const filename = base + suffix + '.kson';
+      updateExportProgress(30, 'Generating KSON…', 'Serializing chart with spec-compliant format');
+      const kson = exportKson(chart);
+      updateExportProgress(80, 'Preparing download…', `Generated ${(kson.length / 1024).toFixed(1)}KB KSON`);
+      console.log(`[Export] Calling downloadText('${filename}', ...)`);
+      updateExportProgress(85, 'Starting download…', `Triggering download of ${filename}`);
+      downloadText(filename, kson);
+      updateExportProgress(95, 'Download initiated…', 'Your file should appear in your Downloads folder');
+      setTimeout(() => finishExportProgress(true, '✓ KSON exported: ' + filename), 500);
     } catch (err) {
       console.error('KSON export failed:', err);
-      alert('Failed to export KSON:\n' + (err?.message || err));
+      updateExportProgress(0, null, 'Error: ' + (err?.message || err));
+      finishExportProgress(false, '✗ ' + (err?.message || err));
     }
   });
 
@@ -2028,7 +2126,7 @@ window.addEventListener('DOMContentLoaded', () => {
           renderer.chart = chart; renderer.scrollCol = 0; renderer.playTick = 0;
           if (gameView) { gameView.chart = chart; gameView._liveCamera = null; }
           fxChipSEBuffers = [null, null];
-          pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList(); updateStopEventList();
+          pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList(); updateStopEventList(); updateScrollSpeedEventList();
           renderFxChain(0); renderFxChain(1);
           renderTabBar();
           render();
@@ -2057,7 +2155,7 @@ window.addEventListener('DOMContentLoaded', () => {
         if (gameView) { gameView.chart = chart; gameView._liveCamera = null; }
         // Reset per-chart SE buffers (no folder context for single file)
         fxChipSEBuffers = [null, null];
-        pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList(); updateStopEventList();
+        pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList(); updateStopEventList(); updateScrollSpeedEventList();
         renderFxChain(0); renderFxChain(1);
         renderTabBar();
         render();
@@ -2083,7 +2181,7 @@ window.addEventListener('DOMContentLoaded', () => {
     renderer.chart = chart;
     renderer.scrollCol = 0; renderer.playTick = 0;
     if (gameView) gameView.chart = chart;
-    pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList(); updateStopEventList();
+    pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList(); updateStopEventList(); updateScrollSpeedEventList();
     renderFxChain(0); renderFxChain(1); render();
     updateSeekbar(0);
   });
@@ -2113,15 +2211,27 @@ window.addEventListener('DOMContentLoaded', () => {
     const charts = tabs.map(t => t.chart).filter(Boolean);
     if (!charts.length) { alert('No charts to export.'); return; }
     const packName = (charts[0].meta.title || 'pack').replace(/[^a-zA-Z0-9_]/g, '_');
+    const filename = packName + '.ksonpack';
     const packMeta = {
       title:       charts[0].meta.title || 'Untitled Pack',
       artist:      charts[0].meta.artist || '',
       description: `${charts.length} chart${charts.length === 1 ? '' : 's'} bundled from vibe-editr.`,
     };
     try {
-      downloadText(packName + '.ksonpack', exportKsonPack(charts, packMeta));
+      showExportProgress('Exporting .ksonpack bundle…');
+      updateExportProgress(10, `Preparing ${charts.length} chart(s)…`);
+      updateExportProgress(25, 'Serializing charts…', `Processing ${charts.length} chart(s)`);
+      const pack = exportKsonPack(charts, packMeta);
+      updateExportProgress(80, 'Preparing download…', `Generated ${(pack.length / 1024).toFixed(1)}KB pack`);
+      console.log(`[Export] Calling downloadText('${filename}', ...)`);
+      updateExportProgress(85, 'Starting download…', `Triggering download of ${filename}`);
+      downloadText(filename, pack);
+      updateExportProgress(95, 'Download initiated…', 'Your file should appear in your Downloads folder');
+      setTimeout(() => finishExportProgress(true, `✓ Pack exported: ${filename}`), 500);
     } catch(err) {
-      alert('Failed to export pack:\n' + err.message);
+      console.error('Pack export failed:', err);
+      updateExportProgress(0, null, 'Error: ' + (err?.message || err));
+      finishExportProgress(false, '✗ ' + (err?.message || err));
     }
   });
 
@@ -2217,6 +2327,20 @@ window.addEventListener('DOMContentLoaded', () => {
     updateTimeSigList();
   });
 
+  // Chart Velocity modal
+  document.getElementById('btn-add-scroll-speed').addEventListener('click', () => document.getElementById('modal-scroll-speed').style.display = 'flex');
+  document.getElementById('ss-ev-cancel').addEventListener('click', () => document.getElementById('modal-scroll-speed').style.display = 'none');
+  document.getElementById('ss-ev-ok').addEventListener('click', () => {
+    const measure = +document.getElementById('ss-ev-measure').value - 1;
+    const beat    = +document.getElementById('ss-ev-beat').value - 1;
+    const speed   = +document.getElementById('ss-ev-speed').value;
+    const y = measure * TICKS_PER_MEASURE + beat * TICKS_PER_BEAT;
+    saveUndo(`Added Chart Velocity ${speed}x at M${measure+1}`);
+    chart.addScrollSpeedEvent(y, speed);
+    document.getElementById('modal-scroll-speed').style.display = 'none';
+    updateScrollSpeedEventList(); render();
+  });
+
   // Open song folder
   document.getElementById('btn-open-folder')?.addEventListener('click', () => {
     document.getElementById('folder-input').click();
@@ -2259,7 +2383,7 @@ window.addEventListener('DOMContentLoaded', () => {
       renderer.chart = chart;
       renderer.scrollCol = 0; renderer.playTick = 0;
       if (gameView) gameView.chart = chart;
-      pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList(); updateStopEventList();
+      pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList(); updateStopEventList(); updateScrollSpeedEventList();
       renderFxChain(0); renderFxChain(1);
       renderTabBar();
       updateSeekbar(0);
@@ -3011,6 +3135,7 @@ function selMirror(what) {
     chart.lasers[1] = [...chart.lasers[1].filter(s => !inSel(s.y)), ...snapLL];
     for (let s = 0; s < 2; s++) chart.lasers[s].sort((a, b) => a.y - b.y);
   }
+  updateTimeSigList();
   render();
 }
 
@@ -3396,6 +3521,21 @@ function openTimesigModalAtCtx() {
   document.getElementById('modal-timesig').style.display = 'flex';
 }
 
+function openScrollSpeedModalAtCtx() {
+  const m = Math.floor(_ctxMenuTick / TICKS_PER_MEASURE) + 1;
+  const b = Math.floor((_ctxMenuTick % TICKS_PER_MEASURE) / TICKS_PER_BEAT) + 1;
+  const elM = document.getElementById('ss-ev-measure');
+  const elB = document.getElementById('ss-ev-beat');
+  const elS = document.getElementById('ss-ev-speed');
+  if (elM) elM.value = m;
+  if (elB) elB.value = b;
+  if (elS && chart?.getScrollSpeedAt) {
+    const currentSpeed = chart.getScrollSpeedAt(_ctxMenuTick);
+    elS.value = Number(currentSpeed.toFixed(1));
+  }
+  document.getElementById('modal-scroll-speed').style.display = 'flex';
+}
+
 function ensureCtxMenu() {
   if (ctxMenuEl) return;
   ctxMenuEl = document.createElement('div');
@@ -3408,6 +3548,7 @@ function ensureCtxMenu() {
     <div class="ctx-sep"></div>
     <div class="ctx-item" data-act="add-bpm">Add BPM Change…</div>
     <div class="ctx-item" data-act="add-timesig">Add Time Sig…</div>
+    <div class="ctx-item" data-act="add-velocity">Add Chart Velocity…</div>
     <div class="ctx-sep"></div>
     <div class="ctx-item ctx-has-sub">Modify Style
       <div class="ctx-sub">
@@ -3458,6 +3599,7 @@ function ensureCtxMenu() {
     else if (act === 'paste')   selPaste();
     else if (act === 'add-bpm')      openBpmModalAtCtx();
     else if (act === 'add-timesig')  openTimesigModalAtCtx();
+    else if (act === 'add-velocity') openScrollSpeedModalAtCtx();
     else if (act === 'transform')    selTransform();
     else if (act === 'mirror-all') selMirror('all');
     else if (act === 'mirror-fx')  selMirror('fx');
@@ -3808,9 +3950,12 @@ function onMouseDown(e) {
       // Extend the active section with a new point
       const sec    = _activeLaserSec.sec;
       const ry     = Math.round(tick) - sec.y;
-      const lastRy = sec.points[sec.points.length - 1]?.ry ?? -1;
+      const lastPt = sec.points[sec.points.length - 1];
+      const lastRy = lastPt?.ry ?? -1;
       if (ry > lastRy) {
-        sec.points.push({ ry, v, slam: false, interp: 'linear', curve: 0.5 });
+        // Detect horizontal laser (same position as previous point)
+        const isHorizontal = lastPt && Math.abs(v - lastPt.v) < 0.001;
+        sec.points.push({ ry, v, slam: isHorizontal, interp: 'linear', curve: 0.5 });
       } else {
         // Clicked at or before the last point — finish current section, start new
         _activeLaserSec = null;
@@ -4410,11 +4555,21 @@ function onKeyDown(e) {
 
     case '[':
       { const i = SNAP_VALUES.findIndex(v => Math.abs(v - snap) < 0.001);
-        if (i < SNAP_VALUES.length - 1) { snap = SNAP_VALUES[i + 1]; syncSnapUI(); } }
+        if (i < SNAP_VALUES.length - 1) {
+          const oldSnap = snap;
+          snap = SNAP_VALUES[i + 1];
+          syncSnapUI();
+          showSnapDisplay(oldSnap, snap, 'up');
+        } }
       break;
     case ']':
       { const i = SNAP_VALUES.findIndex(v => Math.abs(v - snap) < 0.001);
-        if (i > 0) { snap = SNAP_VALUES[i - 1]; syncSnapUI(); } }
+        if (i > 0) {
+          const oldSnap = snap;
+          snap = SNAP_VALUES[i - 1];
+          syncSnapUI();
+          showSnapDisplay(oldSnap, snap, 'down');
+        } }
       break;
 
     case '=': case '+':
@@ -4436,6 +4591,84 @@ function onKeyDown(e) {
       if (e.shiftKey) { e.preventDefault(); openGotoBeatModal(); }
       break;
   }
+}
+
+let _snapDisplayTimeout = null;
+
+function showSnapDisplay(oldSnap, newSnap, direction) {
+  const display = document.getElementById('snap-display');
+  const curr = document.getElementById('snap-display-curr');
+  const prev = document.getElementById('snap-display-prev');
+  const next = document.getElementById('snap-display-next');
+  const text = document.getElementById('snap-display-text');
+
+  if (!display || !curr || !prev || !next) return;
+
+  const oldLabel = SNAP_LABELS[oldSnap];
+  const newLabel = SNAP_LABELS[newSnap];
+
+  if (direction === 'up') {
+    // Snap gets tighter, new text slides down from above
+    prev.textContent = newLabel;
+    curr.textContent = oldLabel;
+    next.textContent = newLabel;
+
+    prev.style.top = '-24px';
+    curr.style.top = '0px';
+    next.style.top = '24px';
+
+    prev.style.opacity = '0';
+    curr.style.opacity = '1';
+    next.style.opacity = '0';
+  } else {
+    // Snap gets looser, new text slides up from below
+    prev.textContent = newLabel;
+    curr.textContent = oldLabel;
+    next.textContent = newLabel;
+
+    prev.style.top = '-24px';
+    curr.style.top = '0px';
+    next.style.top = '24px';
+
+    prev.style.opacity = '0';
+    curr.style.opacity = '1';
+    next.style.opacity = '0';
+  }
+
+  // Remove transition briefly to set initial state
+  text.style.transition = 'none';
+  text.offsetHeight; // Trigger reflow
+
+  // Apply transition and animate
+  text.style.transition = 'all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+
+  if (direction === 'up') {
+    // Old text moves down, new text comes from above
+    curr.style.top = '24px';
+    curr.style.opacity = '0';
+    prev.style.top = '0px';
+    prev.style.opacity = '1';
+  } else {
+    // Old text moves up, new text comes from below
+    curr.style.top = '-24px';
+    curr.style.opacity = '0';
+    next.style.top = '0px';
+    next.style.opacity = '1';
+  }
+
+  // Position next to cursor
+  display.style.left = (event?.clientX ?? window.innerWidth / 2) + 16 + 'px';
+  display.style.top = (event?.clientY ?? window.innerHeight / 2) - 12 + 'px';
+  display.style.display = 'block';
+
+  // Clear existing timeout
+  if (_snapDisplayTimeout) clearTimeout(_snapDisplayTimeout);
+
+  // Hide after animation completes
+  _snapDisplayTimeout = setTimeout(() => {
+    display.style.display = 'none';
+    text.style.transition = 'none';
+  }, 400);
 }
 
 function openGotoBeatModal() {
@@ -4778,6 +5011,30 @@ function updateTimeSigList() {
       if (m === 0) return;
       saveUndo(`Deleted Time Signature at M${m+1}`); chart.timeSigEvents = chart.timeSigEvents.filter(e => e.measure !== m);
       updateTimeSigList();
+    });
+    list.appendChild(row);
+  });
+}
+
+function updateScrollSpeedEventList() {
+  const list = document.getElementById('scroll-speed-event-list');
+  if (!list) return;
+  list.innerHTML = '';
+  const evs = chart.scrollSpeedEvents ?? [];
+  evs.forEach(ev => {
+    if (ev.y === 0) return; // Don't show anchor event
+    const m = Math.floor(ev.y / TICKS_PER_MEASURE) + 1;
+    const b = Math.floor((ev.y % TICKS_PER_MEASURE) / TICKS_PER_BEAT) + 1;
+    const row = document.createElement('div');
+    row.className = 'ev-row';
+    const speedStr = ev.speed.toFixed(2).replace(/\.?0+$/, '');
+    row.innerHTML = `<span>M${m} B${b}: <b>${speedStr}x</b></span><button class="ev-del" data-y="${ev.y}">✕</button>`;
+    row.querySelector('.ev-del').addEventListener('click', de => {
+      const y = +de.target.dataset.y;
+      saveUndo(`Deleted Chart Velocity at M${Math.floor(y/TICKS_PER_MEASURE)+1}`);
+      chart.removeScrollSpeedEvent(y);
+      updateScrollSpeedEventList();
+      render();
     });
     list.appendChild(row);
   });
@@ -5167,24 +5424,30 @@ function initHistoryPanel() {
   const laneSlider = document.getElementById('split-lane-count');
   const laneLabel  = document.getElementById('split-lane-label');
   laneSlider?.addEventListener('input', () => {
-    laneLabel.textContent = laneSlider.value + ' lanes';
+    const val = Math.max(1, +laneSlider.value);
+    prefs.measPerCol = val;
+    laneLabel.textContent = val + ' lanes';
     // split-lane-count is "measures per column" — convert to beats and apply
     if (renderer) {
-      renderer.measPerCol = Math.max(1, +laneSlider.value);
+      renderer.measPerCol = val;
       applyBeatsPerLane(renderer.beatsPerCol);
     }
+    try { localStorage.setItem('vibe-editr-prefs', JSON.stringify(prefs)); } catch(_) {}
   });
 
   const widthSlider = document.getElementById('split-edit-width');
   const widthLabel  = document.getElementById('split-edit-width-label');
   widthSlider?.addEventListener('input', () => {
-    widthLabel.textContent = widthSlider.value + '%';
+    const val = +widthSlider.value;
+    prefs.splitEditWidth = val;
+    widthLabel.textContent = val + '%';
     const main = document.getElementById('main');
     const gameWrap = document.getElementById('game-wrap');
     if (main && gameWrap && viewMode === 'split') {
-      main.style.flex    = widthSlider.value;
-      gameWrap.style.flex = (100 - +widthSlider.value) + '';
+      main.style.flex    = val;
+      gameWrap.style.flex = (100 - val) + '';
     }
+    try { localStorage.setItem('vibe-editr-prefs', JSON.stringify(prefs)); } catch(_) {}
   });
 
   refreshHistoryPanel();
@@ -5247,6 +5510,11 @@ const prefs = {
   autoplay:         true,   // game preview auto-plays score chain
   slamThreshold:    12,     // LASER_SLAM_TICKS (≤1/16 note by default)
   defaultSnap:      8,      // default snap divisor
+  // Editor UI
+  zoom:             100,    // editor zoom level (20-500%)
+  beatsPerLane:     16,     // beats displayed per lane column
+  measPerCol:       4,      // measures per column in split view
+  splitEditWidth:   50,     // editor/game split view width ratio
   // Autosave / history
   autosaveInterval: 60,
   savePath:         'Downloads',
@@ -5407,6 +5675,43 @@ function applyPreferences() {
   if (adEl && document.activeElement !== adEl) adEl.value = prefs.audioDelay ?? 0;
   if (vdEl && document.activeElement !== vdEl) vdEl.value = prefs.videoDelay ?? 0;
 
+  // Editor UI settings
+  const zoomSlider = document.getElementById('zoom-slider');
+  if (zoomSlider) {
+    zoomSlider.value = prefs.zoom ?? 100;
+    if (renderer) {
+      renderer.zoom = (+zoomSlider.value / 100) * 1.2;
+      renderer.resize();
+    }
+  }
+
+  const bplSlider = document.getElementById('beats-per-lane');
+  if (bplSlider) {
+    bplSlider.value = prefs.beatsPerLane ?? 16;
+    if (typeof applyBeatsPerLane === 'function') {
+      applyBeatsPerLane(+bplSlider.value);
+    }
+  }
+
+  const measPerColInput = document.getElementById('meas-per-col');
+  if (measPerColInput) {
+    measPerColInput.value = prefs.measPerCol ?? 4;
+  }
+
+  const splitLaneSlider = document.getElementById('split-lane-count');
+  if (splitLaneSlider) {
+    splitLaneSlider.value = prefs.measPerCol ?? 4;
+    const laneLabel = document.getElementById('split-lane-label');
+    if (laneLabel) laneLabel.textContent = splitLaneSlider.value + ' lanes';
+  }
+
+  const splitWidthSlider = document.getElementById('split-edit-width');
+  if (splitWidthSlider) {
+    splitWidthSlider.value = prefs.splitEditWidth ?? 50;
+    const widthLabel = document.getElementById('split-edit-width-label');
+    if (widthLabel) widthLabel.textContent = splitWidthSlider.value + '%';
+  }
+
   // Slam threshold (1–16 ticks)
   LASER_SLAM_TICKS = prefs.slamThreshold ?? 6;
 
@@ -5565,7 +5870,7 @@ async function recoverAutosave() {
     tabs[activeTabIdx].chart = chart;
     if (renderer) renderer.chart = chart;
     if (gameView) gameView.chart = chart;
-    pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList(); updateStopEventList();
+    pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList(); updateStopEventList(); updateScrollSpeedEventList();
     renderFxChain(0); renderFxChain(1); render();
     saveUndo('Restored Autosave');
 
