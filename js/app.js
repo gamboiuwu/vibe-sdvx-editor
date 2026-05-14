@@ -22,6 +22,7 @@ const drag = { active: false, lane: -1, laneType: '', startTick: 0, side: 0, loc
 const sel  = { active: false, dragging: false, startTick: 0, endTick: 0, clipboard: null };
 const undoStack = [], redoStack = [];
 let MAX_UNDO = 100; // adjustable via preferences
+let _hasUnsavedChanges = false; // track if chart has unsaved changes
 
 // ── Camera tilt mode (updated by updateCameraFromEvents) ──────────────────────
 let _tiltMode = 'zero'; // 'zero' | 'normal' | 'reverse' | 'keep'
@@ -249,6 +250,7 @@ function switchToTab(idx) {
   activeTabIdx = idx;
   chart = tabs[activeTabIdx].chart;
   audioBuffer = tabs[activeTabIdx].audioBuffer || null;
+  _hasUnsavedChanges = false; // reset for new tab
   if (renderer) {
     renderer.chart = chart;
     renderer.scrollCol = 0;
@@ -1444,6 +1446,54 @@ function setViewMode(mode) {
   document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === mode));
 }
 
+let _isGameViewFullscreen = false;
+
+function toggleGameViewFullscreen() {
+  const gameWrap = document.getElementById('game-wrap');
+  if (!gameWrap) return;
+
+  if (!_isGameViewFullscreen) {
+    // Enter fullscreen
+    _isGameViewFullscreen = true;
+    gameWrap.style.position = 'fixed';
+    gameWrap.style.top = '0';
+    gameWrap.style.left = '0';
+    gameWrap.style.width = '100%';
+    gameWrap.style.height = '100%';
+    gameWrap.style.zIndex = '10000';
+    gameWrap.style.display = 'flex';
+    // Hide other UI elements
+    const _el = (id) => document.getElementById(id);
+    if (_el('header'))  _el('header').style.display  = 'none';
+    if (_el('main'))    _el('main').style.display    = 'none';
+    if (_el('tab-bar')) _el('tab-bar').style.display = 'none';
+    if (_el('toolbar')) _el('toolbar').style.display = 'none';
+    // Update button state
+    const btn = document.getElementById('btn-fullscreen');
+    if (btn) btn.classList.add('fullscreen-active');
+    if (gameView) { gameView.resize(); gameView.draw(); }
+  } else {
+    // Exit fullscreen
+    _isGameViewFullscreen = false;
+    gameWrap.style.position = '';
+    gameWrap.style.top = '';
+    gameWrap.style.left = '';
+    gameWrap.style.width = '';
+    gameWrap.style.height = '';
+    gameWrap.style.zIndex = '';
+    // Restore all hidden UI elements
+    const _el = (id) => document.getElementById(id);
+    if (_el('header'))  _el('header').style.display  = '';
+    if (_el('tab-bar')) _el('tab-bar').style.display = '';
+    if (_el('toolbar')) _el('toolbar').style.display = '';
+    // Restore view mode (handles main/game-wrap visibility)
+    setViewMode(viewMode);
+    // Update button state
+    const btn = document.getElementById('btn-fullscreen');
+    if (btn) btn.classList.remove('fullscreen-active');
+  }
+}
+
 // ── Multi-chart preview ───────────────────────────────────────────────────────
 // State
 let _multiMode   = false;
@@ -1813,8 +1863,35 @@ function _loadingDone() {
   setTimeout(() => { if (ov) ov.style.display = 'none'; }, 420);
 }
 
+function _showErrorScreen(error) {
+  const loadingOv = document.getElementById('loading-overlay');
+  const errorScreen = document.getElementById('error-screen');
+  const errorMsg = document.getElementById('error-message');
+  const errorCode = document.getElementById('error-code');
+  if (loadingOv) loadingOv.style.display = 'none';
+  if (errorScreen) {
+    errorScreen.style.display = 'flex';
+    // Generate a pseudo error code from the error hash for aesthetics
+    if (errorCode) {
+      const str = error instanceof Error ? error.message : String(error);
+      let h = 0;
+      for (let i = 0; i < str.length; i++) h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
+      const code = Math.abs(h).toString(16).toUpperCase().padStart(8, '0');
+      errorCode.textContent = `E-${code.slice(0,4)}-${code.slice(4)}`;
+    }
+    if (errorMsg) {
+      const errText = error instanceof Error ? error.message : String(error);
+      const stack = error instanceof Error ? (error.stack || '') : '';
+      errorMsg.textContent = errText + (stack ? '\n\n' + stack : '');
+    }
+  }
+  console.error('Initialization error:', error);
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
+  try {
+
   _loadingShow('Initializing editor…', 5);
   buildLaneHeader();
 
@@ -1908,6 +1985,9 @@ window.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('[data-view]').forEach(btn => {
     btn.addEventListener('click', () => setViewMode(btn.dataset.view));
   });
+
+  // Fullscreen button
+  document.getElementById('btn-fullscreen')?.addEventListener('click', toggleGameViewFullscreen);
 
   // Edit menu buttons
   document.getElementById('btn-undo')?.addEventListener('click', undo);
@@ -2694,7 +2774,17 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     _hideImportProgress();
   });
+  } catch(err) {
+    _showErrorScreen(err);
+  }
 });
+
+// Retry button on error screen
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('error-retry-btn')?.addEventListener('click', () => {
+    location.reload();
+  });
+}, { once: true });
 
 // ── Song Import System ────────────────────────────────────────────────────────
 // Supports: .ogg (direct link), .flac/.wav/.mp3/.aac/.m4a (→ OGG via MediaRecorder)
@@ -4600,6 +4690,13 @@ function onKeyDown(e) {
     case '7': setTool('stop-event'); break;
     case 'e': case 'E': setTool('erase'); break;
 
+    case 'f': case 'F':
+      if (!ctrl) {
+        e.preventDefault();
+        toggleGameViewFullscreen();
+      }
+      break;
+
     case 'Tab':
       e.preventDefault();
       { const i = TOOL_ORDER.indexOf(tool);
@@ -5573,6 +5670,7 @@ function saveUndo(label = null) {
   undoStack.push(snap);
   if (undoStack.length > MAX_UNDO) undoStack.shift();
   redoStack.length = 0;
+  _hasUnsavedChanges = true;
   refreshHistoryPanel();
   _scheduleAutosave(); // queue a background autosave after each edit
 }
@@ -6048,6 +6146,8 @@ async function _idbAutosave() {
     if (audioArrayBuffer) {
       await _idbPut(db, 'audio', audioArrayBuffer.slice(0)).catch(() => {});
     }
+    // Mark as saved
+    _hasUnsavedChanges = false;
     // Flash status bar
     const st = document.getElementById('audio-status');
     if (st) {
@@ -6197,8 +6297,24 @@ function _restoreSession() {
 }
 
 // Save session periodically and on unload
-window.addEventListener('beforeunload', _saveSession);
+window.addEventListener('beforeunload', (e) => {
+  _saveSession();
+  // Show confirmation if there are unsaved changes
+  if (_hasUnsavedChanges) {
+    e.preventDefault();
+    e.returnValue = 'You have unsaved changes. Do you want to discard them?';
+  }
+});
 setInterval(_saveSession, 30000);
+
+// Keep audio playing when tab is minimized/hidden
+document.addEventListener('visibilitychange', async () => {
+  if (!audioCtx) return;
+  // Resume audio context if tab regains focus and context is suspended
+  if (!document.hidden && audioCtx.state === 'suspended') {
+    await audioCtx.resume();
+  }
+});
 
 // ── Laser appearance wiring ───────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {

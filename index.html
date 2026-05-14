@@ -210,6 +210,7 @@
     <button class="topbar-view-btn" data-view="edit" title="Edit View"     data-i18n="view.edit">✦ Edit</button>
     <button class="topbar-view-btn" data-view="split" title="Split View"   data-i18n="view.split">⧉ Split</button>
     <button class="topbar-view-btn" data-view="game" title="Game Preview"  data-i18n="view.preview">▶ Preview</button>
+    <button id="btn-fullscreen" class="topbar-view-btn" title="Fullscreen Preview [F]" data-i18n="view.fullscreen">⛶ Fullscreen</button>
     <button class="topbar-play-btn" id="btn-play-top" title="Play/Stop [Space]" data-i18n="tool.play">▶ Play</button>
     <span class="topbar-sep"></span>
     <!-- Audio status -->
@@ -1037,6 +1038,94 @@
   <div id="loading-pct" style="font-size:11px;color:#3336a0">0%</div>
 </div>
 
+<!-- Error screen — eAMUSEMENT style -->
+<div id="error-screen" style="
+  position:fixed;inset:0;z-index:9999;
+  background:#000;
+  display:none;align-items:center;justify-content:center;
+  font-family:'APompadour','MS Gothic',monospace;
+">
+  <!-- Outer border frame -->
+  <div style="
+    border:3px solid #ffffff;
+    width:min(640px,90vw);
+    background:#0a0a0a;
+    padding:0;
+  ">
+    <!-- Header bar -->
+    <div style="
+      background:#ffffff;
+      padding:6px 14px;
+      display:flex;align-items:center;gap:10px;
+    ">
+      <span style="font-size:20px;line-height:1">⚠</span>
+      <span style="font-size:13px;font-weight:bold;color:#000;letter-spacing:.05em">APPLICATION ERROR</span>
+    </div>
+
+    <!-- Body -->
+    <div style="padding:20px 22px;display:flex;flex-direction:column;gap:14px;">
+
+      <!-- Error code row -->
+      <div style="display:flex;align-items:baseline;gap:12px;">
+        <span style="font-size:11px;color:#aaa;letter-spacing:.1em;white-space:nowrap">ERR CODE</span>
+        <span id="error-code" style="font-size:13px;color:#fff;font-weight:bold;letter-spacing:.12em">E-0001-0000</span>
+      </div>
+
+      <!-- Divider -->
+      <div style="border-top:1px solid #333;"></div>
+
+      <!-- Main message -->
+      <div style="font-size:12px;color:#ddd;line-height:1.7;">
+        The application failed to initialize.<br>
+        An unexpected error has occurred during startup.
+      </div>
+
+      <!-- Error detail box -->
+      <div style="
+        background:#000;
+        border:1px solid #444;
+        padding:10px 12px;
+        font-size:11px;
+        color:#aaa;
+        max-height:160px;
+        overflow-y:auto;
+        word-break:break-all;
+        white-space:pre-wrap;
+        line-height:1.5;
+      " id="error-message"></div>
+
+      <!-- Bullet tips -->
+      <div style="font-size:11px;color:#777;line-height:1.8;padding-left:4px;">
+        ・ Try refreshing the page (F5)<br>
+        ・ Clear your browser cache and reload<br>
+        ・ Check the browser console for more details
+      </div>
+
+      <!-- Divider -->
+      <div style="border-top:1px solid #333;"></div>
+
+      <!-- Retry button -->
+      <div style="display:flex;justify-content:center;padding-top:4px;">
+        <button id="error-retry-btn" style="
+          background:#111;
+          border:2px solid #fff;
+          color:#fff;
+          padding:7px 36px;
+          font-family:inherit;
+          font-size:12px;
+          font-weight:bold;
+          letter-spacing:.1em;
+          cursor:pointer;
+          transition:background .15s;
+        " onmouseover="this.style.background='#222'" onmouseout="this.style.background='#111'">
+          ▶ RETRY
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
 <script src="js/logger.js"></script>
 <script src="js/effects.js"></script>
 <script src="js/chart.js?v=2"></script>
@@ -1294,15 +1383,15 @@
 <script src="js/calibration.js"></script>
 <script src="js/i18n.js"></script>
 <script src="js/gl-lane.js?v=4"></script>
-<script src="js/app.js?v=17"></script>
+<script src="js/app.js?v=18"></script>
 <script src="js/dock.js?v=5"></script>
 <script src="js/tools.js?v=4"></script>
 <script src="js/radar.js?v=1"></script>
 <script src="js/handsim.js?v=1"></script>
 <script src="js/gameplay.js?v=3"></script>
 <!-- Snap display (animated) -->
-<div id="snap-display" style="position:fixed;z-index:10001;pointer-events:none;display:none;font-family:monospace;font-size:18px;font-weight:bold;color:#88ccff;text-shadow:0 0 8px #0088ff;padding:6px 12px;border:1.5px solid #0088ff;border-radius:4px;background:#000000dd;">
-  <div id="snap-display-text" style="height:24px;overflow:hidden;position:relative;min-width:3ch">
+<div id="snap-display" style="position:fixed;z-index:10001;pointer-events:none;display:none;font-family:monospace;font-size:16px;font-weight:bold;color:#88ccff;text-shadow:0 0 8px #0088ff;padding:8px 14px;border:1.5px solid #0088ff;border-radius:4px;background:#000000dd;white-space:nowrap;">
+  <div id="snap-display-text" style="height:20px;overflow:hidden;position:relative;min-width:5ch">
     <div id="snap-display-prev" style="position:absolute;top:0;left:0;width:100%;opacity:0;transition:none">1/4</div>
     <div id="snap-display-curr" style="position:absolute;top:0;left:0;width:100%;opacity:1;transition:none">1/4</div>
     <div id="snap-display-next" style="position:absolute;top:0;left:0;width:100%;opacity:0;transition:none">1/4</div>
