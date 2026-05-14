@@ -22,6 +22,7 @@ const drag = { active: false, lane: -1, laneType: '', startTick: 0, side: 0, loc
 const sel  = { active: false, dragging: false, startTick: 0, endTick: 0, clipboard: null };
 const undoStack = [], redoStack = [];
 let MAX_UNDO = 100; // adjustable via preferences
+let _hasUnsavedChanges = false; // track if chart has unsaved changes
 
 // ── Camera tilt mode (updated by updateCameraFromEvents) ──────────────────────
 let _tiltMode = 'zero'; // 'zero' | 'normal' | 'reverse' | 'keep'
@@ -249,6 +250,7 @@ function switchToTab(idx) {
   activeTabIdx = idx;
   chart = tabs[activeTabIdx].chart;
   audioBuffer = tabs[activeTabIdx].audioBuffer || null;
+  _hasUnsavedChanges = false; // reset for new tab
   if (renderer) {
     renderer.chart = chart;
     renderer.scrollCol = 0;
@@ -5573,6 +5575,7 @@ function saveUndo(label = null) {
   undoStack.push(snap);
   if (undoStack.length > MAX_UNDO) undoStack.shift();
   redoStack.length = 0;
+  _hasUnsavedChanges = true;
   refreshHistoryPanel();
   _scheduleAutosave(); // queue a background autosave after each edit
 }
@@ -6048,6 +6051,8 @@ async function _idbAutosave() {
     if (audioArrayBuffer) {
       await _idbPut(db, 'audio', audioArrayBuffer.slice(0)).catch(() => {});
     }
+    // Mark as saved
+    _hasUnsavedChanges = false;
     // Flash status bar
     const st = document.getElementById('audio-status');
     if (st) {
@@ -6197,8 +6202,24 @@ function _restoreSession() {
 }
 
 // Save session periodically and on unload
-window.addEventListener('beforeunload', _saveSession);
+window.addEventListener('beforeunload', (e) => {
+  _saveSession();
+  // Show confirmation if there are unsaved changes
+  if (_hasUnsavedChanges) {
+    e.preventDefault();
+    e.returnValue = 'You have unsaved changes. Do you want to discard them?';
+  }
+});
 setInterval(_saveSession, 30000);
+
+// Keep audio playing when tab is minimized/hidden
+document.addEventListener('visibilitychange', async () => {
+  if (!audioCtx) return;
+  // Resume audio context if tab regains focus and context is suspended
+  if (!document.hidden && audioCtx.state === 'suspended') {
+    await audioCtx.resume();
+  }
+});
 
 // ── Laser appearance wiring ───────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
