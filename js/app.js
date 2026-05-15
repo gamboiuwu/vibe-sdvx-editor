@@ -3883,6 +3883,14 @@ function ensureCtxMenu() {
         <div class="ctx-item" data-act="sran-vol">S-Ran VOL</div>
       </div>
     </div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-item ctx-has-sub">Experimental <span style="font-size:9px;color:#aaa">(beta)</span>
+      <div class="ctx-sub">
+        <div class="ctx-item" data-act="toggle-anomaly" id="ctx-anomaly-item">✓ Pattern Anomaly Detection</div>
+        <div class="ctx-item" data-act="toggle-predict" id="ctx-predict-item">✓ Predictive Chart Assist</div>
+        <div class="ctx-item" data-act="toggle-ghost" id="ctx-ghost-item">✓ Ghost Playback Tracing</div>
+      </div>
+    </div>
   `;
   document.body.appendChild(ctxMenuEl);
 
@@ -3915,14 +3923,42 @@ function ensureCtxMenu() {
     else if (act === 'sran-bt')  applySRan('bt');
     else if (act === 'sran-fx')  applySRan('fx');
     else if (act === 'sran-vol') applySRan('vol');
+    else if (act === 'toggle-anomaly') {
+      prefs.anomalyDetect = !prefs.anomalyDetect;
+      savePrefsToLocalStorage();
+      updateCtxMenuExperimentalLabels();
+      render();
+    }
+    else if (act === 'toggle-predict') {
+      prefs.predictAssist = !prefs.predictAssist;
+      savePrefsToLocalStorage();
+      updateCtxMenuExperimentalLabels();
+      render();
+    }
+    else if (act === 'toggle-ghost') {
+      prefs.ghostTrace = !prefs.ghostTrace;
+      savePrefsToLocalStorage();
+      updateCtxMenuExperimentalLabels();
+      render();
+    }
   });
 
   document.addEventListener('click', () => { if (ctxMenuEl) ctxMenuEl.style.display = 'none'; });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && ctxMenuEl) ctxMenuEl.style.display = 'none'; });
 }
 
+function updateCtxMenuExperimentalLabels() {
+  const anomalyEl = document.getElementById('ctx-anomaly-item');
+  const predictEl = document.getElementById('ctx-predict-item');
+  const ghostEl = document.getElementById('ctx-ghost-item');
+  if (anomalyEl) anomalyEl.textContent = (prefs.anomalyDetect ? '✓' : '✕') + ' Pattern Anomaly Detection';
+  if (predictEl) predictEl.textContent = (prefs.predictAssist ? '✓' : '✕') + ' Predictive Chart Assist';
+  if (ghostEl) ghostEl.textContent = (prefs.ghostTrace ? '✓' : '✕') + ' Ghost Playback Tracing';
+}
+
 function showCtxMenu(x, y) {
   ensureCtxMenu();
+  updateCtxMenuExperimentalLabels();
   ctxMenuEl.style.display = 'block';
   const tw = ctxMenuEl.offsetWidth || 160, th = ctxMenuEl.offsetHeight || 200;
   ctxMenuEl.style.left = Math.min(x, window.innerWidth  - tw - 8) + 'px';
@@ -6030,13 +6066,6 @@ function openPreferences() {
   _setEl('pref-autosave-interval', prefs.autosaveInterval);
   _setEl('pref-save-path',         prefs.savePath);
   _setEl('pref-history-depth',     prefs.historyDepth);
-  // ── Experimental ───────────────────────────────────────
-  const anomalyEl = document.getElementById('pref-anomaly-detect');
-  if (anomalyEl) anomalyEl.checked = !!prefs.anomalyDetect;
-  const predictEl = document.getElementById('pref-predict-assist');
-  if (predictEl) predictEl.checked = !!prefs.predictAssist;
-  const ghostEl = document.getElementById('pref-ghost-trace');
-  if (ghostEl) ghostEl.checked = !!prefs.ghostTrace;
 
   document.getElementById('modal-prefs').style.display = 'flex';
 }
@@ -6065,12 +6094,8 @@ function savePreferences() {
   prefs.autosaveInterval = +(_el('pref-autosave-interval')?.value ?? 60);
   prefs.savePath         =   _el('pref-save-path')?.value         ?? 'Downloads';
   prefs.historyDepth     = +(_el('pref-history-depth')?.value     ?? 100);
-  // ── Experimental ───────────────────────────────────────
-  prefs.anomalyDetect  = document.getElementById('pref-anomaly-detect')?.checked  || false;
-  prefs.predictAssist  = document.getElementById('pref-predict-assist')?.checked  || false;
-  prefs.ghostTrace     = document.getElementById('pref-ghost-trace')?.checked      || false;
 
-  localStorage.setItem('vibe-editr-prefs', JSON.stringify(prefs));
+  savePrefsToLocalStorage();
   applyPreferences();
   document.getElementById('modal-prefs').style.display = 'none';
 }
