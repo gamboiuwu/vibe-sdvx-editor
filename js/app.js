@@ -7217,55 +7217,8 @@ const DisclaimerGate = (function() {
 })();
 
 // ──────────────────────────────────────────────────────────────────────────────
-// v1.4.1: app version, changelog data, "What's New" modal
+// app version, changelog data, "What's New" modal
 // ──────────────────────────────────────────────────────────────────────────────
-const APP_VERSION = '1.5';
-const CHANGELOG = [
-  {
-    version: '1.5',
-    title: 'Chart Velocity, KSON autosave &amp; export pipeline',
-    entries: [
-      ['add', 'Chart Velocity event management — create, edit, and delete velocity events from the right-click menu or <strong>Chart → Chart Velocity…</strong>. KSON-only.'],
-      ['add', 'Export progress bar with debug terminal — shows decoding / encoding / finalizing stages during KSH and KSON export.'],
-      ['chg', 'Autosave now writes <code>.kson</code> instead of <code>.ksh</code>, preserving the full KSON data model.'],
-      ['add', 'Confirmation prompts on KSH and KSON export to prevent accidental overwrites.'],
-      ['add', 'Animated snap indicator — pressing <kbd>[</kbd> or <kbd>]</kbd> briefly shows the new snap value next to the cursor.'],
-      ['fix', 'FX hold tick now fires once on press instead of repeating through the hold duration.'],
-      ['fix', 'Horizontal lasers are now auto-marked as slams on import and during editing.'],
-      ['fix', 'Time signature display no longer de-syncs after mirroring a selection.'],
-      ['fix', 'Zoom level and editor UI layout are now persisted across page reloads.'],
-    ],
-  },
-  {
-    version: '1.4.1',
-    title: 'Statistics, bookmarks &amp; update notifications',
-    entries: [
-      ['add', 'Chart Statistics panel — note breakdown, peak/average density, duration. Window → Chart Statistics…'],
-      ['add', 'Quick Bookmarks — <kbd>Ctrl+B</kbd> drops a bookmark at the playhead. Floating panel lists them with click-to-jump. Persisted per chart.'],
-      ['add', 'What\'s New modal — automatic update notification when the app version changes, with a per-version one-time popup.'],
-    ],
-  },
-  {
-    version: '1.4',
-    title: 'Multi-chart preview &amp; laser pen tool',
-    entries: [
-      ['add', 'Multi-chart preview mode — up to four charts share a synchronized playhead in Split View.'],
-      ['add', 'Laser Pen Tool with Bézier anchor points and handles, modeled on Photoshop pen behavior.'],
-      ['add', 'Linear pattern radar in the Song Data panel.'],
-      ['fix', 'Bézier curve drift between editor canvas and 3D preview.'],
-    ],
-  },
-  {
-    version: '1.3',
-    title: 'Selection &amp; seekbar refinements',
-    entries: [
-      ['fix', 'Stop events no longer cause the chart to scroll backward during playback.'],
-      ['add', '<kbd>Ctrl+D</kbd> / <kbd>Cmd+D</kbd> deselects the current selection.'],
-      ['add', 'Double-click the seekbar to open a numeric selection-range editor.'],
-    ],
-  },
-];
-
 (function initWhatsNew() {
   const KEY = 'vibe_editr_seen_version';
   const modal = document.getElementById('modal-whats-new');
