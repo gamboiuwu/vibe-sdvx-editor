@@ -1418,8 +1418,11 @@ Renderer.prototype._drawColAnomalies = function(ox, startY, endY, colIdx) {
       if (gap >= 0 && gap < 6) {
         const x = ox + BT_AREA_X + li * (BT_W + SEP);
         const y = tickToY(a.y);
-        ctx.fillStyle = 'rgba(255,60,60,0.25)';
-        ctx.fillRect(x, y - 4, BT_W, 8);
+        ctx.fillStyle = 'rgba(255,100,100,0.45)';
+        ctx.fillRect(x, y - 5, BT_W, 10);
+        ctx.strokeStyle = 'rgba(255,50,50,0.7)';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(x, y - 5, BT_W, 10);
       }
     }
   }
@@ -1437,8 +1440,11 @@ Renderer.prototype._drawColAnomalies = function(ox, startY, endY, colIdx) {
   Object.entries(btAtTick).forEach(([tick, count]) => {
     if (count === 4) {
       const y = tickToY(Number(tick));
-      ctx.fillStyle = 'rgba(255,200,0,0.18)';
-      ctx.fillRect(ox + BT_AREA_X, y - 2, BT_W * 4 + SEP * 3, 4);
+      ctx.fillStyle = 'rgba(255,220,80,0.35)';
+      ctx.fillRect(ox + BT_AREA_X, y - 3, BT_W * 4 + SEP * 3, 6);
+      ctx.strokeStyle = 'rgba(255,200,0,0.6)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(ox + BT_AREA_X, y - 3, BT_W * 4 + SEP * 3, 6);
     }
   });
 };
@@ -1446,7 +1452,6 @@ Renderer.prototype._drawColAnomalies = function(ox, startY, endY, colIdx) {
 // ── Predictive Chart Assist (Feature 5) ──────────────────────────────────────
 Renderer.prototype._drawPredictiveGhost = function(mouseTickSnapped, mouseLaneIdx) {
   if (!window.prefs?.predictAssist) return;
-  if (window.tool !== 'bt') return;
   if (mouseLaneIdx < 0 || mouseLaneIdx > 3) return;
   const chart = this.chart;
   if (!chart) return;
@@ -1484,9 +1489,12 @@ Renderer.prototype._drawPredictiveGhost = function(mouseTickSnapped, mouseLaneId
   const x = pos.cx + BT_AREA_X + predictLane * (BT_W + SEP);
   const ctx = this.ctx;
   ctx.save();
-  ctx.globalAlpha = 0.3;
-  ctx.fillStyle = '#e0e0ff';
-  ctx.fillRect(x, pos.cy - 2, BT_W, 4);
+  ctx.globalAlpha = 0.6;
+  ctx.fillStyle = '#88ff88';
+  ctx.fillRect(x + 1, pos.cy - 3, BT_W - 2, 6);
+  ctx.strokeStyle = '#00ff00';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(x + 1, pos.cy - 3, BT_W - 2, 6);
   ctx.globalAlpha = 1;
   ctx.restore();
 };
