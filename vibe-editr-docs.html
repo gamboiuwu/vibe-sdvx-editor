@@ -439,17 +439,15 @@
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
 
 <div class="update-entry">
-  <h4><span class="ver-tag">v0.0.8</span>Autonomous system evolution &amp; advanced chart analysis</h4>
+  <h4><span class="ver-tag">v0.0.8</span>Autonomous diagnostics, temporal mirror &amp; experimental features</h4>
   <ul>
-    <li><span class="tag add">add</span>Daily autonomous evolution routine — on startup and daily thereafter, the system runs comprehensive diagnostics on KSON parsing, audio sync, VOL overlap detection, rendering stability, and calibration accuracy. Identifies and proposes safe improvements.</li>
-    <li><span class="tag add">add</span>Experimental feature toggles — bug fixes and performance improvements are automatically enabled after compatibility testing. Advanced features (adaptive pattern compression, emotional intensity heatmaps) require explicit user opt-in via settings.</li>
-    <li><span class="tag add">add</span>Pattern anomaly detection — analyzes chart segments and flags unnatural or inconsistent patterns during autonomous review. Visual warnings in the chart editor for detected anomalies.</li>
-    <li><span class="tag add">add</span>Emotional intensity heatmap — (experimental) visualizes note density and audio-driven intensity as a gradient overlay on the chart timeline. Enable in <strong>Preferences → Experimental Features</strong>.</li>
-    <li><span class="tag add">add</span>Temporal mirror tools — (experimental) advanced pattern flipping, reflection, and rotation for both notes and lasers. Access via <strong>Edit → Modify → Temporal Mirror</strong>.</li>
-    <li><span class="tag add">add</span>Predictive chart assist — (experimental) suggests likely next placements based on established patterns during editing. Appears as ghost notes in faded style when hovering in the chart.</li>
-    <li><span class="tag add">add</span>Physics-based laser smoothing — (experimental) alternative laser interpolation using organic curve behavior rather than pure bezier. Toggle via right-click laser context menu.</li>
-    <li><span class="tag add">add</span>Audio event anchoring — detect transients and peaks in the waveform, then optionally snap chart elements to these detected moments for perfect timing.</li>
-    <li><span class="tag add">add</span>Ghost playback tracing — (experimental) visualize the ideal movement path as a semi-transparent overlay during game preview. Shows predicted hand positions for all note types.</li>
+    <li><span class="tag add">add</span>Startup diagnostics — on each session start the system checks note overlaps, laser continuity, BPM consistency, and KSON parse integrity, then displays a summary popup. Re-run any time via <strong>Window → System Diagnostics</strong>.</li>
+    <li><span class="tag add">add</span>Experimental Features tab in Preferences — opt-in toggles for Pattern Anomaly Detection, Predictive Chart Assist, and Ghost Playback Tracing.</li>
+    <li><span class="tag add">add</span>Pattern anomaly detection — (experimental) scans for physically impossible jacks, laser over-extension, and all-lane simultaneity. Flags detected segments with red/yellow highlights in the edit canvas.</li>
+    <li><span class="tag add">add</span>Temporal mirror — flip the time ordering of the current selection so the last event becomes the first. Access via <strong>Edit → Modify → Temporal Mirror</strong>. Works on BT, FX, and laser data.</li>
+    <li><span class="tag add">add</span>Predictive chart assist — (experimental) shows faded ghost notes as placement suggestions while drawing, based on recent pattern analysis in the active chart.</li>
+    <li><span class="tag add">add</span>Ghost playback tracing — (experimental) semi-transparent hand-position arcs in the 3D game preview showing the expected movement path for both hands across all note and laser types.</li>
+    <li><span class="tag add">add</span>Audio event anchoring — transient detection in the Offset Finder tool now shows detected peaks as snap targets; placing notes near a transient optionally locks them to that timing point.</li>
   </ul>
 </div>
 
@@ -462,6 +460,7 @@
     <li><span class="tag add">add</span>Audio import pipeline — folder button next to audio field opens file picker. Upon selection, format compatibility is checked and non-OGG files trigger a conversion process with progress bar (decode → encode → finalize stages) displayed in real-time.</li>
     <li><span class="tag add">add</span>Audio format support — native .ogg, high-quality .flac, uncompressed .wav, and compressed .mp3 import. Conversion to .ogg is automatic with confirmation dialog explaining the process.</li>
     <li><span class="tag add">add</span>Conversion failure handling — graceful error states display the reason if available, with retry and cancellation options that preserve project state.</li>
+    <li><span class="tag add">add</span>Laser curve smoothing — Chaikin, Moving Average, and Resample algorithms available in <strong>Window → Tools Hub → Edit → Laser Smooth</strong>.</li>
     <li><span class="tag add">add</span>Chart Velocity event management — create, edit, and delete velocity change events directly from the right-click context menu or <strong>Chart → Chart Velocity…</strong>. KSON-only feature.</li>
     <li><span class="tag add">add</span>Export progress bar with debug terminal — a modal shows decoding / encoding / finalizing stages during KSH and KSON export so long exports remain visible rather than appearing frozen.</li>
     <li><span class="tag chg">chg</span>Autosave now writes <code>.kson</code> instead of <code>.ksh</code>, preserving the full KSON data model and experimental metadata between sessions.</li>
