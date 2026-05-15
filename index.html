@@ -52,6 +52,10 @@
             <button class="menu-item" id="btn-mirror-bt">Mirror BT</button>
             <button class="menu-item" id="btn-mirror-fx">Mirror FX</button>
             <button class="menu-item" id="btn-mirror-vol">Mirror VOL</button>
+            <div class="menu-sep"></div>
+            <button class="menu-item" id="btn-tmirror-all">Temporal Mirror All</button>
+            <button class="menu-item" id="btn-tmirror-bt">Temporal Mirror BT</button>
+            <button class="menu-item" id="btn-tmirror-vol">Temporal Mirror VOL</button>
           </div>
         </div>
         <div class="menu-item menu-has-sub">Adjust Speed ▸
@@ -201,6 +205,7 @@
         <button class="menu-item" id="btn-bookmarks-panel">&#128278; Bookmarks  <kbd>Ctrl+B</kbd></button>
         <div class="menu-sep"></div>
         <button class="menu-item" id="btn-whats-new">&#10024; What's New…</button>
+        <button class="menu-item" id="btn-diagnostics">&#9881; System Diagnostics…</button>
       </div>
     </div>
   </div>
@@ -675,6 +680,7 @@
         <button class="sysprefs-tab"        data-tab="gameplay"  data-i18n="prefs.tab.gameplay">&#9654; Gameplay</button>
         <button class="sysprefs-tab"        data-tab="autosave"  data-i18n="prefs.tab.autosave">&#9632; Autosave</button>
         <button class="sysprefs-tab"        data-tab="shortcuts" data-i18n="prefs.tab.shortcuts">&#8963; Shortcuts</button>
+        <button class="sysprefs-tab"        data-tab="experimental">&#9883; Experimental</button>
       </div>
 
       <!-- ── Right content panels ── -->
@@ -915,6 +921,28 @@
               <tr><td>M</td><td>Mirror selection</td></tr>
             </tbody>
           </table>
+        </div>
+
+        <!-- ════ EXPERIMENTAL ════ -->
+        <div class="sysprefs-panel" id="pref-tab-experimental">
+          <div class="sp-section-title">Experimental Features</div>
+          <div class="pref-hint" style="margin-bottom:14px">These features are in active development. Chart data is never silently modified — all changes require explicit confirmation.</div>
+
+          <div class="pref-group">
+            <label class="pref-label">Pattern Anomaly Detection</label>
+            <input type="checkbox" id="pref-anomaly-detect">
+            <span class="pref-hint">Highlights physically impossible jacks, over-extension, and all-lane simultaneity in the edit canvas.</span>
+          </div>
+          <div class="pref-group">
+            <label class="pref-label">Predictive Chart Assist</label>
+            <input type="checkbox" id="pref-predict-assist">
+            <span class="pref-hint">Shows faded ghost-note suggestions while placing BT/FX notes, based on recent pattern analysis.</span>
+          </div>
+          <div class="pref-group">
+            <label class="pref-label">Ghost Playback Tracing</label>
+            <input type="checkbox" id="pref-ghost-trace">
+            <span class="pref-hint">Draws semi-transparent hand-position arcs in the 3D preview during playback.</span>
+          </div>
         </div>
 
       </div><!-- end sysprefs-content -->
@@ -1342,6 +1370,18 @@
       </div>
     </div>
 
+  </div>
+</div>
+
+<!-- System Diagnostics Modal -->
+<div id="modal-diagnostics" class="modal" style="display:none">
+  <div class="modal-box" style="min-width:480px;max-width:600px">
+    <h3 style="margin-bottom:12px">&#9881; System Diagnostics</h3>
+    <div id="diag-body" style="font-size:13px;line-height:1.8;max-height:360px;overflow-y:auto"></div>
+    <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end">
+      <button id="diag-rerun" class="small-btn">&#9654; Re-run</button>
+      <button id="diag-close" class="small-btn">Close</button>
+    </div>
   </div>
 </div>
 

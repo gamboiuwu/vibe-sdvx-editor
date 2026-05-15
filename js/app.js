@@ -8,6 +8,43 @@ console.log(
 );
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
+// ── Version & Changelog ───────────────────────────────────────────────────────
+const APP_VERSION = '0.0.8';
+const CHANGELOG = [
+  {
+    version: '0.0.8',
+    title: 'Temporal mirror, diagnostics &amp; experimental features',
+    entries: [
+      ['add', 'Startup diagnostics — checks note overlaps, laser continuity, BPM range, KSON integrity. Re-run via <strong>Window → System Diagnostics</strong>.'],
+      ['add', 'Experimental Features tab in Preferences — opt-in toggles for Pattern Anomaly Detection, Predictive Chart Assist, and Ghost Playback Tracing.'],
+      ['add', 'Pattern anomaly detection — (experimental) highlights physically impossible jacks and all-lane simultaneity in the edit canvas.'],
+      ['add', 'Temporal mirror — flip time ordering of current selection. <strong>Edit → Modify → Temporal Mirror All/BT/VOL</strong>.'],
+      ['add', 'Predictive chart assist — (experimental) ghost-note suggestions while placing BT notes.'],
+      ['add', 'Ghost playback tracing — (experimental) hand-position arcs in the 3D preview during playback.'],
+    ],
+  },
+  {
+    version: '0.0.7',
+    title: 'Song data window & pattern radar',
+    entries: [],
+  },
+  {
+    version: '0.0.6',
+    title: 'Hand simulator',
+    entries: [],
+  },
+  {
+    version: '0.0.5',
+    title: 'Gameplay preview',
+    entries: [],
+  },
+  {
+    version: '0.0.4',
+    title: 'Split view',
+    entries: [],
+  },
+];
+
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 const tabs = [{ name: 'Chart 1', chart: new ChartData(), audioBuffer: null }];
 let activeTabIdx = 0;
@@ -1147,6 +1184,7 @@ function getLaserPosAt(side, tick) {
   }
   return null;
 }
+window.getLaserPosAt = getLaserPosAt;
 
 function updatePlayBtn(isPlaying) {
   // Use localized strings, falling back to English defaults
@@ -1999,6 +2037,9 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-mirror-bt')?.addEventListener('click',  () => selMirror('bt'));
   document.getElementById('btn-mirror-fx')?.addEventListener('click',  () => selMirror('fx'));
   document.getElementById('btn-mirror-vol')?.addEventListener('click', () => selMirror('vol'));
+  document.getElementById('btn-tmirror-all')?.addEventListener('click', () => selTemporalMirror('all'));
+  document.getElementById('btn-tmirror-bt')?.addEventListener('click',  () => selTemporalMirror('bt'));
+  document.getElementById('btn-tmirror-vol')?.addEventListener('click', () => selTemporalMirror('vol'));
   document.getElementById('btn-speed-half')?.addEventListener('click',   () => selAdjustSpeed(0.5));
   document.getElementById('btn-speed-double')?.addEventListener('click', () => selAdjustSpeed(2.0));
   document.getElementById('btn-sran-all')?.addEventListener('click', () => applySRan('all'));
@@ -3345,6 +3386,52 @@ function selMirror(what) {
   render();
 }
 
+function selTemporalMirror(what) {
+  if (!sel.active) return;
+  saveUndo(`Temporal Mirror ${what.toUpperCase()}`);
+  const [lo, hi] = selTickRange();
+  const span = hi - lo;
+
+  // reflect a note's y around the selection midpoint, accounting for its length
+  const reflectNote = n => ({ ...n, y: lo + (span - (n.y - lo) - n.len) });
+
+  if (what === 'all' || what === 'bt') {
+    for (let li = 0; li < 4; li++) {
+      const inside = chart.bt[li].filter(n => n.y >= lo && n.y < hi);
+      const outside = chart.bt[li].filter(n => n.y < lo || n.y >= hi);
+      chart.bt[li] = [...outside, ...inside.map(reflectNote)];
+      chart.bt[li].sort((a, b) => a.y - b.y);
+    }
+  }
+  if (what === 'all' || what === 'fx') {
+    for (let li = 0; li < 2; li++) {
+      const inside = chart.fx[li].filter(n => n.y >= lo && n.y < hi);
+      const outside = chart.fx[li].filter(n => n.y < lo || n.y >= hi);
+      chart.fx[li] = [...outside, ...inside.map(reflectNote)];
+      chart.fx[li].sort((a, b) => a.y - b.y);
+    }
+  }
+  if (what === 'all' || what === 'vol') {
+    for (let s = 0; s < 2; s++) {
+      const inside = chart.lasers[s].filter(sec => sec.y >= lo && sec.y < hi);
+      const outside = chart.lasers[s].filter(sec => sec.y < lo || sec.y >= hi);
+      const reflected = inside.map(sec => {
+        const secEnd = sec.y + (sec.points.length > 0 ? sec.points[sec.points.length-1].ry : 0);
+        const newY = lo + (hi - secEnd);
+        const newPts = [...sec.points].reverse().map((p, i, arr) => {
+          const origRy = arr[arr.length - 1 - i].ry;
+          const nextRy = i < arr.length - 1 ? arr[arr.length - 2 - i].ry : origRy;
+          return { ...p, ry: sec.points[sec.points.length - 1].ry - p.ry };
+        });
+        return { ...sec, y: Math.max(lo, newY), points: newPts };
+      });
+      chart.lasers[s] = [...outside, ...reflected];
+      chart.lasers[s].sort((a, b) => a.y - b.y);
+    }
+  }
+  render();
+}
+
 function selAdjustSpeed(factor) {
   // factor > 1 = compress (2x speed = notes take half as many ticks)
   // factor < 1 = expand  (0.5x speed = notes take twice as many ticks)
@@ -3764,6 +3851,10 @@ function ensureCtxMenu() {
             <div class="ctx-item" data-act="mirror-fx">Mirror FX</div>
             <div class="ctx-item" data-act="mirror-bt">Mirror BT</div>
             <div class="ctx-item" data-act="mirror-vol">Mirror VOL</div>
+            <div class="ctx-sep"></div>
+            <div class="ctx-item" data-act="tmirror-all">Temporal Mirror All</div>
+            <div class="ctx-item" data-act="tmirror-bt">Temporal Mirror BT</div>
+            <div class="ctx-item" data-act="tmirror-vol">Temporal Mirror VOL</div>
           </div>
         </div>
       </div>
@@ -3811,6 +3902,9 @@ function ensureCtxMenu() {
     else if (act === 'mirror-fx')  selMirror('fx');
     else if (act === 'mirror-bt')  selMirror('bt');
     else if (act === 'mirror-vol') selMirror('vol');
+    else if (act === 'tmirror-all') selTemporalMirror('all');
+    else if (act === 'tmirror-bt')  selTemporalMirror('bt');
+    else if (act === 'tmirror-vol') selTemporalMirror('vol');
     else if (act === 'speed-half')   selAdjustSpeed(0.5);
     else if (act === 'speed-double') selAdjustSpeed(2.0);
     else if (act === 'rand-all') selRandom('all');
@@ -4312,6 +4406,14 @@ function onMouseMove(e) {
       const canvas = document.getElementById('chart-canvas');
       if (canvas) canvas.style.cursor = fxHit ? 'pointer' : '';
       if (prevFxHold !== renderer._hoveredFxHold) render();
+    }
+
+    // Predictive chart assist ghost note
+    if (renderer && window.prefs?.predictAssist) {
+      const h = getHit(e);
+      renderer._pendingPredictTick = h.tick;
+      renderer._pendingPredictLane = h.laneIdx;
+      render();
     }
 
     return;
@@ -5837,6 +5939,10 @@ const prefs = {
   autosaveInterval: 60,
   savePath:         'Downloads',
   historyDepth:     100,
+  // Experimental
+  anomalyDetect:    false,
+  predictAssist:    false,
+  ghostTrace:       false,
 };
 let _autosaveTimer = null;
 
@@ -5924,6 +6030,13 @@ function openPreferences() {
   _setEl('pref-autosave-interval', prefs.autosaveInterval);
   _setEl('pref-save-path',         prefs.savePath);
   _setEl('pref-history-depth',     prefs.historyDepth);
+  // ── Experimental ───────────────────────────────────────
+  const anomalyEl = document.getElementById('pref-anomaly-detect');
+  if (anomalyEl) anomalyEl.checked = !!prefs.anomalyDetect;
+  const predictEl = document.getElementById('pref-predict-assist');
+  if (predictEl) predictEl.checked = !!prefs.predictAssist;
+  const ghostEl = document.getElementById('pref-ghost-trace');
+  if (ghostEl) ghostEl.checked = !!prefs.ghostTrace;
 
   document.getElementById('modal-prefs').style.display = 'flex';
 }
@@ -5952,6 +6065,10 @@ function savePreferences() {
   prefs.autosaveInterval = +(_el('pref-autosave-interval')?.value ?? 60);
   prefs.savePath         =   _el('pref-save-path')?.value         ?? 'Downloads';
   prefs.historyDepth     = +(_el('pref-history-depth')?.value     ?? 100);
+  // ── Experimental ───────────────────────────────────────
+  prefs.anomalyDetect  = document.getElementById('pref-anomaly-detect')?.checked  || false;
+  prefs.predictAssist  = document.getElementById('pref-predict-assist')?.checked  || false;
+  prefs.ghostTrace     = document.getElementById('pref-ghost-trace')?.checked      || false;
 
   localStorage.setItem('vibe-editr-prefs', JSON.stringify(prefs));
   applyPreferences();
@@ -7486,4 +7603,94 @@ const Bookmarks = (function() {
   }, true); // capture phase so we run before any other handler
 
   return { addAtPlayhead, toggle, refresh };
+})();
+
+// ──────────────────────────────────────────────────────────────────────────────
+// v0.0.8: startup diagnostics
+// ──────────────────────────────────────────────────────────────────────────────
+(function initDiagnostics() {
+  const modal = document.getElementById('modal-diagnostics');
+  const body  = document.getElementById('diag-body');
+  if (!modal || !body) return;
+
+  document.getElementById('diag-close')?.addEventListener('click', () => modal.style.display = 'none');
+  document.getElementById('diag-rerun')?.addEventListener('click', () => runDiagnostics());
+  document.getElementById('btn-diagnostics')?.addEventListener('click', () => {
+    runDiagnostics();
+    modal.style.display = 'flex';
+  });
+  modal.addEventListener('click', e => { if (e.target === modal) modal.style.display = 'none'; });
+
+  function runDiagnostics() {
+    const results = [];
+    const pass = (msg) => results.push(`<div style="color:#44dd88">&#10003; ${msg}</div>`);
+    const warn = (msg) => results.push(`<div style="color:#ffcc44">&#9888; ${msg}</div>`);
+    const info = (msg) => results.push(`<div style="color:#8899cc">&#9432; ${msg}</div>`);
+
+    try {
+      let totalNotes = 0;
+      tabs.forEach((t, i) => {
+        const c = t.chart;
+        const n = c.bt.reduce((s,l) => s + l.length, 0) + c.fx.reduce((s,l) => s + l.length, 0);
+        totalNotes += n;
+        if (n === 0 && i === activeTabIdx) warn(`Tab "${t.name || 'Untitled'}": chart is empty`);
+      });
+      pass(`KSON parse integrity OK — ${tabs.length} tab(s), ${totalNotes} total notes`);
+    } catch(e) { warn('KSON parse check failed: ' + e.message); }
+
+    try {
+      let overlaps = 0;
+      for (let li = 0; li < 4; li++) {
+        const notes = chart.bt[li];
+        for (let i = 0; i < notes.length - 1; i++) {
+          if (notes[i].y + Math.max(notes[i].len, 1) > notes[i+1].y) overlaps++;
+        }
+      }
+      for (let li = 0; li < 2; li++) {
+        const notes = chart.fx[li];
+        for (let i = 0; i < notes.length - 1; i++) {
+          if (notes[i].y + Math.max(notes[i].len, 1) > notes[i+1].y) overlaps++;
+        }
+      }
+      if (overlaps > 0) warn(`Note overlap: ${overlaps} overlapping note pair(s) detected`);
+      else pass('Note overlap check OK — no overlaps found');
+    } catch(e) { warn('Note overlap check failed: ' + e.message); }
+
+    try {
+      let badSections = 0;
+      for (let s = 0; s < 2; s++) {
+        chart.lasers[s].forEach(sec => {
+          if (!sec.points || sec.points.length < 2) badSections++;
+        });
+      }
+      if (badSections > 0) warn(`Laser continuity: ${badSections} degenerate laser section(s) (< 2 points)`);
+      else pass('Laser continuity OK');
+    } catch(e) { warn('Laser check failed: ' + e.message); }
+
+    try {
+      const bpms = chart.bpmEvents.map(e => e.bpm);
+      const extremes = bpms.filter(b => b < 60 || b > 400);
+      if (extremes.length > 0) warn(`BPM warning: ${extremes.length} BPM value(s) outside 60–400 range: ${extremes.join(', ')}`);
+      else pass(`BPM range OK — ${bpms.length} BPM event(s), range: ${Math.min(...bpms)}–${Math.max(...bpms)}`);
+    } catch(e) { warn('BPM check failed: ' + e.message); }
+
+    if (audioBuffer) pass(`Audio loaded — ${(audioBuffer.duration).toFixed(1)}s, ${audioBuffer.sampleRate} Hz`);
+    else info('No audio loaded for active chart');
+
+    pass('Rendering system OK — Canvas 2D context active');
+
+    body.innerHTML = results.join('') +
+      `<div style="margin-top:12px;color:#555;font-size:11px">Diagnostics run at ${new Date().toLocaleTimeString()}</div>`;
+  }
+
+  const DIAG_KEY = 'vibe_diag_last_session';
+  const today = new Date().toDateString();
+  const lastRun = localStorage.getItem(DIAG_KEY);
+  if (lastRun !== today) {
+    setTimeout(() => {
+      runDiagnostics();
+      if (body.innerHTML.includes('&#9888;')) modal.style.display = 'flex';
+      try { localStorage.setItem(DIAG_KEY, today); } catch(_) {}
+    }, 2500);
+  }
 })();

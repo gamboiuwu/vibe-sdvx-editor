@@ -1097,6 +1097,7 @@ class GameView {
     // Close the tilt rotation context (HUD is always drawn unrotated)
     if (p.tilt) ctx.restore();
 
+    if (window.prefs?.ghostTrace) this._drawGhostTrace(p, tick, chart);
     this._drawHUD(p, tick, score, chain);
   }
 
@@ -1447,5 +1448,70 @@ class GameView {
 
       ctx.restore();
     });
+  }
+
+  // ── Ghost Playback Tracing (Feature 6) ───────────────────────────────────
+  _drawGhostTrace(p, tick, chart) {
+    if (!window.prefs?.ghostTrace) return;
+    const ctx = this.ctx;
+    const FUTURE = 96; // ticks ahead to trace
+
+    // Determine left-hand and right-hand x positions over next FUTURE ticks
+    const leftLane  = [0, 1];  // BT-A, BT-B indices
+    const rightLane = [2, 3];  // BT-C, BT-D indices
+
+    const getHandX = (laneIndices, t) => {
+      let xs = [];
+      laneIndices.forEach(li => {
+        chart.bt[li].forEach(n => {
+          if (n.y <= t && n.y + Math.max(n.len, 1) > t) {
+            const norm = (li + 0.5) / 4;
+            const sy = this._screenY(n.y - t, p);
+            xs.push(this._screenX(norm, sy, p));
+          }
+        });
+      });
+      // Also check FX
+      const fxLi = laneIndices[0] < 2 ? 0 : 1;
+      chart.fx[fxLi].forEach(n => {
+        if (n.y <= t && n.y + Math.max(n.len, 1) > t) {
+          const norm = fxLi === 0 ? 0.25 : 0.75;
+          const sy = this._screenY(n.y - t, p);
+          xs.push(this._screenX(norm, sy, p));
+        }
+      });
+      // Laser
+      const laserSide = laneIndices[0] < 2 ? 0 : 1;
+      const lv = window.getLaserPosAt ? window.getLaserPosAt(laserSide, t) : null;
+      if (lv !== null) {
+        const sy = this._screenY(0, p);
+        xs.push(this._laserX(lv, sy, p, chart.laserSettings?.wide));
+      }
+      return xs.length > 0 ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
+    };
+
+    // Draw trace for each hand
+    const drawTrace = (laneIndices, color) => {
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 3;
+      ctx.globalAlpha = 0.35;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      let started = false;
+      for (let dt = 0; dt <= FUTURE; dt += 6) {
+        const t = tick + dt;
+        const x = getHandX(laneIndices, t);
+        if (x === null) { started = false; continue; }
+        const sy = this._screenY(dt, p);
+        if (!started) { ctx.moveTo(x, sy); started = true; }
+        else ctx.lineTo(x, sy);
+      }
+      ctx.stroke();
+      ctx.restore();
+    };
+
+    drawTrace(leftLane,  'rgba(100,160,255,0.8)');
+    drawTrace(rightLane, 'rgba(255,100,220,0.8)');
   }
 }
