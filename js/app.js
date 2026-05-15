@@ -2308,6 +2308,9 @@ window.addEventListener('DOMContentLoaded', () => {
               tabs[slot].name = d ? `${c.meta.title} - ${d}` : c.meta.title;
             }
           }
+          // Update global chart before switchToTab so it doesn't save the
+          // stale reference back over the first pack chart we just loaded.
+          chart = packCharts[0];
           switchToTab(startIdx);
           chart = tabs[startIdx].chart;
           renderer.chart = chart; renderer.scrollCol = 0; renderer.playTick = 0;
