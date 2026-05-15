@@ -274,11 +274,15 @@ class Renderer {
       this._drawColFxChips(ox, startY, endY);
       this._drawColBtNotes(ox, startY, endY);
       this._drawColLasers(ox, startY, endY);
+      if (window.prefs?.anomalyDetect) this._drawColAnomalies(ox, startY, endY, ci);
       this._drawColRuler(ox, startY, ci);
     }
 
     this._drawCursor();
     this._drawOverlapFlashes?.();
+    if (window.prefs?.predictAssist && this._pendingPredictTick != null) {
+      this._drawPredictiveGhost(this._pendingPredictTick, this._pendingPredictLane ?? -1);
+    }
   }
 
   // ── Per-column draw helpers ───────────────────────────────────────────────
@@ -1391,6 +1395,101 @@ Renderer.prototype.drawSelection = function(sel) {
 function buildLaneHeader() {
   // Hidden in multi-column mode
 }
+
+// ── Pattern Anomaly Detection (Feature 4) ─────────────────────────────────────
+Renderer.prototype._drawColAnomalies = function(ox, startY, endY, colIdx) {
+  const ctx = this.ctx;
+  const zoom = this.zoom;
+  const colTicks = this._beatsPerCol * TICKS_PER_BEAT;
+  const colStart = startY;   // startY IS ci * colTicks (absolute tick start for this column)
+  const colEnd   = endY;
+  const chart    = this.chart;
+  if (!chart) return;
+
+  const tickToY = tick => this.colH - (tick - colStart) * zoom;
+
+  // Check for jacks: same BT lane, gap < 6 ticks
+  for (let li = 0; li < 4; li++) {
+    const notes = chart.bt[li];
+    for (let i = 0; i < notes.length - 1; i++) {
+      const a = notes[i], b = notes[i+1];
+      if (a.y < colStart || a.y >= colEnd) continue;
+      const gap = b.y - (a.y + Math.max(a.len, 1));
+      if (gap >= 0 && gap < 6) {
+        const x = ox + BT_AREA_X + li * (BT_W + SEP);
+        const y = tickToY(a.y);
+        ctx.fillStyle = 'rgba(255,60,60,0.25)';
+        ctx.fillRect(x, y - 4, BT_W, 8);
+      }
+    }
+  }
+
+  // Check for all-4-BT simultaneity
+  const btAtTick = {};
+  for (let li = 0; li < 4; li++) {
+    chart.bt[li].forEach(n => {
+      if (n.y >= colStart && n.y < colEnd) {
+        if (!btAtTick[n.y]) btAtTick[n.y] = 0;
+        btAtTick[n.y]++;
+      }
+    });
+  }
+  Object.entries(btAtTick).forEach(([tick, count]) => {
+    if (count === 4) {
+      const y = tickToY(Number(tick));
+      ctx.fillStyle = 'rgba(255,200,0,0.18)';
+      ctx.fillRect(ox + BT_AREA_X, y - 2, BT_W * 4 + SEP * 3, 4);
+    }
+  });
+};
+
+// ── Predictive Chart Assist (Feature 5) ──────────────────────────────────────
+Renderer.prototype._drawPredictiveGhost = function(mouseTickSnapped, mouseLaneIdx) {
+  if (!window.prefs?.predictAssist) return;
+  if (window.tool !== 'bt') return;
+  if (mouseLaneIdx < 0 || mouseLaneIdx > 3) return;
+  const chart = this.chart;
+  if (!chart) return;
+
+  // Look at last 4 measures of BT notes to find most common lane pattern
+  const lookback = TICKS_PER_MEASURE * 4;
+  const from = Math.max(0, mouseTickSnapped - lookback);
+  const recent = [];
+  for (let li = 0; li < 4; li++) {
+    chart.bt[li].filter(n => n.y >= from && n.y < mouseTickSnapped).forEach(n => {
+      recent.push({ y: n.y, li });
+    });
+  }
+  recent.sort((a, b) => a.y - b.y);
+
+  // Simple heuristic: if last 2 notes alternate, predict continuation of alternation
+  let predictLane = -1;
+  if (recent.length >= 2) {
+    const last = recent[recent.length - 1];
+    const prev = recent[recent.length - 2];
+    if (last.li !== prev.li) {
+      // alternating — predict mirror of last
+      const delta = last.li - prev.li;
+      predictLane = Math.max(0, Math.min(3, last.li + Math.sign(delta)));
+    } else {
+      // same lane twice — predict next lane
+      predictLane = (last.li + 1) % 4;
+    }
+  }
+  if (predictLane < 0 || predictLane === mouseLaneIdx) return;
+
+  // Draw ghost note
+  const pos = this.tickToCanvas(mouseTickSnapped);
+  if (!pos.visible) return;
+  const x = pos.cx + BT_AREA_X + predictLane * (BT_W + SEP);
+  const ctx = this.ctx;
+  ctx.save();
+  ctx.globalAlpha = 0.3;
+  ctx.fillStyle = '#e0e0ff';
+  ctx.fillRect(x, pos.cy - 2, BT_W, 4);
+  ctx.globalAlpha = 1;
+  ctx.restore();
+};
 
 // ── Laser overlap flash ────────────────────────────────────────────────────────
 Renderer.prototype._overlapFlashes = [];

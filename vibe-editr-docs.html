@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v1.4.1 · 2025</span>
+  <span class="version">v0.0.8 · 2026</span>
 </div>
 
 <div class="toc">
@@ -436,26 +436,45 @@
 <!-- ── 14. Updates ── -->
 <section id="updates">
 <h2>14. Updates</h2>
-<p>Running history of user-visible changes, listed newest first. Each entry links to one or more commits on the development branch.</p>
+<p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
 
 <div class="update-entry">
-  <h4><span class="ver-tag">v1.5</span>Chart Velocity, KSON autosave &amp; export pipeline</h4>
+  <h4><span class="ver-tag">v0.0.8</span>Autonomous diagnostics, temporal mirror &amp; experimental features</h4>
   <ul>
-    <li><span class="tag add">add</span>Chart Velocity event management — create, edit, and delete velocity change events directly from the right-click context menu or <strong>Chart → Chart Velocity…</strong>. KSON-only feature.</li>
-    <li><span class="tag add">add</span>Export progress bar with a debug terminal — a modal now shows decoding / encoding / finalizing stages during KSH and KSON export so long exports are clearly visible rather than appearing frozen.</li>
-    <li><span class="tag chg">chg</span>Autosave now writes <code>.kson</code> instead of <code>.ksh</code>, preserving the full KSON data model between sessions.</li>
-    <li><span class="tag add">add</span>Confirmation prompts on KSH and KSON export to prevent accidental overwrites.</li>
-    <li><span class="tag add">add</span>Animated snap indicator — pressing <kbd>[</kbd> or <kbd>]</kbd> briefly shows the new snap value on-canvas.</li>
-    <li><span class="tag fix">fix</span>FX hold tick now fires once on press instead of repeating continuously through the hold duration.</li>
-    <li><span class="tag fix">fix</span>Horizontal lasers are now auto-marked as slams on import and during editing.</li>
-    <li><span class="tag fix">fix</span>Time signature display no longer de-syncs after a mirroring operation on the selection.</li>
-    <li><span class="tag fix">fix</span>Zoom level and editor UI layout are now persisted across page reloads.</li>
-    <li><span class="tag fix">fix</span>Export progress modal no longer flashes visible on startup before any export is triggered.</li>
+    <li><span class="tag add">add</span>Startup diagnostics — on each session start the system checks note overlaps, laser continuity, BPM consistency, and KSON parse integrity, then displays a summary popup. Re-run any time via <strong>Window → System Diagnostics</strong>.</li>
+    <li><span class="tag add">add</span>Experimental Features tab in Preferences — opt-in toggles for Pattern Anomaly Detection, Predictive Chart Assist, and Ghost Playback Tracing.</li>
+    <li><span class="tag add">add</span>Pattern anomaly detection — (experimental) scans for physically impossible jacks, laser over-extension, and all-lane simultaneity. Flags detected segments with red/yellow highlights in the edit canvas.</li>
+    <li><span class="tag add">add</span>Temporal mirror — flip the time ordering of the current selection so the last event becomes the first. Access via <strong>Edit → Modify → Temporal Mirror</strong>. Works on BT, FX, and laser data.</li>
+    <li><span class="tag add">add</span>Predictive chart assist — (experimental) shows faded ghost notes as placement suggestions while drawing, based on recent pattern analysis in the active chart.</li>
+    <li><span class="tag add">add</span>Ghost playback tracing — (experimental) semi-transparent hand-position arcs in the 3D game preview showing the expected movement path for both hands across all note and laser types.</li>
+    <li><span class="tag add">add</span>Audio event anchoring — transient detection in the Offset Finder tool now shows detected peaks as snap targets; placing notes near a transient optionally locks them to that timing point.</li>
   </ul>
 </div>
 
 <div class="update-entry">
-  <h4><span class="ver-tag">v1.4.1</span>Statistics, bookmarks &amp; update notifications</h4>
+  <h4><span class="ver-tag">v0.0.7</span>Full calibration system, chart velocity &amp; export pipeline</h4>
+  <ul>
+    <li><span class="tag add">add</span>Full waveform calibration mode — opens as a floating DAW-style window showing the project audio with scrollable, zoomable waveform display similar to Ableton Live. Click directly on the waveform to place Beat 1.0 marker, defining the timing origin for the entire chart.</li>
+    <li><span class="tag add">add</span>Waveform grid display — beat and measure gridlines overlay the waveform based on BPM data. Adjustable zoom centered on cursor position rather than screen center for precise editing.</li>
+    <li><span class="tag add">add</span>Calibration looping — select a waveform region and loop playback for iterative timing refinement without needing to restart playback manually.</li>
+    <li><span class="tag add">add</span>Audio import pipeline — folder button next to audio field opens file picker. Upon selection, format compatibility is checked and non-OGG files trigger a conversion process with progress bar (decode → encode → finalize stages) displayed in real-time.</li>
+    <li><span class="tag add">add</span>Audio format support — native .ogg, high-quality .flac, uncompressed .wav, and compressed .mp3 import. Conversion to .ogg is automatic with confirmation dialog explaining the process.</li>
+    <li><span class="tag add">add</span>Conversion failure handling — graceful error states display the reason if available, with retry and cancellation options that preserve project state.</li>
+    <li><span class="tag add">add</span>Laser curve smoothing — Chaikin, Moving Average, and Resample algorithms available in <strong>Window → Tools Hub → Edit → Laser Smooth</strong>.</li>
+    <li><span class="tag add">add</span>Chart Velocity event management — create, edit, and delete velocity change events directly from the right-click context menu or <strong>Chart → Chart Velocity…</strong>. KSON-only feature.</li>
+    <li><span class="tag add">add</span>Export progress bar with debug terminal — a modal shows decoding / encoding / finalizing stages during KSH and KSON export so long exports remain visible rather than appearing frozen.</li>
+    <li><span class="tag chg">chg</span>Autosave now writes <code>.kson</code> instead of <code>.ksh</code>, preserving the full KSON data model and experimental metadata between sessions.</li>
+    <li><span class="tag add">add</span>Confirmation prompts on KSH and KSON export to prevent accidental overwrites.</li>
+    <li><span class="tag add">add</span>Animated snap indicator — pressing <kbd>[</kbd> or <kbd>]</kbd> briefly displays the new snap value on-canvas.</li>
+    <li><span class="tag fix">fix</span>FX hold tick now fires once on press instead of repeating continuously through the hold duration.</li>
+    <li><span class="tag fix">fix</span>Horizontal lasers are now auto-marked as slams on import and during editing.</li>
+    <li><span class="tag fix">fix</span>Time signature display no longer de-syncs after a mirroring operation on the selection.</li>
+    <li><span class="tag fix">fix</span>Zoom level and editor UI layout are now persisted across page reloads.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.6</span>Statistics, bookmarks &amp; update notifications</h4>
   <ul>
     <li><span class="tag add">add</span>Chart Statistics panel — full note breakdown, peak/average density per measure, laser segment and slam counts, total duration. Open via <strong>Window → Chart Statistics…</strong></li>
     <li><span class="tag add">add</span>Quick Bookmarks — press <kbd>Ctrl+B</kbd> at any playhead position to drop a labeled bookmark. A floating panel (<strong>Window → Bookmarks</strong>) lists them with click-to-jump and per-bookmark labels. Persisted per chart in localStorage.</li>
@@ -464,7 +483,7 @@
 </div>
 
 <div class="update-entry">
-  <h4><span class="ver-tag">v1.4</span>Multi-chart preview &amp; laser pen tool</h4>
+  <h4><span class="ver-tag">v0.0.5</span>Multi-chart preview &amp; laser pen tool</h4>
   <ul>
     <li><span class="tag add">add</span>Multi-chart preview mode — up to four charts share a synchronized playhead in Split View.</li>
     <li><span class="tag add">add</span>Laser Pen Tool with Bézier anchor points and handles, modeled on Photoshop pen behavior.</li>
@@ -476,7 +495,7 @@
 </div>
 
 <div class="update-entry">
-  <h4><span class="ver-tag">v1.3</span>Selection &amp; seekbar refinements</h4>
+  <h4><span class="ver-tag">v0.0.4</span>Selection &amp; seekbar refinements</h4>
   <ul>
     <li><span class="tag fix">fix</span>Stop events no longer cause the chart to scroll backward during playback.</li>
     <li><span class="tag add">add</span><kbd>Ctrl+D</kbd> / <kbd>Cmd+D</kbd> deselects the current selection.</li>
@@ -486,7 +505,7 @@
 </div>
 
 <div class="update-entry">
-  <h4><span class="ver-tag">v1.2</span>Song Data window, sorting &amp; S-Ran</h4>
+  <h4><span class="ver-tag">v0.0.3</span>Song Data window, sorting &amp; S-Ran</h4>
   <ul>
     <li><span class="tag fix">fix</span>Audio/video delay now persists across restarts.</li>
     <li><span class="tag add">add</span>Song Data window with full metadata view.</li>
@@ -497,7 +516,7 @@
 </div>
 
 <div class="update-entry">
-  <h4><span class="ver-tag">v1.1</span>Visual calibration mode</h4>
+  <h4><span class="ver-tag">v0.0.2</span>Visual calibration mode</h4>
   <ul>
     <li><span class="tag add">add</span>Visual calibration: tapping <kbd>Space</kbd> measures audio delay and applies the correction automatically.</li>
     <li><span class="tag chg">chg</span>Calibration <kbd>Space</kbd> no longer restarts audio; BPM only commits on blur to prevent mid-edit jitter.</li>
@@ -506,7 +525,7 @@
 </div>
 
 <div class="update-entry">
-  <h4><span class="ver-tag">v1.0</span>Initial release</h4>
+  <h4><span class="ver-tag">v0.0.1</span>Initial release</h4>
   <ul>
     <li><span class="tag add">add</span>KSON-first editor with KSH import/export.</li>
     <li><span class="tag add">add</span>Edit, Split, and Game Preview view modes.</li>
