@@ -9,8 +9,15 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.8';
+const APP_VERSION = '0.0.9';
 const CHANGELOG = [
+  {
+    version: '0.0.9',
+    title: 'Emotional Intensity Heatmap',
+    entries: [
+      ['add', 'Intensity Heatmap — full-chart note density visualization. Open via <strong>Window → Intensity Heatmap…</strong>. Each measure is color-coded from cool blue (sparse) to hot red (dense). Laser-L and Laser-R coverage appear as thin side channels. Click any row to seek the editor to that measure.'],
+    ],
+  },
   {
     version: '0.0.8',
     title: 'Temporal mirror, diagnostics &amp; experimental features',
@@ -708,8 +715,9 @@ function playFrame(now) {
     _multiSyncSettings();
     _multiDraw();
   }
-  // Update radar every playback frame regardless of view mode
+  // Update radar and heatmap every playback frame regardless of view mode
   if (typeof updateRadar === 'function') updateRadar();
+  if (typeof updateHeatmap === 'function') updateHeatmap();
   requestAnimationFrame(playFrame);
 }
 let _lastGameFrameTime = 0;
@@ -2315,15 +2323,13 @@ window.addEventListener('DOMContentLoaded', () => {
           const startIdx = activeTabIdx;
           for (let i = 0; i < packCharts.length; i++) {
             const c = packCharts[i];
+            // Do NOT rename any tab when loading a ksonpack — preserve existing
+            // tab names ("Chart 1", user-renamed tabs, etc.) exactly as they are.
             const slot = (i === 0) ? startIdx : (tabs.push({
-              name: c.meta.title || `Chart ${tabs.length + 1}`,
+              name: `Chart ${tabs.length + 1}`,
               chart: c, audioBuffer: null, hispeed: 1.0,
             }) - 1);
             tabs[slot].chart = c;
-            if (c.meta.title) {
-              const d = c.meta.difficulty ? c.meta.difficulty.toUpperCase() : '';
-              tabs[slot].name = d ? `${c.meta.title} - ${d}` : c.meta.title;
-            }
           }
           // Update global chart before switchToTab so it doesn't save the
           // stale reference back over the first pack chart we just loaded.
@@ -3278,8 +3284,9 @@ function render() {
     if (gameView && viewMode !== 'edit') gameView.draw();
     // Multi-chart preview
     if (_multiMode) { _multiSyncSettings(); _multiDraw(); }
-    // Update pattern radar (live, no-op if window is hidden)
-    if (typeof updateRadar === 'function') updateRadar();
+    // Update pattern radar and intensity heatmap (live, no-op if windows are hidden)
+    if (typeof updateRadar   === 'function') updateRadar();
+    if (typeof updateHeatmap === 'function') updateHeatmap();
   });
 }
 function snapTick(t) {
@@ -5880,6 +5887,9 @@ function initHistoryPanel() {
   });
   document.getElementById('btn-radar-window')?.addEventListener('click', () => {
     if (typeof openRadarWindow === 'function') openRadarWindow();
+  });
+  document.getElementById('btn-heatmap-window')?.addEventListener('click', () => {
+    if (typeof openHeatmapWindow === 'function') openHeatmapWindow();
   });
   document.getElementById('btn-handsim-window')?.addEventListener('click', () => {
     if (typeof openHandSimWindow === 'function') openHandSimWindow();
