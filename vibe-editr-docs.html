@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.13 · 2026</span>
+  <span class="version">v0.0.14 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,19 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.14</span>Audio Event Anchoring <span style="font-size:11px;color:#ffcc44;font-weight:normal;">[Experimental]</span></h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Audio Anchoring</strong> tool added to <strong>Window → Tools Hub → Audio → Audio Anchoring</strong>. Analyzes the loaded audio and detects amplitude-based transient onsets, converting them to chart tick positions using the current BPM map and offset.</li>
+    <li><span class="tag add">add</span>Adjustable detection controls — <em>Threshold</em> (0.10–0.95 normalized amplitude) and <em>Min Gap</em> (20–300 ms) let you tune sensitivity for dense or sparse tracks independently of the Waveform Align tool.</li>
+    <li><span class="tag add">add</span><em>Snap to Transients</em> mode — when enabled, note placement in the 2D editor snaps to the nearest detected transient within half a grid cell. Falls back to normal grid snap when no transient is close. Toggle via the tool panel or the <strong>Experimental (beta)</strong> right-click submenu.</li>
+    <li><span class="tag add">add</span><em>Place Chip Notes at Transients</em> — bulk-places BT-A through BT-D or FX-L/R chip notes at every detected transient, optionally restricted to the current selection region. Respects the undo stack.</li>
+    <li><span class="tag add">add</span>Transient list panel — shows every detected event with its measure/beat position and audio timestamp in seconds. Clicking any row seeks the playhead to that position.</li>
+    <li><span class="tag add">add</span>Yellow dashed transient markers are drawn across the 2D editor lane columns whenever snap-to-transients is active, giving continuous visual feedback about anchor positions.</li>
+    <li><span class="tag add">add</span>Transients computed in the <strong>Waveform Align</strong> tool are automatically shared with the Audio Anchoring tool, so running Waveform Align → Decode immediately populates the anchor snap grid.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.13</span>Physics-Based Laser Smoothing <span style="font-size:11px;color:#ffcc44;font-weight:normal;">[Experimental]</span></h4>

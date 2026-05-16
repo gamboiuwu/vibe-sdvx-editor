@@ -473,6 +473,37 @@ class Renderer {
       ctx.lineWidth   = lw;
       ctx.beginPath(); ctx.moveTo(lx, y); ctx.lineTo(rx, y); ctx.stroke();
     }
+
+    // Transient snap markers — drawn when snap-to-transients is active
+    if (window.prefs?.snapToTransients && window._audioTransientTicks?.length) {
+      const endY = startY + colTicks;
+      ctx.save();
+      ctx.strokeStyle = '#ffdd44';
+      ctx.lineWidth   = 1;
+      ctx.globalAlpha = 0.55;
+      ctx.setLineDash([2, 3]);
+      for (const tick of window._audioTransientTicks) {
+        if (tick < startY || tick > endY) continue;
+        const y = this._pyAt(tick, startY);
+        if (y < 0 || y > this.colH) continue;
+        ctx.beginPath();
+        ctx.moveTo(lx - 6, y);
+        ctx.lineTo(rx + 6, y);
+        ctx.stroke();
+        // small left-side triangle indicator
+        ctx.globalAlpha = 0.8;
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#ffdd44';
+        ctx.beginPath();
+        ctx.moveTo(lx - 6, y);
+        ctx.lineTo(lx - 12, y - 4);
+        ctx.lineTo(lx - 12, y + 4);
+        ctx.closePath(); ctx.fill();
+        ctx.setLineDash([2, 3]);
+        ctx.globalAlpha = 0.55;
+      }
+      ctx.restore();
+    }
   }
 
   _drawColRuler(ox, startY, colIdx) {
