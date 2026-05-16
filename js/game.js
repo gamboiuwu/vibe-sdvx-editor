@@ -41,6 +41,10 @@ class GameView {
     // { zoomTop, zoomBot, zoomSide, tilt (degrees), split }
     this._liveCamera = null;
 
+    // Edit-mode ghost cursor — set by app.js during game-edit hover.
+    // { tick, norm, tool }  |  null = hidden
+    this._editGhost = null;
+
     // Slam flash queue: [{ side, v0, v1, wide, time }]
     // Each entry lives for ~200 ms then is pruned.
     this._slamFlashes = [];
@@ -1094,11 +1098,86 @@ class GameView {
       ctx.fillText(['L','R'][li], lx + w2 / 2, p.judgeY + 32);
     }
 
+    // Edit-mode ghost cursor (rendered inside tilt context so it aligns with the lane)
+    if (this._editGhost) this._drawEditGhost(p);
+
     // Close the tilt rotation context (HUD is always drawn unrotated)
     if (p.tilt) ctx.restore();
 
     if (window.prefs?.ghostTrace) this._drawGhostTrace(p, tick, chart);
     this._drawHUD(p, tick, score, chain);
+  }
+
+  // ── Edit-mode ghost cursor ────────────────────────────────────────────────
+  _drawEditGhost(p) {
+    const g = this._editGhost;
+    if (!g) return;
+    const { ctx } = this;
+    const dt = g.tick - this.playTick;
+    if (dt < 0 || dt > this.VISIBLE_TICKS * 1.05) return;
+    const sy = this._screenY(dt, p);
+    if (sy < p.vanishY - 4 || sy > p.judgeY + 4) return;
+    const hw   = this._halfW(sy, p);
+    const laneW = hw * 2;
+
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+
+    if (g.tool === 'bt') {
+      const li = Math.min(3, Math.max(0, Math.floor(g.norm * 4)));
+      const nw = laneW / 4 * (this.btWidthScale || 1);
+      const lx = p.cx - hw + li * (laneW / 4);
+      const nh = Math.max(6, laneW / 20);
+      ctx.fillStyle   = '#e0e0ff';
+      ctx.strokeStyle = '#8888ff';
+      ctx.lineWidth   = 1.5;
+      ctx.beginPath();
+      ctx.roundRect(lx + 2, sy - nh / 2, nw - 4, nh, 2);
+      ctx.fill(); ctx.stroke();
+    } else if (g.tool === 'fx') {
+      const fi = g.norm < 0.5 ? 0 : 1;
+      const nw = laneW / 2;
+      const lx = p.cx - hw + fi * nw;
+      const nh = Math.max(6, laneW / 20);
+      ctx.fillStyle   = '#ffcc00bb';
+      ctx.strokeStyle = '#ff8800';
+      ctx.lineWidth   = 1.5;
+      ctx.beginPath();
+      ctx.roundRect(lx + 2, sy - nh / 2, nw - 4, nh, 2);
+      ctx.fill(); ctx.stroke();
+    } else if (g.tool === 'laser-l' || g.tool === 'laser-r') {
+      const side = g.tool === 'laser-l' ? 0 : 1;
+      const v  = Math.max(0, Math.min(1, g.norm));
+      const lx = this._laserX(v, sy, p, this.chart?.laserSettings?.wide ?? false);
+      const r  = Math.max(5, laneW / 18);
+      ctx.beginPath();
+      ctx.arc(lx, sy, r, 0, Math.PI * 2);
+      ctx.fillStyle   = side === 0 ? '#0088ffaa' : '#ff1177aa';
+      ctx.strokeStyle = side === 0 ? '#66bbff'   : '#ff88cc';
+      ctx.lineWidth   = 2;
+      ctx.fill(); ctx.stroke();
+    } else if (g.tool === 'erase') {
+      const li = Math.min(3, Math.max(0, Math.floor(g.norm * 4)));
+      const cx = p.cx - hw + (li + 0.5) * (laneW / 4);
+      const r  = Math.max(6, laneW / 18);
+      ctx.strokeStyle = '#ff4444';
+      ctx.lineWidth   = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(cx - r * 0.7, sy - r * 0.7); ctx.lineTo(cx + r * 0.7, sy + r * 0.7);
+      ctx.moveTo(cx + r * 0.7, sy - r * 0.7); ctx.lineTo(cx - r * 0.7, sy + r * 0.7);
+      ctx.stroke();
+    }
+
+    // Snap-line across the lane at the ghost tick
+    ctx.globalAlpha = 0.25;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth   = 0.75;
+    ctx.setLineDash([3, 4]);
+    ctx.beginPath();
+    ctx.moveTo(p.cx - hw, sy); ctx.lineTo(p.cx + hw, sy);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
   }
 
   // ── Hit flash surface glow ────────────────────────────────────────────────

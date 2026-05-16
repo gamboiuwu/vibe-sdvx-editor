@@ -439,6 +439,27 @@
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
 
 <div class="update-entry">
+  <h4><span class="ver-tag">v0.0.10</span>Preview edit mode overhaul &amp; tab position saving</h4>
+  <ul>
+    <li><span class="tag fix">fix</span>Tab position saving — each tab now independently remembers its scroll column and playhead position. Switching tabs restores the exact position you were at rather than resetting to the beginning.</li>
+    <li><span class="tag fix">fix</span>Preview edit: tick placement uses a perspective-aware inverse of the projection formula (binary search over <code>_screenY</code>), so notes land at the correct chart position in SDVX and Hybrid projection modes. Previously only Orthographic mode was accurate.</li>
+    <li><span class="tag fix">fix</span>Preview edit: camera tilt is correctly reversed when converting click coordinates, so the hit position is accurate even when the lane is rotated.</li>
+    <li><span class="tag fix">fix</span>Preview edit: snap grid respected — uses the same snap resolution as the 2D editor instead of being hard-coded to 1/16.</li>
+    <li><span class="tag add">add</span>Preview edit: Left and Right Laser tools added to the in-preview toolbar. Click to place laser anchor points on the lane.</li>
+    <li><span class="tag add">add</span>Preview edit: ghost cursor — a semi-transparent note shape follows the mouse with a snap-line so you can see exactly where a note or laser point will land before clicking.</li>
+    <li><span class="tag add">add</span>Preview edit: drag to draw hold notes — press and drag with BT or FX selected to extend the hold length.</li>
+    <li><span class="tag add">add</span>Preview edit: Edit Mode toggle button added directly to the preview controls panel for one-click access without needing the right-click context menu.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.9</span>Emotional Intensity Heatmap</h4>
+  <ul>
+    <li><span class="tag add">add</span>Intensity Heatmap panel — open via <strong>Window → Intensity Heatmap…</strong>. Displays a full-chart timeline where each measure is color-coded by note density: cool blue for sparse sections, progressing through cyan, green, yellow, and orange to hot red for the densest bursts. Laser-L (blue) and Laser-R (pink) coverage appear as thin side channels flanking the main column. A white playhead line tracks the current editor position in real time. Click any row to instantly seek the editor and 3D preview to that measure. The window is draggable and position-persistent across sessions.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
   <h4><span class="ver-tag">v0.0.8</span>Autonomous diagnostics, temporal mirror &amp; experimental features</h4>
   <ul>
     <li><span class="tag add">add</span>Startup diagnostics — on each session start the system checks note overlaps, laser continuity, BPM consistency, and KSON parse integrity, then displays a summary popup. Re-run any time via <strong>Window → System Diagnostics</strong>.</li>

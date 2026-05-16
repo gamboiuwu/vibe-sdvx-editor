@@ -945,6 +945,10 @@ kbd {
 }
 .geo-tool:hover { color: var(--text); border-color: var(--accent); }
 .geo-tool.active { background: var(--bg3); border-color: var(--accent); color: var(--accent); }
+.geo-laser-l { color: #4499ff; border-color: #224488; }
+.geo-laser-l:hover, .geo-laser-l.active { color: #66bbff; border-color: #4499ff; background: #0a1a33; }
+.geo-laser-r { color: #ff4499; border-color: #882244; }
+.geo-laser-r:hover, .geo-laser-r.active { color: #ff88cc; border-color: #ff4499; background: #330a1a; }
 .geo-sep { width: 1px; height: 18px; background: var(--border); margin: 0 4px; }
 #geo-exit { color: var(--accent2); border-color: var(--accent2); margin-left: auto; }
 
