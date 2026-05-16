@@ -174,29 +174,10 @@ class Renderer {
 
   // ── Coordinate helpers ────────────────────────────────────────────────────
 
-  // Velocity-aware canvas-Y for a given tick within a column that starts at startY.
-  // If no scroll-speed events exist this is identical to the linear formula.
+  // Canvas-Y for a given tick within a column that starts at startY.
+  // Always linear in the editor — scroll speed events only affect the game preview.
   _pyAt(tick, startY) {
-    if (!this.chart?.scrollSpeedEvents?.length) {
-      return this.colH - (tick - startY) * this.zoom;
-    }
-    return this.colH - this.chart.scrollDistanceBetween(tick, startY) * this.zoom;
-  }
-
-  // Inverse of _pyAt: given a visual distance from column bottom (in "zoom units"),
-  // return the tick that lands at that position.
-  _scrollDistToTick(targetDist) {
-    const evs = this.chart?.scrollSpeedEvents;
-    if (!evs?.length) return targetDist;
-    let dist = 0, lastY = 0, speed = evs[0].speed ?? 1.0;
-    for (let i = 1; i < evs.length; i++) {
-      const segDist = (evs[i].y - lastY) * speed;
-      if (dist + segDist >= targetDist) break;
-      dist  += segDist;
-      lastY  = evs[i].y;
-      speed  = evs[i].speed ?? 1.0;
-    }
-    return lastY + (targetDist - dist) / Math.max(0.001, speed);
+    return this.colH - (tick - startY) * this.zoom;
   }
 
   tickToCanvas(tick) {
@@ -215,9 +196,8 @@ class Renderer {
     const localX     = cx - visColIdx * (SINGLE_COL_W + COL_GAP);
     const colLen     = this.colTicks;
     const startY     = colIdx * colLen;
-    const dist       = Math.max(0, (this.colH - cy) / this.zoom);
-    const baseDist   = this.chart ? this.chart.scrollDistanceTo(startY) : startY;
-    const tick       = this.chart ? this._scrollDistToTick(baseDist + dist) : (startY + dist);
+    // Always linear in the editor — exact inverse of _pyAt
+    const tick       = startY + Math.max(0, (this.colH - cy) / this.zoom);
     const laneIdx    = this._localXToLane(localX);
     return { tick, laneIdx, localX, colIdx };
   }
@@ -366,10 +346,9 @@ class Renderer {
 
     const localCX = CX - stripX;  // center X within the strip
 
-    const _waveBaseDist = this.chart ? this.chart.scrollDistanceTo(startY) : startY;
+    // Linear mapping — matches the editor's _pyAt (scroll speed is preview-only)
     for (let py = 0; py < colH; py++) {
-      const dist  = (colH - 1 - py) / this.zoom;
-      const tick  = this.chart ? this._scrollDistToTick(_waveBaseDist + dist) : (startY + dist);
+      const tick  = startY + (colH - 1 - py) / this.zoom;
       const sec   = tickToSec(tick) + offSec;
       if (sec < 0 || sec > duration) continue;
 
