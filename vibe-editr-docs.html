@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.8 · 2026</span>
+  <span class="version">v0.0.13 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,16 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.13</span>Physics-Based Laser Smoothing <span style="font-size:11px;color:#ffcc44;font-weight:normal;">[Experimental]</span></h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Physics Sim</strong> algorithm added to <strong>Window → Tools Hub → Edit → Laser Smooth</strong>. Uses a spring-damper simulation: interior laser control points are treated as particles connected to their neighbours by springs. The system iterates over a configurable number of steps, letting the path relax toward a natural equilibrium while keeping endpoints fixed.</li>
+    <li><span class="tag add">add</span>Three tunable physics parameters — <em>Stiffness</em> (how strongly each point is pulled toward the average of its neighbours), <em>Damping</em> (suppresses oscillation; higher values produce smoother, more overdamped results), and <em>Steps</em> (simulation resolution; more steps approach the fully-settled state).</li>
+    <li><span class="tag add">add</span><em>Preserve slam anchors</em> toggle — slam (directional flick) points are treated as additional fixed anchors so sharp directional changes are not softened by the simulation.</li>
+    <li><span class="tag add">add</span>Physics Laser Smoothing toggle added to the <strong>Experimental (beta)</strong> context-menu submenu (right-click canvas). When enabled, the <code>Physics Sim [EXP]</code> algorithm option appears highlighted in the tool panel.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.12</span>Edit positioning fix, spatial panning &amp; folder ksonpack</h4>
