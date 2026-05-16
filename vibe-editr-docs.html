@@ -439,6 +439,15 @@
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
 
 <div class="update-entry">
+  <h4><span class="ver-tag">v0.0.11</span>Multi-chart edit mode &amp; right-click erase</h4>
+  <ul>
+    <li><span class="tag add">add</span>Multi-chart view: full edit mode now works across all chart slots — BT, FX, Laser-L/R, erase, and drag-hold are all wired to each slot independently. Each slot edits only its own chart tab.</li>
+    <li><span class="tag fix">fix</span>Right-click in preview edit mode now erases notes directly instead of opening the context menu. Context menu is still accessible via right-click when edit mode is off.</li>
+    <li><span class="tag fix">fix</span>Multi-chart edit: changes are immediately reflected in both the 3D slot view and the 2D editor panel when the edited tab is the active tab.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
   <h4><span class="ver-tag">v0.0.10</span>Preview edit mode overhaul &amp; tab position saving</h4>
   <ul>
     <li><span class="tag fix">fix</span>Tab position saving — each tab now independently remembers its scroll column and playhead position. Switching tabs restores the exact position you were at rather than resetting to the beginning.</li>

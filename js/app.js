@@ -9,8 +9,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.10';
+const APP_VERSION = '0.0.11';
 const CHANGELOG = [
+  {
+    version: '0.0.11',
+    title: 'Multi-chart edit mode &amp; right-click erase',
+    entries: [
+      ['add', 'Multi-chart view now supports full edit mode — BT, FX, laser-L/R, erase, and drag-hold work on each chart slot independently.'],
+      ['fix', 'Right-click in preview edit mode now erases notes instead of opening the context menu. Context menu is still available via right-click when edit mode is off.'],
+      ['fix', 'Multi-chart edit: each slot targets its own chart tab, so edits are correctly isolated and immediately reflected in both the 3D view and 2D editor.'],
+    ],
+  },
   {
     version: '0.0.10',
     title: 'Preview edit mode overhaul &amp; tab position saving',
@@ -1586,6 +1595,111 @@ let _multiSync   = true;
 const _multiTabMask = new Set(); // which tab indices to show
 
 // Build / re-build all slot canvases from scratch
+function _wireMultiEditCanvas(mv) {
+  const canvas = mv.canvas;
+  mv._drag = { active: false, tool: '', startTick: 0, laneIdx: 0, fxIdx: 0, laserSide: 0 };
+
+  const afterEdit = () => {
+    if (!playing) mv.gv.draw();
+    if (mv.tabIdx === activeTabIdx) render();
+  };
+
+  canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+  canvas.addEventListener('mousedown', ev => {
+    if (!_gameEditMode) return;
+    if (ev.button !== 0 && ev.button !== 2) return;
+    ev.preventDefault();
+    const p = mv.gv._params();
+    if (!p) return;
+    const rect = canvas.getBoundingClientRect();
+    const hit  = _gameScreenToChart(ev.clientX - rect.left, ev.clientY - rect.top, p, mv.gv);
+    if (!hit) return;
+    const { tick, norm } = hit;
+    const li = Math.min(3, Math.max(0, Math.floor(norm * 4)));
+    const fi = norm < 0.5 ? 0 : 1;
+    const m  = Math.floor(tick / TICKS_PER_MEASURE) + 1;
+    const targetChart = tabs[mv.tabIdx]?.chart;
+    if (!targetChart) return;
+
+    if (ev.button === 2 || tool === 'erase') {
+      saveUndo(`Erased at M${m} (Multi-Preview)`);
+      eraseAt(li, tick, null, targetChart);
+      afterEdit();
+      return;
+    }
+    if (tool === 'laser-l' || tool === 'laser-r') {
+      const side = tool === 'laser-l' ? 0 : 1;
+      const v    = Math.max(0, Math.min(1, norm));
+      saveUndo(`VOL-${side === 0 ? 'L' : 'R'} at M${m} (Multi-Preview)`);
+      targetChart.addLaserPoint(side, tick, v, false, false);
+      mv._drag.active = true; mv._drag.tool = tool; mv._drag.laserSide = side;
+      afterEdit();
+      return;
+    }
+    mv._drag.active    = true;
+    mv._drag.tool      = tool;
+    mv._drag.startTick = tick;
+    mv._drag.laneIdx   = li;
+    mv._drag.fxIdx     = fi;
+    saveUndo(`${tool.toUpperCase()} at M${m} (Multi-Preview)`);
+    if (tool === 'bt') targetChart.addBtNote(li, tick, 0);
+    else               targetChart.addFxNote(fi, tick, 0);
+    afterEdit();
+  });
+
+  canvas.addEventListener('mousemove', ev => {
+    if (!_gameEditMode) return;
+    const p = mv.gv._params();
+    if (!p) return;
+    const rect = canvas.getBoundingClientRect();
+    const hit  = _gameScreenToChart(ev.clientX - rect.left, ev.clientY - rect.top, p, mv.gv);
+    if (!hit) { mv.gv._editGhost = null; return; }
+    mv.gv._editGhost = { tick: hit.tick, norm: hit.norm, tool };
+    if (mv._drag.active && (tool === 'laser-l' || tool === 'laser-r')) {
+      const targetChart = tabs[mv.tabIdx]?.chart;
+      if (targetChart) {
+        const v = Math.max(0, Math.min(1, hit.norm));
+        targetChart.addLaserPoint(mv._drag.laserSide, hit.tick, v, false, false);
+        afterEdit();
+      }
+    }
+    if (!playing) mv.gv.draw();
+  });
+
+  canvas.addEventListener('mouseup', ev => {
+    if (!mv._drag.active) return;
+    const targetChart = tabs[mv.tabIdx]?.chart;
+    const p = mv.gv._params();
+    if (p && targetChart && (tool === 'bt' || tool === 'fx')) {
+      const rect = canvas.getBoundingClientRect();
+      const hit  = _gameScreenToChart(ev.clientX - rect.left, ev.clientY - rect.top, p, mv.gv);
+      if (hit) {
+        const len = Math.max(0, hit.tick - mv._drag.startTick);
+        if (len > 0) {
+          if (tool === 'bt') {
+            const lane = targetChart.bt[mv._drag.laneIdx];
+            const n = lane.findLast?.(n => n.y === mv._drag.startTick) ?? lane.slice().reverse().find(n => n.y === mv._drag.startTick);
+            if (n) n.len = len;
+          } else {
+            const lane = targetChart.fx[mv._drag.fxIdx];
+            const n = lane.findLast?.(n => n.y === mv._drag.startTick) ?? lane.slice().reverse().find(n => n.y === mv._drag.startTick);
+            if (n) n.len = len;
+          }
+          afterEdit();
+        }
+      }
+    }
+    mv._drag.active = false;
+  });
+
+  canvas.addEventListener('mouseleave', () => {
+    mv._drag.active = false;
+    mv.gv._editGhost = null;
+    if (!playing) mv.gv.draw();
+  });
+}
+
 function _multiRebuild() {
   const area = document.getElementById('multi-preview-area');
   if (!area) return;
@@ -1696,6 +1810,9 @@ function _multiRebuild() {
         if (!playing) _multiDraw();
       }
     });
+
+    // Wire edit-mode mouse handlers for this slot
+    _wireMultiEditCanvas(mv);
 
     // Use ResizeObserver so the canvas is sized correctly once the flex layout settles
     const ro = new ResizeObserver(() => {
@@ -2022,7 +2139,11 @@ window.addEventListener('DOMContentLoaded', () => {
       }
     }
     gameView.resize();
-    gameCanvas.addEventListener('contextmenu', e => { e.preventDefault(); showGameCtxMenu(e.clientX, e.clientY); });
+    gameCanvas.addEventListener('contextmenu', e => {
+      e.preventDefault();
+      // In edit mode right-click is handled as erase in mousedown — never show the menu
+      if (!_gameEditMode) showGameCtxMenu(e.clientX, e.clientY);
+    });
   }
 
   // Seekbar / scrub
@@ -4735,24 +4856,30 @@ function onRightClick(e) {
 }
 
 // typeFilter: 'bt' | 'fx' | undefined (undefined = erase everything)
-function eraseAt(laneIdx, tick, typeFilter) {
+// targetChart: optional ChartData to erase from (defaults to active global chart)
+function eraseAt(laneIdx, tick, typeFilter, targetChart) {
+  const ch = targetChart ?? chart;
+  const isActive = (ch === chart);
+
   // Camera/stop events are only erased when using the dedicated erase tool
   if (!typeFilter) {
     const hitRadius = TICKS_PER_BEAT / 2;
-    const prevCamLen = (chart.cameraEvents ?? []).length;
-    chart.cameraEvents = (chart.cameraEvents ?? []).filter(ev => Math.abs(ev.y - tick) > hitRadius);
-    const prevStopLen = (chart.stopEvents ?? []).length;
-    chart.stopEvents   = (chart.stopEvents ?? []).filter(ev => !(tick >= ev.y && tick <= ev.y + ev.len));
-    if ((chart.cameraEvents ?? []).length !== prevCamLen)  updateCameraEventList();
-    if ((chart.stopEvents   ?? []).length !== prevStopLen) updateStopEventList();
+    const prevCamLen = (ch.cameraEvents ?? []).length;
+    ch.cameraEvents = (ch.cameraEvents ?? []).filter(ev => Math.abs(ev.y - tick) > hitRadius);
+    const prevStopLen = (ch.stopEvents ?? []).length;
+    ch.stopEvents   = (ch.stopEvents ?? []).filter(ev => !(tick >= ev.y && tick <= ev.y + ev.len));
+    if (isActive) {
+      if ((ch.cameraEvents ?? []).length !== prevCamLen)  updateCameraEventList();
+      if ((ch.stopEvents   ?? []).length !== prevStopLen) updateStopEventList();
+    }
   }
 
   if (laneIdx >= 0 && laneIdx <= 3) {
-    if (!typeFilter || typeFilter === 'bt') chart.removeNote(chart.bt[laneIdx], tick);
-    if (!typeFilter || typeFilter === 'fx') chart.removeNote(chart.fx[laneIdx <= 1 ? 0 : 1], tick);
+    if (!typeFilter || typeFilter === 'bt') ch.removeNote(ch.bt[laneIdx], tick);
+    if (!typeFilter || typeFilter === 'fx') ch.removeNote(ch.fx[laneIdx <= 1 ? 0 : 1], tick);
   } else if (!typeFilter) {
-    if (laneIdx === 4) chart.removeLaserAt(0, tick);
-    if (laneIdx === 5) chart.removeLaserAt(1, tick);
+    if (laneIdx === 4) ch.removeLaserAt(0, tick);
+    if (laneIdx === 5) ch.removeLaserAt(1, tick);
   }
 }
 
@@ -6409,8 +6536,10 @@ const _geDrag = { active: false, tool: '', startTick: 0, laneIdx: 0, fxIdx: 0, l
 
 // Convert raw canvas-relative (sx, sy) → { tick, norm } using proper perspective inverse.
 // Accounts for tilt rotation so the lane-hit position is accurate in all projection modes.
-function _gameScreenToChart(rawSx, rawSy, p) {
-  if (!gameView || !p) return null;
+// Pass gv to use a specific GameView instance (defaults to the global gameView).
+function _gameScreenToChart(rawSx, rawSy, p, gv) {
+  const gvRef = gv ?? gameView;
+  if (!gvRef || !p) return null;
 
   // Un-rotate if tilt is applied (game rotates around (cx, judgeY))
   let sx = rawSx, sy = rawSy;
@@ -6421,7 +6550,7 @@ function _gameScreenToChart(rawSx, rawSy, p) {
     sy = p.judgeY + dx * s + dy * c;
   }
 
-  const VT = gameView.VISIBLE_TICKS;
+  const VT = gvRef.VISIBLE_TICKS;
   let dt;
   if (sy >= p.judgeY) {
     dt = 0;
@@ -6432,15 +6561,15 @@ function _gameScreenToChart(rawSx, rawSy, p) {
     let lo = 0, hi = VT;
     for (let i = 0; i < 32; i++) {
       const mid = (lo + hi) * 0.5;
-      if (gameView._screenY(mid, p) > sy) lo = mid; else hi = mid;
+      if (gvRef._screenY(mid, p) > sy) lo = mid; else hi = mid;
     }
     dt = (lo + hi) * 0.5;
   }
 
-  const snapV  = (typeof snap !== 'undefined' && snap > 0) ? snap : 12;
-  const tick   = Math.max(0, Math.round((gameView.playTick + dt) / snapV) * snapV);
-  const hw     = gameView._halfW(sy, p);
-  const norm   = hw > 0 ? (sx - (p.cx - hw)) / (hw * 2) : 0.5;
+  const snapV = (typeof snap !== 'undefined' && snap > 0) ? snap : 12;
+  const tick  = Math.max(0, Math.round((gvRef.playTick + dt) / snapV) * snapV);
+  const hw    = gvRef._halfW(sy, p);
+  const norm  = hw > 0 ? (sx - (p.cx - hw)) / (hw * 2) : 0.5;
   return { tick, norm };
 }
 
@@ -6498,7 +6627,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if (!gameCanvas) return;
 
   gameCanvas.addEventListener('mousedown', ev => {
-    if (!_gameEditMode || ev.button !== 0) return;
+    if (!_gameEditMode) return;
+    if (ev.button !== 0 && ev.button !== 2) return;
     ev.preventDefault();
     const p = gameView?._params();
     if (!p) return;
@@ -6510,7 +6640,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const fi   = norm < 0.5 ? 0 : 1;
     const m    = Math.floor(tick / TICKS_PER_MEASURE) + 1;
 
-    if (tool === 'erase') {
+    // Right-click always erases, regardless of selected tool
+    if (ev.button === 2 || tool === 'erase') {
       saveUndo(`Erased at M${m} (Preview)`);
       eraseAt(li, tick);
       render(); if (gameView) gameView.draw();
