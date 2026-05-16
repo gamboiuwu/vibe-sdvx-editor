@@ -23,6 +23,7 @@ const TOOL_REGISTRY = [
   { id: 'offset-finder',cat:'Audio',   label: 'Offset Finder',    icon: '🎙'  },
   { id: 'keysound',    cat: 'Audio',    label: 'Keysound Map',     icon: '🔑'  },
   { id: 'waveform-align',cat:'Audio',  label: 'Waveform Align',   icon: '🌊'  },
+  { id: 'audio-anchor', cat: 'Audio',  label: 'Audio Anchoring',  icon: '🎯'  },
   // Metadata
   { id: 'jacket-meta', cat: 'Metadata',label: 'Jacket Meta',      icon: '🖼'  },
   // Validate
@@ -496,6 +497,7 @@ function _renderTool(id, container) {
     case 'symmetry':      return _toolSymmetry(container);
     case 'pattern-lib':   return _toolPatternLib(container);
     case 'waveform-align':return _toolWaveformAlign(container);
+    case 'audio-anchor':  return _toolAudioAnchor(container);
     case 'collision':     return _toolCollision(container);
     case 'export-validate':return _toolExportValidate(container);
     default: container.textContent = 'Unknown tool: ' + id;
@@ -4287,6 +4289,262 @@ function _toolPatternLib(c) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   19. Audio Event Anchoring
+   ═══════════════════════════════════════════════════════════════════════════ */
+function _toolAudioAnchor(c) {
+  const _ch  = () => { try { return (typeof chart    !== 'undefined') ? chart    : null; } catch(_){return null;} };
+  const _buf = () => { try { return (typeof audioBuffer !== 'undefined') ? audioBuffer : null; } catch(_){return null;} };
+
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'display:flex;flex-direction:column;gap:6px;font-size:11px';
+
+  const mkLabel = (t) => { const s = document.createElement('span'); s.style.cssText='color:#778;font-size:10px'; s.textContent=t; return s; };
+  const mkSep   = () => { const d = document.createElement('div'); d.style.cssText='border-top:1px solid #1e1e3a;margin:6px 0'; return d; };
+  const mkRow   = (...els) => {
+    const d = document.createElement('div');
+    d.style.cssText = 'display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:2px 0';
+    els.forEach(e => d.appendChild(typeof e === 'string' ? mkLabel(e) : e));
+    return d;
+  };
+  const mkBtn2 = (txt, color, fn) => {
+    const b = document.createElement('button');
+    b.textContent = txt;
+    b.style.cssText = `background:#12122a;color:${color};border:1px solid ${color}55;padding:2px 8px;border-radius:4px;cursor:pointer;font-size:10px`;
+    b.addEventListener('click', fn);
+    return b;
+  };
+  const mkChk = (label, checked, fn) => {
+    const wrap2 = document.createElement('label');
+    wrap2.style.cssText = 'display:flex;align-items:center;gap:5px;cursor:pointer;font-size:10px;color:#aac';
+    const cb = document.createElement('input'); cb.type='checkbox'; cb.checked=checked;
+    cb.addEventListener('change', () => fn(cb.checked));
+    wrap2.append(cb, label); return wrap2;
+  };
+
+  // ── Header ──────────────────────────────────────────────────────────────
+  const hdr = document.createElement('div');
+  hdr.style.cssText = 'font-size:10px;font-weight:bold;color:#ffaa55;letter-spacing:0.05em';
+  hdr.textContent = '🎯 Audio Event Anchoring';
+  wrap.appendChild(hdr);
+
+  const desc = document.createElement('div');
+  desc.style.cssText = 'font-size:9px;color:#778;line-height:1.4';
+  desc.textContent = 'Detects audio transients and lets you snap note placement to them or bulk-fill a lane at each hit.';
+  wrap.appendChild(desc);
+  wrap.appendChild(mkSep());
+
+  // ── Status / detect ───────────────────────────────────────────────────────
+  const statusDiv = document.createElement('div');
+  statusDiv.style.cssText = 'font-size:10px;color:#778;padding:2px 0;min-height:14px';
+
+  function refreshStatus() {
+    const ticks = window._audioTransientTicks;
+    if (!ticks || !ticks.length) {
+      statusDiv.style.color = '#f87';
+      statusDiv.textContent = '⚠ No transients — run Waveform Align → Decode first, or detect below.';
+    } else {
+      statusDiv.style.color = '#8f8';
+      statusDiv.textContent = `✓ ${ticks.length} transients loaded (${(window._audioTransientsSec?.length??0)} sec → ticks).`;
+    }
+    refreshList();
+  }
+
+  // Local detect — runs its own computePeaks with adjustable threshold
+  let localThreshold = 0.55;
+  let localMarginMs  = 80;
+
+  const thrVal = document.createElement('span');
+  thrVal.style.cssText = 'font-size:10px;color:#aad;font-family:monospace;min-width:38px;text-align:right';
+  thrVal.textContent = localThreshold.toFixed(2);
+
+  const thrSlider = document.createElement('input');
+  thrSlider.type='range'; thrSlider.min=0.10; thrSlider.max=0.95; thrSlider.step=0.01; thrSlider.value=localThreshold;
+  thrSlider.style.cssText='flex:1;min-width:60px;accent-color:#ffaa55';
+  thrSlider.addEventListener('input', () => { localThreshold=+thrSlider.value; thrVal.textContent=localThreshold.toFixed(2); });
+
+  const mgnVal = document.createElement('span');
+  mgnVal.style.cssText = 'font-size:10px;color:#aad;font-family:monospace;min-width:42px;text-align:right';
+  mgnVal.textContent = localMarginMs + 'ms';
+
+  const mgnSlider = document.createElement('input');
+  mgnSlider.type='range'; mgnSlider.min=20; mgnSlider.max=300; mgnSlider.step=5; mgnSlider.value=localMarginMs;
+  mgnSlider.style.cssText='flex:1;min-width:60px;accent-color:#ffaa55';
+  mgnSlider.addEventListener('input', () => { localMarginMs=+mgnSlider.value; mgnVal.textContent=localMarginMs+'ms'; });
+
+  const detectBtn = mkBtn2('🔍 Detect Transients', '#ffaa55', () => {
+    const buf = _buf();
+    if (!buf) { statusDiv.style.color='#f87'; statusDiv.textContent='⚠ No audio loaded.'; return; }
+    statusDiv.style.color='#aac'; statusDiv.textContent='⏳ Detecting…';
+    requestAnimationFrame(() => {
+      const RATE = 300;
+      const ch0 = buf.getChannelData(0);
+      const ch1 = buf.numberOfChannels > 1 ? buf.getChannelData(1) : ch0;
+      const sr  = buf.sampleRate;
+      const spk = Math.max(1, Math.round(sr / RATE));
+      const n   = Math.ceil(buf.length / spk);
+      const p   = new Float32Array(n);
+      let gmax  = 0;
+      for (let i = 0; i < n; i++) {
+        let mx = 0;
+        const s0 = i*spk, s1 = Math.min(s0+spk,buf.length);
+        for (let j=s0;j<s1;j++) { const v=Math.max(Math.abs(ch0[j]||0),Math.abs(ch1[j]||0)); if(v>mx)mx=v; }
+        p[i]=mx; if(mx>gmax)gmax=mx;
+      }
+      if (gmax > 0) for (let i=0;i<n;i++) p[i]/=gmax;
+      const margin = Math.round(RATE * localMarginMs / 1000);
+      const tr = [];
+      for (let i=margin; i<n-margin; i++) {
+        if (p[i] < localThreshold) continue;
+        let isMax=true;
+        for (let j=i-margin;j<=i+margin;j++) { if(p[j]>p[i]){isMax=false;break;} }
+        if (isMax) tr.push(i/RATE);
+      }
+      window._audioTransientsSec = tr;
+      // Convert to ticks
+      const ch = _ch();
+      const ticks2 = [];
+      if (ch) {
+        const offSec = (+(ch.meta?.offset??0))/1000;
+        for (const tSec of tr) {
+          const adj = tSec - offSec;
+          if (adj < 0) continue;
+          let pTick2 = 0, pSec2 = 0;
+          for (const ev of ch.bpmEvents) {
+            const es = (typeof tickToSeconds === 'function') ? tickToSeconds(ev.y) : 0;
+            if (es >= adj) break;
+            pSec2 = es; pTick2 = ev.y;
+          }
+          const bpmHere = ch.getBpmAt(pTick2);
+          ticks2.push(Math.round(pTick2 + (adj - pSec2) * bpmHere / 60 * TICKS_PER_BEAT));
+        }
+      }
+      window._audioTransientTicks = ticks2;
+      refreshStatus();
+      if (typeof render === 'function') render();
+    });
+  });
+
+  wrap.append(mkRow(detectBtn, statusDiv));
+  wrap.append(mkRow('Threshold', thrSlider, thrVal));
+  wrap.append(mkRow('Min gap', mgnSlider, mgnVal));
+  wrap.appendChild(mkSep());
+
+  // ── Snap to Transients toggle ─────────────────────────────────────────────
+  const snapHdr = document.createElement('div');
+  snapHdr.style.cssText='font-size:10px;font-weight:bold;color:#88ccff;letter-spacing:0.05em';
+  snapHdr.textContent='📐 Snap to Transients';
+  wrap.appendChild(snapHdr);
+
+  const snapChk = mkChk('Enable snap-to-transients mode', !!(window.prefs?.snapToTransients), v => {
+    if (window.prefs) { window.prefs.snapToTransients = v; }
+    if (typeof savePrefsToLocalStorage === 'function') savePrefsToLocalStorage();
+    if (typeof render === 'function') render();
+  });
+  wrap.appendChild(snapChk);
+
+  const snapNote = document.createElement('div');
+  snapNote.style.cssText='font-size:9px;color:#556;line-height:1.4;margin-top:2px';
+  snapNote.textContent='When on, note placement snaps to the nearest detected transient within half a snap-grid cell. Falls back to normal grid snap if no transient is close.';
+  wrap.appendChild(snapNote);
+  wrap.appendChild(mkSep());
+
+  // ── Place notes at transients ─────────────────────────────────────────────
+  const placeHdr = document.createElement('div');
+  placeHdr.style.cssText='font-size:10px;font-weight:bold;color:#aaff88;letter-spacing:0.05em';
+  placeHdr.textContent='🎹 Place Notes at Transients';
+  wrap.appendChild(placeHdr);
+
+  const laneLabels = ['BT-A','BT-B','BT-C','BT-D','FX-L','FX-R'];
+  const laneSel = document.createElement('select');
+  laneSel.style.cssText='background:#12122a;color:#ccd;border:1px solid #334;padding:2px 6px;border-radius:4px;font-size:10px;flex:1';
+  laneLabels.forEach((l,i)=>{ const o=document.createElement('option'); o.value=i; o.textContent=l; laneSel.appendChild(o); });
+  wrap.appendChild(mkRow('Lane', laneSel));
+
+  const regionSel = document.createElement('select');
+  regionSel.style.cssText='background:#12122a;color:#ccd;border:1px solid #334;padding:2px 6px;border-radius:4px;font-size:10px;flex:1';
+  [['all','Entire chart'],['sel','Current selection']].forEach(([v,l])=>{ const o=document.createElement('option'); o.value=v; o.textContent=l; regionSel.appendChild(o); });
+  wrap.appendChild(mkRow('Region', regionSel));
+
+  const placeMsg = document.createElement('div');
+  placeMsg.style.cssText='font-size:10px;color:#aac;min-height:13px';
+
+  const placeBtn = mkBtn2('⬇ Place Chip Notes', '#aaff88', () => {
+    const ticks = window._audioTransientTicks;
+    if (!ticks?.length) { placeMsg.textContent='⚠ No transients. Detect first.'; placeMsg.style.color='#f87'; return; }
+    const ch = _ch();
+    if (!ch) { placeMsg.textContent='⚠ No chart loaded.'; placeMsg.style.color='#f87'; return; }
+    const laneIdx = +laneSel.value;
+    const useSelection = regionSel.value === 'sel' && window.sel?.active;
+    let lo = 0, hi = Infinity;
+    if (useSelection) {
+      lo = Math.min(window.sel.startTick, window.sel.endTick);
+      hi = Math.max(window.sel.startTick, window.sel.endTick);
+    }
+
+    if (typeof saveUndo === 'function') saveUndo('Place Notes at Transients');
+    let placed = 0;
+    for (const tick of ticks) {
+      if (tick < lo || tick > hi) continue;
+      if (laneIdx < 4) {
+        ch.addBtNote(laneIdx, tick, 0);
+      } else {
+        ch.addFxNote(laneIdx - 4, tick, 0);
+      }
+      placed++;
+    }
+    placeMsg.style.color = '#8f8';
+    placeMsg.textContent = `✓ Placed ${placed} chip notes on ${laneLabels[laneIdx]}`;
+    if (typeof render === 'function') render();
+  });
+
+  wrap.append(mkRow(placeBtn, placeMsg));
+  wrap.appendChild(mkSep());
+
+  // ── Transient list ────────────────────────────────────────────────────────
+  const listHdr = document.createElement('div');
+  listHdr.style.cssText='font-size:10px;font-weight:bold;color:#aac;letter-spacing:0.05em';
+  listHdr.textContent='📋 Detected Transients';
+  wrap.appendChild(listHdr);
+
+  const listBox = document.createElement('div');
+  listBox.style.cssText='max-height:140px;overflow-y:auto;background:#09091a;border:1px solid #1e1e3a;border-radius:4px;padding:4px;font-size:9px;font-family:monospace;color:#aac;display:flex;flex-direction:column;gap:1px';
+
+  function refreshList() {
+    listBox.innerHTML='';
+    const ticks = window._audioTransientTicks;
+    const secs  = window._audioTransientsSec;
+    if (!ticks?.length) {
+      const empty = document.createElement('div');
+      empty.style.color='#556'; empty.textContent='(none detected)'; listBox.appendChild(empty);
+      return;
+    }
+    ticks.forEach((tick,i) => {
+      const row = document.createElement('div');
+      row.style.cssText='display:flex;gap:8px;padding:1px 2px;border-radius:2px;cursor:pointer';
+      row.style.color='#8899bb';
+      const m = Math.floor(tick/TICKS_PER_MEASURE)+1;
+      const b = Math.floor((tick%TICKS_PER_MEASURE)/TICKS_PER_BEAT)+1;
+      const secStr = secs?.[i]!=null ? secs[i].toFixed(3)+'s' : '';
+      row.innerHTML=`<span style="color:#ffaa55;min-width:28px">T${i+1}</span><span style="min-width:60px">M${m} B${b}</span><span style="color:#778">${secStr}</span>`;
+      row.addEventListener('click', () => {
+        if (window.renderer) {
+          window.renderer.playTick = tick;
+          if (typeof updateSeekbar === 'function') updateSeekbar(tick);
+          if (typeof render === 'function') render();
+        }
+      });
+      row.addEventListener('mouseenter', () => row.style.background='#1a1a3a');
+      row.addEventListener('mouseleave', () => row.style.background='');
+      listBox.appendChild(row);
+    });
+  }
+
+  wrap.appendChild(listBox);
+  refreshStatus();
+  c.appendChild(wrap);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    18. Audio Waveform Aligner
    ═══════════════════════════════════════════════════════════════════════════ */
 function _toolWaveformAlign(c) {
@@ -4345,6 +4603,31 @@ function _toolWaveformAlign(c) {
     s.style.cssText = `font-size:10px;color:${color};font-family:monospace;min-width:52px;text-align:right`;
     s.textContent = txt; return s;
   };
+
+  // ── Rebuild global transient tick array (called after decode or BPM change) ──
+  function _rebuildTransientTicks() {
+    const ch = _ch();
+    if (!ch || !transients.length) { window._audioTransientTicks = []; return; }
+    const offSec = (+(ch.meta?.offset ?? 0)) / 1000;
+    const ticks = [];
+    for (const tSec of transients) {
+      const adjusted = tSec - offSec;
+      if (adjusted < 0) continue;
+      // Convert seconds to ticks using BPM map
+      let tick = 0, prevSec2 = 0, prevTick2 = 0;
+      const evs = ch.bpmEvents;
+      for (let ei = 0; ei < evs.length; ei++) {
+        const ev = evs[ei];
+        const evSec = (typeof tickToSeconds === 'function') ? tickToSeconds(ev.y) : 0;
+        if (evSec >= adjusted) break;
+        prevSec2 = evSec; prevTick2 = ev.y;
+      }
+      const bpmHere = (typeof chart !== 'undefined' && chart) ? chart.getBpmAt(prevTick2) : 120;
+      tick = prevTick2 + (adjusted - prevSec2) * bpmHere / 60 * TICKS_PER_BEAT;
+      ticks.push(Math.round(tick));
+    }
+    window._audioTransientTicks = ticks;
+  }
 
   // ── Push/remove overlay on the renderer ───────────────────────────────────
   function applyOverlay() {
@@ -4542,6 +4825,9 @@ function _toolWaveformAlign(c) {
       peakRate     = res.peakRate;
       peakDuration = res.duration;
       transients   = res.transients;
+      // Expose transients globally so Audio Anchoring tool can snap to them
+      window._audioTransientsSec = transients.slice();
+      _rebuildTransientTicks();
       statusDiv.textContent =
         `✓ ${buf.numberOfChannels}ch · ${buf.sampleRate}Hz · ${peakDuration.toFixed(2)}s · ${transients.length} transients`;
       statusDiv.style.color = '#8f8';

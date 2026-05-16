@@ -9,8 +9,19 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.13';
+const APP_VERSION = '0.0.14';
 const CHANGELOG = [
+  {
+    version: '0.0.14',
+    title: 'Audio Event Anchoring [Experimental]',
+    entries: [
+      ['add', 'Audio Event Anchoring — new <strong>Audio → Audio Anchoring</strong> tool in the Tools Hub. Detects amplitude transients in the loaded audio and converts them to chart tick positions, with adjustable threshold and minimum-gap controls.'],
+      ['add', '<em>Snap to Transients</em> mode — when enabled, note placement snaps to the nearest detected transient within half a grid cell, falling back to normal grid snap when no transient is nearby. Toggle via the Audio Anchoring tool or the <em>Experimental</em> context menu.'],
+      ['add', '<em>Place Chip Notes at Transients</em> — bulk-places BT or FX chip notes on any lane at every detected transient position, optionally restricted to the current selection region.'],
+      ['add', 'Transient list panel in the Audio Anchoring tool — lists every detected transient with its measure/beat position and audio timestamp. Click any row to seek the playhead there.'],
+      ['add', 'Transient markers drawn as yellow tick lines in the 2D editor whenever snap-to-transients mode is active, giving continuous visual feedback about anchor positions.'],
+    ],
+  },
   {
     version: '0.0.13',
     title: 'Physics-Based Laser Smoothing [Experimental]',
@@ -3476,8 +3487,29 @@ function render() {
   });
 }
 function snapTick(t) {
-  if (!snap) return Math.round(t);               // Free = nearest integer tick
-  return Math.round(Math.round(t / snap) * snap); // snap then force integer
+  if (!snap) {
+    // Free mode — still check transient attraction
+    if (prefs.snapToTransients && window._audioTransientTicks?.length) {
+      let nearest = null, nearestDist = Infinity;
+      for (const tt of window._audioTransientTicks) {
+        const d = Math.abs(tt - t);
+        if (d < nearestDist) { nearestDist = d; nearest = tt; }
+      }
+      if (nearestDist <= 12) return nearest;
+    }
+    return Math.round(t);
+  }
+  const gridSnapped = Math.round(Math.round(t / snap) * snap);
+  if (prefs.snapToTransients && window._audioTransientTicks?.length) {
+    const attract = Math.max(snap * 0.5, 6);
+    let nearest = null, nearestDist = Infinity;
+    for (const tt of window._audioTransientTicks) {
+      const d = Math.abs(tt - t);
+      if (d < nearestDist) { nearestDist = d; nearest = tt; }
+    }
+    if (nearest !== null && nearestDist <= attract) return nearest;
+  }
+  return gridSnapped;
 }
 
 // ── Selection helpers ─────────────────────────────────────────────────────────
@@ -4103,6 +4135,7 @@ function ensureCtxMenu() {
         <div class="ctx-item" data-act="toggle-predict" id="ctx-predict-item">✓ Predictive Chart Assist</div>
         <div class="ctx-item" data-act="toggle-ghost" id="ctx-ghost-item">✓ Ghost Playback Tracing</div>
         <div class="ctx-item" data-act="toggle-physics" id="ctx-physics-item">✕ Physics Laser Smoothing</div>
+        <div class="ctx-item" data-act="toggle-snap-transients" id="ctx-snap-transients-item">✕ Snap to Transients</div>
       </div>
     </div>
   `;
@@ -4160,6 +4193,12 @@ function ensureCtxMenu() {
       savePrefsToLocalStorage();
       updateCtxMenuExperimentalLabels();
     }
+    else if (act === 'toggle-snap-transients') {
+      prefs.snapToTransients = !prefs.snapToTransients;
+      savePrefsToLocalStorage();
+      updateCtxMenuExperimentalLabels();
+      render();
+    }
   });
 
   document.addEventListener('click', () => { if (ctxMenuEl) ctxMenuEl.style.display = 'none'; });
@@ -4171,10 +4210,12 @@ function updateCtxMenuExperimentalLabels() {
   const predictEl  = document.getElementById('ctx-predict-item');
   const ghostEl    = document.getElementById('ctx-ghost-item');
   const physicsEl  = document.getElementById('ctx-physics-item');
-  if (anomalyEl)  anomalyEl.textContent  = (prefs.anomalyDetect  ? '✓' : '✕') + ' Pattern Anomaly Detection';
-  if (predictEl)  predictEl.textContent  = (prefs.predictAssist  ? '✓' : '✕') + ' Predictive Chart Assist';
-  if (ghostEl)    ghostEl.textContent    = (prefs.ghostTrace      ? '✓' : '✕') + ' Ghost Playback Tracing';
-  if (physicsEl)  physicsEl.textContent  = (prefs.physicsLaser    ? '✓' : '✕') + ' Physics Laser Smoothing';
+  const snapTrEl   = document.getElementById('ctx-snap-transients-item');
+  if (anomalyEl)  anomalyEl.textContent  = (prefs.anomalyDetect    ? '✓' : '✕') + ' Pattern Anomaly Detection';
+  if (predictEl)  predictEl.textContent  = (prefs.predictAssist    ? '✓' : '✕') + ' Predictive Chart Assist';
+  if (ghostEl)    ghostEl.textContent    = (prefs.ghostTrace        ? '✓' : '✕') + ' Ghost Playback Tracing';
+  if (physicsEl)  physicsEl.textContent  = (prefs.physicsLaser      ? '✓' : '✕') + ' Physics Laser Smoothing';
+  if (snapTrEl)   snapTrEl.textContent   = (prefs.snapToTransients  ? '✓' : '✕') + ' Snap to Transients';
 }
 
 function showCtxMenu(x, y) {
@@ -6251,6 +6292,7 @@ const prefs = {
   predictAssist:    false,
   ghostTrace:       false,
   physicsLaser:     false,
+  snapToTransients: false,
 };
 let _autosaveTimer = null;
 
