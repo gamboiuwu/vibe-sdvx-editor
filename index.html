@@ -510,6 +510,9 @@
       <span id="pvc-judge-y-label" class="pvc-val">73%</span>
     </div>
     <div class="pvc-section" style="border-top:1px solid #ffffff18;padding-top:6px;margin-top:2px">
+      <button id="pvc-edit-mode" title="Toggle click-to-edit on the preview lane" style="flex:1;background:#1e2a1e;color:#88dd88;border:1px solid #3a6a3a;border-radius:5px;padding:4px 8px;font-size:10px;cursor:pointer;letter-spacing:0.04em">&#9998; Edit Mode: Off</button>
+    </div>
+    <div class="pvc-section" style="border-top:1px solid #ffffff18;padding-top:6px;margin-top:2px">
       <button id="pvc-save-config" title="Save current Projection, HiSpeed, BT Width and Judge Y as defaults" style="flex:1;background:#1e3a5f;color:#88c8ff;border:1px solid #3a6aaa;border-radius:5px;padding:4px 8px;font-size:10px;cursor:pointer;letter-spacing:0.04em">&#9632; Save Config</button>
       <span id="pvc-save-config-label" class="pvc-val" style="color:#66bb66;opacity:0;transition:opacity 0.4s">Saved!</span>
     </div>
@@ -572,12 +575,14 @@
   <!-- Edit overlay shown inside game preview when edit mode active -->
   <div id="game-edit-overlay" style="display:none">
     <div id="game-edit-toolbar">
-      <span class="geo-label">EDIT MODE</span>
-      <button class="geo-tool active" data-tool="bt">■ BT</button>
-      <button class="geo-tool" data-tool="fx">■ FX</button>
-      <button class="geo-tool" data-tool="erase">⌫ Erase</button>
+      <span class="geo-label">EDIT</span>
+      <button class="geo-tool active" data-tool="bt" title="Place BT chip (drag for hold)">■ BT</button>
+      <button class="geo-tool" data-tool="fx" title="Place FX chip (drag for hold)">■ FX</button>
+      <button class="geo-tool geo-laser-l" data-tool="laser-l" title="Draw Left Laser">~ L</button>
+      <button class="geo-tool geo-laser-r" data-tool="laser-r" title="Draw Right Laser">~ R</button>
+      <button class="geo-tool" data-tool="erase" title="Erase notes under cursor">⌫</button>
       <span class="geo-sep"></span>
-      <button class="geo-tool" id="geo-exit">✕ Exit Edit</button>
+      <button class="geo-tool" id="geo-exit" title="Exit preview edit mode">✕ Exit</button>
     </div>
   </div>
 </div>

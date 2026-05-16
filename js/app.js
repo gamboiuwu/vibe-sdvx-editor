@@ -9,8 +9,22 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.9';
+const APP_VERSION = '0.0.10';
 const CHANGELOG = [
+  {
+    version: '0.0.10',
+    title: 'Preview edit mode overhaul &amp; tab position saving',
+    entries: [
+      ['fix', 'Tab position saving — scroll position and playhead tick are now remembered per tab and restored when switching. No more jumping back to measure 1.'],
+      ['fix', 'Preview edit mode: tick mapping now uses a perspective-aware binary-search inverse of the projection formula, so notes land at the correct position in SDVX and Hybrid modes (previously only Ortho was correct).'],
+      ['fix', 'Preview edit mode: tilt rotation is now accounted for when hitting the lane — click targets are accurate even when the lane is tilted.'],
+      ['fix', 'Preview edit mode: snap grid is respected (uses the same snap setting as the 2D editor instead of hardcoded 1/16).'],
+      ['add', 'Preview edit mode: Left and Right Laser tools added to the in-preview toolbar. Click to place laser anchor points.'],
+      ['add', 'Preview edit mode: ghost cursor — a semi-transparent note shape follows the mouse and shows a snap-line so you can see exactly where a note will land before clicking.'],
+      ['add', 'Preview edit mode: drag to draw hold notes — hold BT or FX tools extend the note length while dragging.'],
+      ['add', 'Preview edit mode: Edit Mode toggle button added to the preview controls panel for one-click access without needing the right-click context menu.'],
+    ],
+  },
   {
     version: '0.0.9',
     title: 'Emotional Intensity Heatmap',
@@ -289,20 +303,25 @@ function applyBeatsPerLane(beats) {
 
 // ── Tab management ────────────────────────────────────────────────────────────
 function switchToTab(idx) {
-  tabs[activeTabIdx].chart = chart;
+  // Save current position before switching
+  tabs[activeTabIdx].chart      = chart;
   tabs[activeTabIdx].audioBuffer = audioBuffer;
-  tabs[activeTabIdx].hispeed = chartSpeed;
+  tabs[activeTabIdx].hispeed    = chartSpeed;
+  tabs[activeTabIdx].scrollCol  = renderer?.scrollCol ?? 0;
+  tabs[activeTabIdx].playTick   = renderer?.playTick  ?? 0;
+
   activeTabIdx = idx;
   chart = tabs[activeTabIdx].chart;
   audioBuffer = tabs[activeTabIdx].audioBuffer || null;
   chartSpeed = tabs[activeTabIdx].hispeed ?? 1.0;
-  _hasUnsavedChanges = false; // reset for new tab
+  _hasUnsavedChanges = false;
   if (renderer) {
-    renderer.chart = chart;
-    renderer.scrollCol = 0;
-    renderer.playTick  = 0;
+    renderer.chart     = chart;
+    // Restore saved position for this tab (defaults to 0 on first visit)
+    renderer.scrollCol = tabs[activeTabIdx].scrollCol ?? 0;
+    renderer.playTick  = tabs[activeTabIdx].playTick  ?? 0;
   }
-  if (gameView) { gameView.chart = chart; gameView.hispeed = chartSpeed; gameView._totalWeight = 0; }
+  if (gameView) { gameView.chart = chart; gameView.hispeed = chartSpeed; gameView._totalWeight = 0; gameView.playTick = renderer?.playTick ?? 0; }
   // Sync hispeed UI sliders to restored value
   const _hsSl  = document.getElementById('pvc-hispeed');
   const _hsLbl = document.getElementById('pvc-hispeed-label');
@@ -6384,7 +6403,49 @@ async function recoverAutosave() {
 }
 
 // ── Game edit overlay wiring ──────────────────────────────────────────────────
+
+// Drag state for hold-note drawing in game edit mode
+const _geDrag = { active: false, tool: '', startTick: 0, laneIdx: 0, fxIdx: 0, laserSide: 0 };
+
+// Convert raw canvas-relative (sx, sy) → { tick, norm } using proper perspective inverse.
+// Accounts for tilt rotation so the lane-hit position is accurate in all projection modes.
+function _gameScreenToChart(rawSx, rawSy, p) {
+  if (!gameView || !p) return null;
+
+  // Un-rotate if tilt is applied (game rotates around (cx, judgeY))
+  let sx = rawSx, sy = rawSy;
+  if (p.tilt) {
+    const dx = rawSx - p.cx, dy = rawSy - p.judgeY;
+    const c = Math.cos(-p.tilt), s = Math.sin(-p.tilt);
+    sx = p.cx     + dx * c - dy * s;
+    sy = p.judgeY + dx * s + dy * c;
+  }
+
+  const VT = gameView.VISIBLE_TICKS;
+  let dt;
+  if (sy >= p.judgeY) {
+    dt = 0;
+  } else if (sy <= p.vanishY) {
+    dt = VT;
+  } else {
+    // Binary-search inverse of _screenY (monotone decreasing in dt)
+    let lo = 0, hi = VT;
+    for (let i = 0; i < 32; i++) {
+      const mid = (lo + hi) * 0.5;
+      if (gameView._screenY(mid, p) > sy) lo = mid; else hi = mid;
+    }
+    dt = (lo + hi) * 0.5;
+  }
+
+  const snapV  = (typeof snap !== 'undefined' && snap > 0) ? snap : 12;
+  const tick   = Math.max(0, Math.round((gameView.playTick + dt) / snapV) * snapV);
+  const hw     = gameView._halfW(sy, p);
+  const norm   = hw > 0 ? (sx - (p.cx - hw)) / (hw * 2) : 0.5;
+  return { tick, norm };
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+  // ── Geo toolbar tool buttons ────────────────────────────────────────────────
   document.getElementById('geo-exit')?.addEventListener('click', disableGameEditMode);
   document.querySelectorAll('.geo-tool[data-tool]').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -6394,30 +6455,139 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Game canvas click-to-place in edit mode
+  // ── pvc-edit-mode toggle button ─────────────────────────────────────────────
+  const pvcEditBtn = document.getElementById('pvc-edit-mode');
+  pvcEditBtn?.addEventListener('click', () => {
+    if (_gameEditMode) {
+      disableGameEditMode();
+      pvcEditBtn.textContent  = '✏ Edit Mode: Off';
+      pvcEditBtn.style.color  = '#88dd88';
+      pvcEditBtn.style.background = '#1e2a1e';
+      pvcEditBtn.style.borderColor = '#3a6a3a';
+    } else {
+      enableGameEditMode();
+      pvcEditBtn.textContent  = '✏ Edit Mode: ON';
+      pvcEditBtn.style.color  = '#ffdd44';
+      pvcEditBtn.style.background = '#2a2a10';
+      pvcEditBtn.style.borderColor = '#8a8a20';
+    }
+  });
+
+  // Keep pvc button in sync when edit mode toggled via context menu
+  const _syncPvcEditBtn = () => {
+    if (!pvcEditBtn) return;
+    if (_gameEditMode) {
+      pvcEditBtn.textContent = '✏ Edit Mode: ON';
+      pvcEditBtn.style.color = '#ffdd44';
+      pvcEditBtn.style.background = '#2a2a10';
+      pvcEditBtn.style.borderColor = '#8a8a20';
+    } else {
+      pvcEditBtn.textContent = '✏ Edit Mode: Off';
+      pvcEditBtn.style.color = '#88dd88';
+      pvcEditBtn.style.background = '#1e2a1e';
+      pvcEditBtn.style.borderColor = '#3a6a3a';
+    }
+  };
+  const _origEnable  = enableGameEditMode;
+  const _origDisable = disableGameEditMode;
+  window.enableGameEditMode  = function() { _origEnable();  _syncPvcEditBtn(); };
+  window.disableGameEditMode = function() { _origDisable(); _syncPvcEditBtn(); };
+
+  // ── Game canvas event handlers ──────────────────────────────────────────────
   const gameCanvas = document.getElementById('game-canvas');
-  gameCanvas?.addEventListener('mousedown', ev => {
+  if (!gameCanvas) return;
+
+  gameCanvas.addEventListener('mousedown', ev => {
     if (!_gameEditMode || ev.button !== 0) return;
+    ev.preventDefault();
     const p = gameView?._params();
     if (!p) return;
-    // Convert screen Y → tick offset
     const rect = gameCanvas.getBoundingClientRect();
-    const sy = ev.clientY - rect.top;
-    const prog = Math.max(0, Math.min(1, (sy - p.vanishY) / (p.judgeY - p.vanishY)));
-    const dt = gameView.VISIBLE_TICKS * (1 - prog);
-    const tick = Math.round((gameView.playTick + dt) / 12) * 12;
-    // Convert screen X → lane
-    const sx = ev.clientX - rect.left;
-    const hw = gameView._halfW(sy, p);
-    const norm = (sx - (p.cx - hw)) / (hw * 2);
-    const laneIdx = Math.min(3, Math.max(0, Math.floor(norm * 4)));
-    const _pLabel = tool === 'bt' ? 'Added BT note' : tool === 'fx' ? 'Added FX note' : 'Erased';
-    saveUndo(`${_pLabel} at M${Math.floor(tick/TICKS_PER_MEASURE)+1} (Preview)`);
-    if (tool === 'bt')    chart.addBtNote(laneIdx, tick, 0);
-    else if (tool === 'fx') chart.addFxNote(laneIdx <= 1 ? 0 : 1, tick, 0);
-    else if (tool === 'erase') eraseAt(laneIdx, tick);
-    render();
-    if (gameView) gameView.draw();
+    const hit  = _gameScreenToChart(ev.clientX - rect.left, ev.clientY - rect.top, p);
+    if (!hit) return;
+    const { tick, norm } = hit;
+    const li   = Math.min(3, Math.max(0, Math.floor(norm * 4)));
+    const fi   = norm < 0.5 ? 0 : 1;
+    const m    = Math.floor(tick / TICKS_PER_MEASURE) + 1;
+
+    if (tool === 'erase') {
+      saveUndo(`Erased at M${m} (Preview)`);
+      eraseAt(li, tick);
+      render(); if (gameView) gameView.draw();
+      return;
+    }
+    if (tool === 'laser-l' || tool === 'laser-r') {
+      const side = tool === 'laser-l' ? 0 : 1;
+      const v    = Math.max(0, Math.min(1, norm));
+      saveUndo(`VOL-${side === 0 ? 'L' : 'R'} at M${m} (Preview)`);
+      chart.addLaserPoint(side, tick, v, false, false);
+      _geDrag.active = true; _geDrag.tool = tool; _geDrag.laserSide = side;
+      render(); if (gameView) gameView.draw();
+      return;
+    }
+    // BT / FX — start a potential hold drag
+    _geDrag.active    = true;
+    _geDrag.tool      = tool;
+    _geDrag.startTick = tick;
+    _geDrag.laneIdx   = li;
+    _geDrag.fxIdx     = fi;
+    // Place chip immediately so cursor shows something; will be extended on mouseup
+    saveUndo(`${tool.toUpperCase()} at M${m} (Preview)`);
+    if (tool === 'bt') chart.addBtNote(li, tick, 0);
+    else               chart.addFxNote(fi, tick, 0);
+    render(); if (gameView) gameView.draw();
+  });
+
+  gameCanvas.addEventListener('mousemove', ev => {
+    if (!_gameEditMode || !gameView) return;
+    const p = gameView._params();
+    if (!p) return;
+    const rect = gameCanvas.getBoundingClientRect();
+    const hit  = _gameScreenToChart(ev.clientX - rect.left, ev.clientY - rect.top, p);
+    if (!hit) { if (gameView) gameView._editGhost = null; return; }
+
+    // Update ghost cursor
+    gameView._editGhost = { tick: hit.tick, norm: hit.norm, tool };
+
+    // Extend laser while dragging
+    if (_geDrag.active && (tool === 'laser-l' || tool === 'laser-r')) {
+      const v = Math.max(0, Math.min(1, hit.norm));
+      chart.addLaserPoint(_geDrag.laserSide, hit.tick, v, false, false);
+      render();
+    }
+    if (!playing) gameView.draw();
+  });
+
+  gameCanvas.addEventListener('mouseup', ev => {
+    if (!_geDrag.active) return;
+    const p = gameView?._params();
+    if (p && (tool === 'bt' || tool === 'fx')) {
+      const rect = gameCanvas.getBoundingClientRect();
+      const hit  = _gameScreenToChart(ev.clientX - rect.left, ev.clientY - rect.top, p);
+      if (hit) {
+        const endTick = hit.tick;
+        const len = Math.max(0, endTick - _geDrag.startTick);
+        if (len > 0) {
+          // Extend the note that was placed on mousedown to a hold
+          if (tool === 'bt') {
+            const lane = chart.bt[_geDrag.laneIdx];
+            const n    = lane.findLast?.(n => n.y === _geDrag.startTick) ?? lane.slice().reverse().find(n => n.y === _geDrag.startTick);
+            if (n) n.len = len;
+          } else {
+            const lane = chart.fx[_geDrag.fxIdx];
+            const n    = lane.findLast?.(n => n.y === _geDrag.startTick) ?? lane.slice().reverse().find(n => n.y === _geDrag.startTick);
+            if (n) n.len = len;
+          }
+          render(); if (gameView) gameView.draw();
+        }
+      }
+    }
+    _geDrag.active = false;
+  });
+
+  gameCanvas.addEventListener('mouseleave', () => {
+    _geDrag.active = false;
+    if (gameView) { gameView._editGhost = null; if (!playing) gameView.draw(); }
   });
 });
 
