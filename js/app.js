@@ -3442,6 +3442,9 @@ function setTool(t) {
   // Show/hide cam-event subpanel
   const camSub = document.getElementById('cam-subpanel');
   if (camSub) camSub.classList.toggle('visible', t === 'cam-event');
+  // Show/hide laser interp subpanel
+  const laserSub = document.getElementById('laser-subpanel');
+  if (laserSub) laserSub.classList.toggle('visible', t === 'laser-l' || t === 'laser-r');
   // Update context palette (dock.js)
   if (typeof updateContextPalette === 'function') updateContextPalette(t);
 }
@@ -4212,6 +4215,22 @@ let _laserSel = null; // { side, sec, ptIndex }
 // Null when no laser is being drawn.  Press Esc or switch tool to finish.
 let _activeLaserSec = null; // { sec, side } or null
 
+// Interp mode for newly placed pen-tool laser points: 'linear' | 'bezier' | 'step'
+let laserInterpMode = 'linear';
+
+function setLaserInterpMode(mode) {
+  laserInterpMode = mode;
+  document.querySelectorAll('.laser-interp-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.interp === mode);
+  });
+}
+
+function _initLaserSubpanel() {
+  document.querySelectorAll('.laser-interp-btn').forEach(btn => {
+    btn.addEventListener('click', () => setLaserInterpMode(btn.dataset.interp));
+  });
+}
+
 // Bezier handle drag state — set when user grabs a diamond handle
 let _curveDrag = null; // { sec, ptIndex, t0, t1, colIdx, colLen }
 
@@ -4574,17 +4593,20 @@ function onMouseDown(e) {
         const gap = ry - lastRy;
         if (gap <= LASER_SLAM_TICKS && lastPt && Math.abs(v - lastPt.v) >= 0.001) {
           // Close enough in time and different position → explicit slam
+          // Slams always use step on the incoming segment regardless of interp mode
           if (lastPt.interp === 'linear') lastPt.interp = 'step';
-          sec.points.push({ ry, v, slam: true, interp: 'linear', curve: 0.5 });
+          sec.points.push({ ry, v, slam: true, interp: laserInterpMode, curve: 0.5 });
         } else {
-          // Normal point (not a slam)
-          sec.points.push({ ry, v, slam: false, interp: 'linear', curve: 0.5 });
+          // Normal point — apply selected interp to incoming segment and carry it forward
+          if (lastPt) lastPt.interp = laserInterpMode;
+          if (laserInterpMode === 'bezier' && (lastPt.curve == null)) lastPt.curve = 0.5;
+          sec.points.push({ ry, v, slam: false, interp: laserInterpMode, curve: 0.5 });
         }
       } else if (ry === lastRy) {
         if (lastPt && Math.abs(v - lastPt.v) >= 0.001) {
           // Same snapped tick, different position → slam at lastRy + 1
           if (lastPt.interp === 'linear') lastPt.interp = 'step';
-          sec.points.push({ ry: lastRy + 1, v, slam: true, interp: 'linear', curve: 0.5 });
+          sec.points.push({ ry: lastRy + 1, v, slam: true, interp: laserInterpMode, curve: 0.5 });
         }
         // Same tick AND same position: ignore silently (duplicate click), stay active
       } else {
@@ -4672,9 +4694,10 @@ function onMouseMove(e) {
         const pv = renderer.localXToLaserPos(h2.localX, wide);
         renderer._laserPreview = {
           side,
-          sec:  _activeLaserSec.sec,
-          tick: Math.round(h2.tick),
-          v:    pv,
+          sec:   _activeLaserSec.sec,
+          tick:  Math.round(h2.tick),
+          v:     pv,
+          interp: laserInterpMode,
         };
         render();
         return;
@@ -6930,6 +6953,8 @@ window.addEventListener('DOMContentLoaded', () => {
   };
   document.getElementById('laser-wide')?.addEventListener('change', e => _syncWideCheckboxes(e.target.checked));
   document.getElementById('laser-wide-view')?.addEventListener('change', e => _syncWideCheckboxes(e.target.checked));
+
+  _initLaserSubpanel();
 
   // Recover autosave from File menu
   document.getElementById('btn-recover-autosave-file')?.addEventListener('click', recoverAutosave);

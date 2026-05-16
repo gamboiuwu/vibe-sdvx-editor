@@ -249,6 +249,16 @@
   <span style="font-size:10px;color:#5558a0;padding:0 4px">Middle-drag: Select region &nbsp;|&nbsp; Ctrl+RClick: Context menu &nbsp;|&nbsp; Esc: Clear selection</span>
 </div>
 
+<!-- Laser sub-panel (shown when laser-l or laser-r tool is active) -->
+<div id="laser-subpanel">
+  <span style="color:#8899bb;font-size:10px;letter-spacing:0.05em;">INTERP:</span>
+  <button class="laser-interp-btn active" data-interp="linear" title="Linear interpolation between points">━ Linear</button>
+  <button class="laser-interp-btn" data-interp="bezier" title="Smooth S-curve (Bezier) between points">〜 Smooth</button>
+  <button class="laser-interp-btn" data-interp="step" title="Hold position then snap (Step)">┐ Step</button>
+  <span class="tool-sep" style="margin:0 4px"></span>
+  <span style="color:#5566aa;font-size:10px;">Alt+click an anchor to cycle interp · Right-click to open menu</span>
+</div>
+
 <!-- Camera event sub-panel (shown when cam-event tool is active) -->
 <div id="cam-subpanel">
   <span>Type:</span>

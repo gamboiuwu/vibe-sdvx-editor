@@ -1216,14 +1216,26 @@ class Renderer {
           if (inCol) {
             const x0 = pxAt(lastPt.v), y0 = pyAt(lastTick);
             const x1 = pxAt(prev.v),   y1 = pyAt(prevTick);
+            const interp = prev.interp || 'linear';
             ctx.save();
             ctx.globalAlpha = 0.55;
             ctx.strokeStyle = color;
             ctx.lineWidth   = 2;
             ctx.setLineDash([5, 5]);
             ctx.beginPath();
-            ctx.moveTo(x0, y0);
-            ctx.lineTo(x1, y1);
+            if (interp === 'step') {
+              // Hold x0 until the end tick, then snap to x1
+              ctx.moveTo(x0, y0);
+              ctx.lineTo(x0, y1);
+              ctx.lineTo(x1, y1);
+            } else if (interp === 'bezier') {
+              const midY = (y0 + y1) / 2;
+              ctx.moveTo(x0, y0);
+              ctx.bezierCurveTo(x0, midY, x1, midY, x1, y1);
+            } else {
+              ctx.moveTo(x0, y0);
+              ctx.lineTo(x1, y1);
+            }
             ctx.stroke();
             ctx.setLineDash([]);
             ctx.globalAlpha = 0.7;
