@@ -46,7 +46,7 @@ const CHANGELOG = [
 ];
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
-const tabs = [{ name: 'Chart 1', chart: new ChartData(), audioBuffer: null }];
+const tabs = [{ name: 'Chart 1', chart: new ChartData(), audioBuffer: null, hispeed: 1.0 }];
 let activeTabIdx = 0;
 
 // ── State ─────────────────────────────────────────────────────────────────────
@@ -284,16 +284,27 @@ function applyBeatsPerLane(beats) {
 function switchToTab(idx) {
   tabs[activeTabIdx].chart = chart;
   tabs[activeTabIdx].audioBuffer = audioBuffer;
+  tabs[activeTabIdx].hispeed = chartSpeed;
   activeTabIdx = idx;
   chart = tabs[activeTabIdx].chart;
   audioBuffer = tabs[activeTabIdx].audioBuffer || null;
+  chartSpeed = tabs[activeTabIdx].hispeed ?? 1.0;
   _hasUnsavedChanges = false; // reset for new tab
   if (renderer) {
     renderer.chart = chart;
     renderer.scrollCol = 0;
     renderer.playTick  = 0;
   }
-  if (gameView) { gameView.chart = chart; gameView._totalWeight = 0; }
+  if (gameView) { gameView.chart = chart; gameView.hispeed = chartSpeed; gameView._totalWeight = 0; }
+  // Sync hispeed UI sliders to restored value
+  const _hsSl  = document.getElementById('pvc-hispeed');
+  const _hsLbl = document.getElementById('pvc-hispeed-label');
+  const _topSl  = document.getElementById('chart-speed');
+  const _topLbl = document.getElementById('chart-speed-label');
+  if (_hsSl)  _hsSl.value  = chartSpeed;
+  if (_hsLbl) _hsLbl.textContent = chartSpeed.toFixed(1) + '×';
+  if (_topSl)  _topSl.value  = chartSpeed;
+  if (_topLbl) _topLbl.textContent = chartSpeed.toFixed(2) + '×';
   pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList(); updateStopEventList(); updateScrollSpeedEventList();
   renderFxChain(0); renderFxChain(1);
   renderTabBar();
@@ -303,7 +314,7 @@ function switchToTab(idx) {
 }
 
 function addTab() {
-  tabs.push({ name: `Chart ${tabs.length + 1}`, chart: new ChartData(), audioBuffer: null });
+  tabs.push({ name: `Chart ${tabs.length + 1}`, chart: new ChartData(), audioBuffer: null, hispeed: chartSpeed });
   switchToTab(tabs.length - 1);
   _multiUpdateTabButtons();
 }
@@ -322,8 +333,13 @@ function closeTab(idx) {
   activeTabIdx = newIdx;
   chart = tabs[activeTabIdx].chart;
   audioBuffer = tabs[activeTabIdx].audioBuffer || null;
+  chartSpeed = tabs[activeTabIdx].hispeed ?? 1.0;
   if (renderer) { renderer.chart = chart; renderer.scrollCol = 0; renderer.playTick = 0; }
-  if (gameView) { gameView.chart = chart; gameView._totalWeight = 0; }
+  if (gameView) { gameView.chart = chart; gameView.hispeed = chartSpeed; gameView._totalWeight = 0; }
+  const _csSl = document.getElementById('chart-speed'); const _csLbl = document.getElementById('chart-speed-label');
+  const _pvSl = document.getElementById('pvc-hispeed'); const _pvLbl = document.getElementById('pvc-hispeed-label');
+  if (_csSl) _csSl.value = chartSpeed; if (_csLbl) _csLbl.textContent = chartSpeed.toFixed(2) + '×';
+  if (_pvSl) _pvSl.value = chartSpeed; if (_pvLbl) _pvLbl.textContent = chartSpeed.toFixed(1) + '×';
   pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList(); updateStopEventList(); updateScrollSpeedEventList();
   renderFxChain(0); renderFxChain(1);
   renderTabBar();
@@ -406,6 +422,7 @@ function duplicateTab(idx) {
     name: src.name + ' (copy)',
     chart: newChart,
     audioBuffer: src.audioBuffer,
+    hispeed: src.hispeed ?? 1.0,
   });
   switchToTab(idx + 1);
 }
@@ -2300,7 +2317,7 @@ window.addEventListener('DOMContentLoaded', () => {
             const c = packCharts[i];
             const slot = (i === 0) ? startIdx : (tabs.push({
               name: c.meta.title || `Chart ${tabs.length + 1}`,
-              chart: c, audioBuffer: null,
+              chart: c, audioBuffer: null, hispeed: 1.0,
             }) - 1);
             tabs[slot].chart = c;
             if (c.meta.title) {
@@ -2308,6 +2325,9 @@ window.addEventListener('DOMContentLoaded', () => {
               tabs[slot].name = d ? `${c.meta.title} - ${d}` : c.meta.title;
             }
           }
+          // Update global chart before switchToTab so it doesn't save the
+          // stale reference back over the first pack chart we just loaded.
+          chart = packCharts[0];
           switchToTab(startIdx);
           chart = tabs[startIdx].chart;
           renderer.chart = chart; renderer.scrollCol = 0; renderer.playTick = 0;
