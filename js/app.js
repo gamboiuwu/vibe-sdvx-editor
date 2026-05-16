@@ -9,8 +9,19 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.11';
+const APP_VERSION = '0.0.12';
 const CHANGELOG = [
+  {
+    version: '0.0.12',
+    title: 'Edit positioning fix, spatial panning &amp; folder ksonpack',
+    entries: [
+      ['fix', 'Preview edit: ghost cursor now renders at the exact cursor position instead of the snapped-tick position, eliminating the rightward visual drift vs. placed notes.'],
+      ['fix', 'Preview edit: canvas coordinates are now properly scaled (canvas.width / rect.width) so click registration matches the visual lane position accurately.'],
+      ['fix', 'Preview edit: snap line continues to show the snapped tick position while the ghost shape tracks the cursor, giving clear feedback about both locations.'],
+      ['add', 'Multi-chart: each chart\'s BT tick sounds are spatially panned by slot position — leftmost chart pans hard left, rightmost pans hard right, middle slots proportionally.'],
+      ['add', 'Open Folder now detects .ksonpack files inside the selected folder and loads them directly without requiring the separate "Open KSONpack" button.'],
+    ],
+  },
   {
     version: '0.0.11',
     title: 'Multi-chart edit mode &amp; right-click erase',
@@ -713,7 +724,15 @@ function playFrame(now) {
   // Slam + FX chip + BT tick sounds
   detectSlams(prevPlayTick, renderer.playTick);
   detectFxHits(prevPlayTick, renderer.playTick);
-  detectBtHits(prevPlayTick, renderer.playTick);
+  // In multi-chart mode, pan the active chart's ticks by slot position too
+  const _activePan = (() => {
+    if (!_multiMode || !_multiViews.length) return 0;
+    const n = _multiViews.length;
+    const si = _multiViews.findIndex(mv => mv.tabIdx === activeTabIdx);
+    return si < 0 ? 0 : (n === 1 ? 0 : ((si / (n - 1)) * 2 - 1) * 0.8);
+  })();
+  detectBtHits(prevPlayTick, renderer.playTick, _activePan);
+  detectMultiBtHits(prevPlayTick, renderer.playTick);
   prevPlayTick = renderer.playTick;
 
   // Laser filter + FX audio effects
@@ -1612,8 +1631,10 @@ function _wireMultiEditCanvas(mv) {
     ev.preventDefault();
     const p = mv.gv._params();
     if (!p) return;
-    const rect = canvas.getBoundingClientRect();
-    const hit  = _gameScreenToChart(ev.clientX - rect.left, ev.clientY - rect.top, p, mv.gv);
+    const rect   = canvas.getBoundingClientRect();
+    const scaleX  = canvas.width  / rect.width;
+    const scaleY  = canvas.height / rect.height;
+    const hit  = _gameScreenToChart((ev.clientX - rect.left) * scaleX, (ev.clientY - rect.top) * scaleY, p, mv.gv);
     if (!hit) return;
     const { tick, norm } = hit;
     const li = Math.min(3, Math.max(0, Math.floor(norm * 4)));
@@ -1652,10 +1673,12 @@ function _wireMultiEditCanvas(mv) {
     if (!_gameEditMode) return;
     const p = mv.gv._params();
     if (!p) return;
-    const rect = canvas.getBoundingClientRect();
-    const hit  = _gameScreenToChart(ev.clientX - rect.left, ev.clientY - rect.top, p, mv.gv);
+    const rect   = canvas.getBoundingClientRect();
+    const scaleX  = canvas.width  / rect.width;
+    const scaleY  = canvas.height / rect.height;
+    const hit  = _gameScreenToChart((ev.clientX - rect.left) * scaleX, (ev.clientY - rect.top) * scaleY, p, mv.gv);
     if (!hit) { mv.gv._editGhost = null; return; }
-    mv.gv._editGhost = { tick: hit.tick, norm: hit.norm, tool };
+    mv.gv._editGhost = { tick: hit.tick, norm: hit.norm, tool, sy: hit.canvasSy };
     if (mv._drag.active && (tool === 'laser-l' || tool === 'laser-r')) {
       const targetChart = tabs[mv.tabIdx]?.chart;
       if (targetChart) {
@@ -1672,8 +1695,10 @@ function _wireMultiEditCanvas(mv) {
     const targetChart = tabs[mv.tabIdx]?.chart;
     const p = mv.gv._params();
     if (p && targetChart && (tool === 'bt' || tool === 'fx')) {
-      const rect = canvas.getBoundingClientRect();
-      const hit  = _gameScreenToChart(ev.clientX - rect.left, ev.clientY - rect.top, p, mv.gv);
+      const rect   = canvas.getBoundingClientRect();
+      const scaleX  = canvas.width  / rect.width;
+      const scaleY  = canvas.height / rect.height;
+      const hit  = _gameScreenToChart((ev.clientX - rect.left) * scaleX, (ev.clientY - rect.top) * scaleY, p, mv.gv);
       if (hit) {
         const len = Math.max(0, hit.tick - mv._drag.startTick);
         if (len > 0) {
@@ -2716,9 +2741,21 @@ window.addEventListener('DOMContentLoaded', () => {
       fr.readAsArrayBuffer(file);
     });
 
+    // If there's a .ksonpack in the folder, treat it like opening a ksonpack bundle
+    const packFile = files.find(f => f.name.endsWith('.ksonpack') || (f.name.endsWith('.json') && f.name.toLowerCase().includes('pack')));
+    if (packFile) {
+      const fi = document.getElementById('file-input');
+      fi.accept = '.ksonpack,.json'; fi.dataset.bundle = '1';
+      // Synthesise a FileList-like event to reuse the existing ksonpack handler
+      const dt = new DataTransfer(); dt.items.add(packFile);
+      fi.files = dt.files;
+      fi.dispatchEvent(new Event('change', { bubbles: true }));
+      e.target.value = ''; return;
+    }
+
     // Collect ALL chart files in the folder
     const chartFiles = files.filter(f => f.name.endsWith('.ksh') || f.name.endsWith('.kson'));
-    if (!chartFiles.length) { alert('No .ksh or .kson file found in folder.'); return; }
+    if (!chartFiles.length) { alert('No .ksh, .kson, or .ksonpack file found in folder.'); return; }
 
     // Helper: load one chart file into the editor
     const loadOneChart = async (chartFile) => {
@@ -4271,7 +4308,7 @@ function disableGameEditMode() {
 }
 
 // ── Tick sound ────────────────────────────────────────────────────────────────
-function detectBtHits(prevTick, curTick) {
+function detectBtHits(prevTick, curTick, pan = 0) {
   if (!tickBuffer || !audioCtx || !settings.tickSound) return;
   for (let li = 0; li < 4; li++) {
     for (const n of chart.bt[li]) {
@@ -4279,8 +4316,49 @@ function detectBtHits(prevTick, curTick) {
       if (hitTick >= prevTick && hitTick < curTick) {
         const src = audioCtx.createBufferSource();
         src.buffer = tickBuffer;
-        src.connect(tickGainNode || audioCtx.destination);
+        if (pan !== 0 && audioCtx.createStereoPanner) {
+          const panner = audioCtx.createStereoPanner();
+          panner.pan.value = pan;
+          src.connect(panner);
+          panner.connect(tickGainNode || audioCtx.destination);
+        } else {
+          src.connect(tickGainNode || audioCtx.destination);
+        }
         src.start();
+      }
+    }
+  }
+}
+
+// Play ticks for all multi-chart slots, panned by horizontal slot position.
+// Slot 0 (leftmost): pan -0.8, slot n-1 (rightmost): pan +0.8.
+// The active tab's ticks are played by the normal detectBtHits; we skip that slot here.
+function detectMultiBtHits(prevTick, curTick) {
+  if (!tickBuffer || !audioCtx || !settings.tickSound) return;
+  if (!_multiMode || !_multiViews.length) return;
+  const n = _multiViews.length;
+  for (let si = 0; si < n; si++) {
+    const mv = _multiViews[si];
+    const slotChart = tabs[mv.tabIdx]?.chart;
+    if (!slotChart || slotChart === chart) continue; // active tab handled by detectBtHits
+    const pan = n === 1 ? 0 : ((si / (n - 1)) * 2 - 1) * 0.8;
+    const slotTick = _multiSync ? curTick + mv.tickOffset : mv.gv.playTick;
+    const slotPrev = _multiSync ? prevTick + mv.tickOffset : Math.max(0, slotTick - (curTick - prevTick));
+    for (let li = 0; li < 4; li++) {
+      for (const note of slotChart.bt[li]) {
+        if (note.y >= slotPrev && note.y < slotTick) {
+          const src = audioCtx.createBufferSource();
+          src.buffer = tickBuffer;
+          if (pan !== 0 && audioCtx.createStereoPanner) {
+            const panner = audioCtx.createStereoPanner();
+            panner.pan.value = pan;
+            src.connect(panner);
+            panner.connect(tickGainNode || audioCtx.destination);
+          } else {
+            src.connect(tickGainNode || audioCtx.destination);
+          }
+          src.start();
+        }
       }
     }
   }
@@ -6570,7 +6648,8 @@ function _gameScreenToChart(rawSx, rawSy, p, gv) {
   const tick  = Math.max(0, Math.round((gvRef.playTick + dt) / snapV) * snapV);
   const hw    = gvRef._halfW(sy, p);
   const norm  = hw > 0 ? (sx - (p.cx - hw)) / (hw * 2) : 0.5;
-  return { tick, norm };
+  // canvasSy: tilt-corrected cursor y in canvas-pixel space, used to render ghost at cursor position
+  return { tick, norm, canvasSy: sy };
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -6632,8 +6711,10 @@ document.addEventListener('DOMContentLoaded', () => {
     ev.preventDefault();
     const p = gameView?._params();
     if (!p) return;
-    const rect = gameCanvas.getBoundingClientRect();
-    const hit  = _gameScreenToChart(ev.clientX - rect.left, ev.clientY - rect.top, p);
+    const rect  = gameCanvas.getBoundingClientRect();
+    const scaleX = gameCanvas.width / rect.width;
+    const scaleY = gameCanvas.height / rect.height;
+    const hit  = _gameScreenToChart((ev.clientX - rect.left) * scaleX, (ev.clientY - rect.top) * scaleY, p);
     if (!hit) return;
     const { tick, norm } = hit;
     const li   = Math.min(3, Math.max(0, Math.floor(norm * 4)));
@@ -6673,12 +6754,14 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!_gameEditMode || !gameView) return;
     const p = gameView._params();
     if (!p) return;
-    const rect = gameCanvas.getBoundingClientRect();
-    const hit  = _gameScreenToChart(ev.clientX - rect.left, ev.clientY - rect.top, p);
+    const rect   = gameCanvas.getBoundingClientRect();
+    const scaleX  = gameCanvas.width  / rect.width;
+    const scaleY  = gameCanvas.height / rect.height;
+    const hit  = _gameScreenToChart((ev.clientX - rect.left) * scaleX, (ev.clientY - rect.top) * scaleY, p);
     if (!hit) { if (gameView) gameView._editGhost = null; return; }
 
-    // Update ghost cursor
-    gameView._editGhost = { tick: hit.tick, norm: hit.norm, tool };
+    // Update ghost cursor; canvasSy lets _drawEditGhost render at cursor y not snapped-tick y
+    gameView._editGhost = { tick: hit.tick, norm: hit.norm, tool, sy: hit.canvasSy };
 
     // Extend laser while dragging
     if (_geDrag.active && (tool === 'laser-l' || tool === 'laser-r')) {
@@ -6693,8 +6776,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!_geDrag.active) return;
     const p = gameView?._params();
     if (p && (tool === 'bt' || tool === 'fx')) {
-      const rect = gameCanvas.getBoundingClientRect();
-      const hit  = _gameScreenToChart(ev.clientX - rect.left, ev.clientY - rect.top, p);
+      const rect   = gameCanvas.getBoundingClientRect();
+      const scaleX  = gameCanvas.width  / rect.width;
+      const scaleY  = gameCanvas.height / rect.height;
+      const hit  = _gameScreenToChart((ev.clientX - rect.left) * scaleX, (ev.clientY - rect.top) * scaleY, p);
       if (hit) {
         const endTick = hit.tick;
         const len = Math.max(0, endTick - _geDrag.startTick);

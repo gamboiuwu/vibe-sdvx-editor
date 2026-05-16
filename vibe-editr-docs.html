@@ -439,6 +439,17 @@
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
 
 <div class="update-entry">
+  <h4><span class="ver-tag">v0.0.12</span>Edit positioning fix, spatial panning &amp; folder ksonpack</h4>
+  <ul>
+    <li><span class="tag fix">fix</span>Preview edit: ghost cursor now renders at the exact cursor position, eliminating the rightward visual drift relative to placed notes.</li>
+    <li><span class="tag fix">fix</span>Preview edit: click registration uses proper canvas-pixel scaling so note placement aligns with where you click regardless of browser zoom or CSS layout.</li>
+    <li><span class="tag fix">fix</span>Preview edit: snap line still marks the snapped tick position while the ghost shape tracks the cursor, giving clear feedback about both.</li>
+    <li><span class="tag add">add</span>Multi-chart: BT tick sounds are spatially panned by slot position. Leftmost chart pans fully left, rightmost pans fully right, with middle slots proportionally panned between them.</li>
+    <li><span class="tag add">add</span>Open Folder now auto-detects <code>.ksonpack</code> files inside the selected folder and loads them directly, without needing the separate Open KSONpack button.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
   <h4><span class="ver-tag">v0.0.11</span>Multi-chart edit mode &amp; right-click erase</h4>
   <ul>
     <li><span class="tag add">add</span>Multi-chart view: full edit mode now works across all chart slots — BT, FX, Laser-L/R, erase, and drag-hold are all wired to each slot independently. Each slot edits only its own chart tab.</li>

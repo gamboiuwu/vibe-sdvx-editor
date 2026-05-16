@@ -1115,7 +1115,11 @@ class GameView {
     const { ctx } = this;
     const dt = g.tick - this.playTick;
     if (dt < 0 || dt > this.VISIBLE_TICKS * 1.05) return;
-    const sy = this._screenY(dt, p);
+    // sy_snap: where the note will land (snapped tick y) — used for the snap line
+    const sy_snap = this._screenY(dt, p);
+    // sy: ghost shape follows cursor exactly (g.sy is tilt-corrected canvas y from hit test)
+    const sy = (g.sy !== undefined && g.sy >= p.vanishY - 4 && g.sy <= p.judgeY + 4)
+      ? g.sy : sy_snap;
     if (sy < p.vanishY - 4 || sy > p.judgeY + 4) return;
     const hw   = this._halfW(sy, p);
     const laneW = hw * 2;
@@ -1168,13 +1172,14 @@ class GameView {
       ctx.stroke();
     }
 
-    // Snap-line across the lane at the ghost tick
+    // Snap-line across the lane at the snapped tick position
+    const hw_snap = this._halfW(sy_snap, p);
     ctx.globalAlpha = 0.25;
     ctx.strokeStyle = '#ffffff';
     ctx.lineWidth   = 0.75;
     ctx.setLineDash([3, 4]);
     ctx.beginPath();
-    ctx.moveTo(p.cx - hw, sy); ctx.lineTo(p.cx + hw, sy);
+    ctx.moveTo(p.cx - hw_snap, sy_snap); ctx.lineTo(p.cx + hw_snap, sy_snap);
     ctx.stroke();
     ctx.setLineDash([]);
     ctx.restore();
