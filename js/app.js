@@ -4571,11 +4571,24 @@ function onMouseDown(e) {
       const lastPt = sec.points[sec.points.length - 1];
       const lastRy = lastPt?.ry ?? -1;
       if (ry > lastRy) {
-        // Detect horizontal laser (same position as previous point)
-        const isHorizontal = lastPt && Math.abs(v - lastPt.v) < 0.001;
-        sec.points.push({ ry, v, slam: isHorizontal, interp: 'linear', curve: 0.5 });
+        const gap = ry - lastRy;
+        if (gap <= LASER_SLAM_TICKS && lastPt && Math.abs(v - lastPt.v) >= 0.001) {
+          // Close enough in time and different position → explicit slam
+          if (lastPt.interp === 'linear') lastPt.interp = 'step';
+          sec.points.push({ ry, v, slam: true, interp: 'linear', curve: 0.5 });
+        } else {
+          // Normal point (not a slam)
+          sec.points.push({ ry, v, slam: false, interp: 'linear', curve: 0.5 });
+        }
+      } else if (ry === lastRy) {
+        if (lastPt && Math.abs(v - lastPt.v) >= 0.001) {
+          // Same snapped tick, different position → slam at lastRy + 1
+          if (lastPt.interp === 'linear') lastPt.interp = 'step';
+          sec.points.push({ ry: lastRy + 1, v, slam: true, interp: 'linear', curve: 0.5 });
+        }
+        // Same tick AND same position: ignore silently (duplicate click), stay active
       } else {
-        // Clicked at or before the last point — finish current section, start new
+        // Clicked before the last point — finish current section, start new
         _activeLaserSec = null;
         if (renderer) { renderer.activeLaserSec = null; renderer._laserPreview = null; }
         const newSec = { y: tick, points: [{ ry: 0, v, slam: false, interp: 'linear', curve: 0.5 }], wide };
