@@ -905,12 +905,103 @@ function _toolLaserSmooth(c) {
   ['Both','Left','Right'].forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; sideSelect.appendChild(o); });
 
   const algoSelect = document.createElement('select');
-  ['Chaikin','Moving Average','Resample'].forEach(a => { const o = document.createElement('option'); o.value = a; o.textContent = a; algoSelect.appendChild(o); });
+  const ALGOS = ['Chaikin','Moving Average','Resample','Physics Sim'];
+  ALGOS.forEach(a => { const o = document.createElement('option'); o.value = a; o.textContent = a === 'Physics Sim' ? 'Physics Sim [EXP]' : a; algoSelect.appendChild(o); });
 
+  // ── Iteration controls (Chaikin / Moving Average) ─────────────────────────
   const iterSl = document.createElement('input');
   iterSl.type = 'range'; iterSl.min = 1; iterSl.max = 5; iterSl.value = 2;
   const iterLbl = _h('span', '', '2 iterations');
   iterSl.addEventListener('input', () => iterLbl.textContent = iterSl.value + ' iterations');
+  const iterRow = _row('Iterations:', iterSl);
+
+  // ── Physics Sim controls ──────────────────────────────────────────────────
+  const physDiv = document.createElement('div');
+  physDiv.style.cssText = 'display:none;margin-top:4px;';
+
+  const stiffSl = document.createElement('input');
+  stiffSl.type = 'range'; stiffSl.min = 1; stiffSl.max = 50; stiffSl.value = 15;
+  stiffSl.style.width = '100%';
+  const stiffLbl = _h('span', '', 'stiffness 0.15');
+  stiffSl.addEventListener('input', () => stiffLbl.textContent = `stiffness ${(stiffSl.value / 100).toFixed(2)}`);
+
+  const dampSl = document.createElement('input');
+  dampSl.type = 'range'; dampSl.min = 10; dampSl.max = 90; dampSl.value = 50;
+  dampSl.style.width = '100%';
+  const dampLbl = _h('span', '', 'damping 0.50');
+  dampSl.addEventListener('input', () => dampLbl.textContent = `damping ${(dampSl.value / 100).toFixed(2)}`);
+
+  const stepsSl = document.createElement('input');
+  stepsSl.type = 'range'; stepsSl.min = 10; stepsSl.max = 200; stepsSl.value = 80;
+  stepsSl.style.width = '100%';
+  const stepsLbl = _h('span', '', '80 steps');
+  stepsSl.addEventListener('input', () => stepsLbl.textContent = `${stepsSl.value} steps`);
+
+  const skipSlamChk = document.createElement('input');
+  skipSlamChk.type = 'checkbox'; skipSlamChk.checked = true; skipSlamChk.id = 'phys-skip-slams';
+  const skipSlamLbl = document.createElement('label');
+  skipSlamLbl.htmlFor = 'phys-skip-slams';
+  skipSlamLbl.textContent = ' Preserve slam anchors';
+  skipSlamLbl.style.cssText = 'font-size:12px;color:#c8c8f0;margin-left:4px;cursor:pointer;';
+
+  const physNote = _h('div', '', '⚛ Spring-damper simulation. Endpoints are fixed; interior points relax toward neighbors over time.');
+  physNote.style.cssText = 'font-size:10px;color:#7788aa;margin-top:4px;line-height:1.4;';
+
+  physDiv.appendChild(_row('Stiffness:', stiffSl));
+  physDiv.appendChild(stiffLbl);
+  physDiv.appendChild(_row('Damping:', dampSl));
+  physDiv.appendChild(dampLbl);
+  physDiv.appendChild(_row('Steps:', stepsSl));
+  physDiv.appendChild(stepsLbl);
+  const slamRow = document.createElement('div');
+  slamRow.style.cssText = 'display:flex;align-items:center;margin-top:4px;';
+  slamRow.appendChild(skipSlamChk);
+  slamRow.appendChild(skipSlamLbl);
+  physDiv.appendChild(slamRow);
+  physDiv.appendChild(physNote);
+
+  // Show/hide controls based on algo
+  function _updateAlgoUI() {
+    const isPhys = algoSelect.value === 'Physics Sim';
+    iterRow.style.display  = isPhys ? 'none' : '';
+    iterLbl.style.display  = isPhys ? 'none' : '';
+    physDiv.style.display  = isPhys ? ''     : 'none';
+  }
+  algoSelect.addEventListener('change', _updateAlgoUI);
+  _updateAlgoUI();
+
+  // ── Physics simulation core ───────────────────────────────────────────────
+  function _physicsSmooth(pts, k, d, steps, preserveSlams) {
+    if (pts.length < 3) return;
+    // Identify anchor indices: first, last, and (optionally) slam points
+    const anchors = new Uint8Array(pts.length);
+    anchors[0] = 1;
+    anchors[pts.length - 1] = 1;
+    if (preserveSlams) {
+      for (let i = 0; i < pts.length; i++) {
+        if (pts[i].slam) anchors[i] = 1;
+      }
+    }
+
+    const pos = new Float64Array(pts.map(p => p.v));
+    const vel = new Float64Array(pts.length); // zero-initialised
+
+    for (let step = 0; step < steps; step++) {
+      for (let i = 1; i < pts.length - 1; i++) {
+        if (anchors[i]) continue;
+        // Spring force: each neighbour pulls the point toward itself
+        const springL = pos[i - 1] - pos[i];
+        const springR = pos[i + 1] - pos[i];
+        const force   = k * (springL + springR) - d * vel[i];
+        vel[i] += force;
+        pos[i] = Math.max(0, Math.min(1, pos[i] + vel[i]));
+      }
+    }
+
+    for (let i = 0; i < pts.length; i++) {
+      if (!anchors[i]) pts[i].v = pos[i];
+    }
+  }
 
   const applyBtn = _btn('Apply Smoothing');
   const status = _h('div', 'tool-result-box');
@@ -924,6 +1015,14 @@ function _toolLaserSmooth(c) {
 
     sides.forEach(s => {
       chart.lasers[s].forEach(sec2 => {
+        if (algo === 'Physics Sim') {
+          const k     = stiffSl.value / 100;
+          const damp  = dampSl.value / 100;
+          const steps = parseInt(stepsSl.value);
+          _physicsSmooth(sec2.points, k, damp, steps, skipSlamChk.checked);
+          return;
+        }
+
         for (let it = 0; it < iters; it++) {
           const pts = sec2.points;
           if (pts.length < 2) return;
@@ -953,7 +1052,6 @@ function _toolLaserSmooth(c) {
             const n = pts.length;
             const newPts = pts.map((_, i) => {
               const ry = (i / (n-1)) * totalRy;
-              // Interpolate v
               let v = pts[0].v;
               for (let j = 0; j < pts.length-1; j++) {
                 if (ry >= pts[j].ry && ry <= pts[j+1].ry) {
@@ -970,13 +1068,15 @@ function _toolLaserSmooth(c) {
       });
     });
     if (typeof render === 'function') render();
-    status.innerHTML = '<div class="tool-result-item tool-result-ok">✓ Smoothing applied</div>';
+    const label = algo === 'Physics Sim' ? '⚛ Physics smoothing applied' : '✓ Smoothing applied';
+    status.innerHTML = `<div class="tool-result-item tool-result-ok">${label}</div>`;
   });
 
   sec.appendChild(_row('Side:', sideSelect));
   sec.appendChild(_row('Algorithm:', algoSelect));
-  sec.appendChild(_row('Iterations:', iterSl));
+  sec.appendChild(iterRow);
   sec.appendChild(iterLbl);
+  sec.appendChild(physDiv);
   sec.appendChild(applyBtn);
   sec.appendChild(status);
 }

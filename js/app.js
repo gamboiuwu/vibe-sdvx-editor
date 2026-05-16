@@ -9,8 +9,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.12';
+const APP_VERSION = '0.0.13';
 const CHANGELOG = [
+  {
+    version: '0.0.13',
+    title: 'Physics-Based Laser Smoothing [Experimental]',
+    entries: [
+      ['add', 'Physics Sim algorithm added to the Laser Smooth tool (<strong>Window → Tools Hub → Edit → Laser Smooth</strong>). Uses a spring-damper simulation: interior laser points are treated as particles connected to their neighbours by springs with configurable stiffness, damping, and step count. Endpoints and (optionally) slam anchors are held fixed, producing organic curves that settle naturally between hard direction changes.'],
+      ['add', 'Three physics parameters exposed in the tool panel: <em>Stiffness</em> (spring pull strength), <em>Damping</em> (oscillation suppression), and <em>Steps</em> (simulation resolution). Higher stiffness straightens the path; lower stiffness preserves character while adding flow.'],
+      ['add', '<em>Preserve slam anchors</em> toggle — when enabled, laser slam points are treated as additional fixed anchors so directional flicks are not softened by the simulation.'],
+    ],
+  },
   {
     version: '0.0.12',
     title: 'Edit positioning fix, spatial panning &amp; folder ksonpack',
@@ -4093,6 +4102,7 @@ function ensureCtxMenu() {
         <div class="ctx-item" data-act="toggle-anomaly" id="ctx-anomaly-item">✓ Pattern Anomaly Detection</div>
         <div class="ctx-item" data-act="toggle-predict" id="ctx-predict-item">✓ Predictive Chart Assist</div>
         <div class="ctx-item" data-act="toggle-ghost" id="ctx-ghost-item">✓ Ghost Playback Tracing</div>
+        <div class="ctx-item" data-act="toggle-physics" id="ctx-physics-item">✕ Physics Laser Smoothing</div>
       </div>
     </div>
   `;
@@ -4145,6 +4155,11 @@ function ensureCtxMenu() {
       updateCtxMenuExperimentalLabels();
       render();
     }
+    else if (act === 'toggle-physics') {
+      prefs.physicsLaser = !prefs.physicsLaser;
+      savePrefsToLocalStorage();
+      updateCtxMenuExperimentalLabels();
+    }
   });
 
   document.addEventListener('click', () => { if (ctxMenuEl) ctxMenuEl.style.display = 'none'; });
@@ -4152,12 +4167,14 @@ function ensureCtxMenu() {
 }
 
 function updateCtxMenuExperimentalLabels() {
-  const anomalyEl = document.getElementById('ctx-anomaly-item');
-  const predictEl = document.getElementById('ctx-predict-item');
-  const ghostEl = document.getElementById('ctx-ghost-item');
-  if (anomalyEl) anomalyEl.textContent = (prefs.anomalyDetect ? '✓' : '✕') + ' Pattern Anomaly Detection';
-  if (predictEl) predictEl.textContent = (prefs.predictAssist ? '✓' : '✕') + ' Predictive Chart Assist';
-  if (ghostEl) ghostEl.textContent = (prefs.ghostTrace ? '✓' : '✕') + ' Ghost Playback Tracing';
+  const anomalyEl  = document.getElementById('ctx-anomaly-item');
+  const predictEl  = document.getElementById('ctx-predict-item');
+  const ghostEl    = document.getElementById('ctx-ghost-item');
+  const physicsEl  = document.getElementById('ctx-physics-item');
+  if (anomalyEl)  anomalyEl.textContent  = (prefs.anomalyDetect  ? '✓' : '✕') + ' Pattern Anomaly Detection';
+  if (predictEl)  predictEl.textContent  = (prefs.predictAssist  ? '✓' : '✕') + ' Predictive Chart Assist';
+  if (ghostEl)    ghostEl.textContent    = (prefs.ghostTrace      ? '✓' : '✕') + ' Ghost Playback Tracing';
+  if (physicsEl)  physicsEl.textContent  = (prefs.physicsLaser    ? '✓' : '✕') + ' Physics Laser Smoothing';
 }
 
 function showCtxMenu(x, y) {
@@ -6233,6 +6250,7 @@ const prefs = {
   anomalyDetect:    false,
   predictAssist:    false,
   ghostTrace:       false,
+  physicsLaser:     false,
 };
 let _autosaveTimer = null;
 
