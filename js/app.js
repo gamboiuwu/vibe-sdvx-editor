@@ -2731,6 +2731,7 @@ window.addEventListener('DOMContentLoaded', () => {
   // Chart Velocity modal
   document.getElementById('btn-add-scroll-speed').addEventListener('click', () => document.getElementById('modal-scroll-speed').style.display = 'flex');
   document.getElementById('btn-open-velenv')?.addEventListener('click', () => openVelEnvEditor());
+  document.getElementById('btn-velenv-menu')?.addEventListener('click', () => toggleVelEnvEditor());
   document.getElementById('ss-ev-cancel').addEventListener('click', () => document.getElementById('modal-scroll-speed').style.display = 'none');
   document.getElementById('ss-ev-ok').addEventListener('click', () => {
     const measure = +document.getElementById('ss-ev-measure').value - 1;
@@ -5140,6 +5141,7 @@ function onKeyDown(e) {
     case '6': setTool('cam-event');  break;
     case '7': setTool('stop-event'); break;
     case 'e': case 'E': setTool('erase'); break;
+    case '`': e.preventDefault(); toggleVelEnvEditor(); break;
 
     case 'f': case 'F':
       if (!ctrl) {

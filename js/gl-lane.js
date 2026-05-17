@@ -174,7 +174,8 @@ class GLLaneRenderer {
   // emitted into the same vertex buffer as the lane (Phase 2) and so are
   // VOL laser ribbons + slams (Phase 3). Everything submits in one draw call.
   // `laserOpacity` (0..1) is multiplied into laser vertex alpha.
-  render(params, gv, laserColors, chart, laserOpacity) {
+  // `im` is the interpMode string: 'standard' | 'simplified' | 'colorblind' | 'wireframe'
+  render(params, gv, laserColors, chart, laserOpacity, im = 'standard') {
     if (!this.ok) return;
     const gl = this.gl;
     this._n = 0;
@@ -277,8 +278,10 @@ class GLLaneRenderer {
       const bTop = innerIsLeft ? c0 : c1, bBot = innerIsLeft ? c0 : c1;
       this._quad(x0, cTop, x1, cTop, x1, cBot, x0, cBot, aTop, bTop, bBot, aBot);
     };
-    drawSideGlow(vlx1, volLeft  - 40, lcLZero, lcL);
-    drawSideGlow(vrx1, volRight + 40, lcRZero, lcR);
+    if (im !== 'wireframe' && im !== 'simplified') {
+      drawSideGlow(vlx1, volLeft  - 40, lcLZero, lcL);
+      drawSideGlow(vrx1, volRight + 40, lcRZero, lcR);
+    }
 
     // ── 5. Scrolling grid (beat / measure lines) ───────────────────────
     const TPM = 192, TPB = 48;
@@ -312,10 +315,10 @@ class GLLaneRenderer {
     }
 
     // ── 7. Notes (Phase 2) — emitted into the same vertex buffer ───────
-    if (chart) this._emitNotes(p, gv, chart);
+    if (chart) this._emitNotes(p, gv, chart, im);
 
     // ── 8. Lasers + slams (Phase 3) — same vertex buffer ───────────────
-    if (chart && laserColors) this._emitLasers(p, gv, chart, laserColors, laserOpacity);
+    if (chart && laserColors) this._emitLasers(p, gv, chart, laserColors, laserOpacity, im);
 
     // ── 9. Submit + draw ───────────────────────────────────────────────
     gl.clearColor(0, 0, 0, 0);
@@ -345,22 +348,42 @@ class GLLaneRenderer {
   //    middle stop renders correctly via vertex interpolation.
   //  • Active-hold bright outline reuses the same base quad rather than
   //    stroking a 1.5 px line, since gl.LINE_WIDTH > 1 is unreliable.
-  _emitNotes(p, gv, chart) {
+  _emitNotes(p, gv, chart, im = 'standard') {
     const T = this._T;
     const VT = gv.VISIBLE_TICKS;
     const tick = gv.playTick;
+    const wireframe  = im === 'wireframe';
+    const simplified = im === 'simplified';
 
-    // Colors (precomputed normalized RGBA)
-    const FX_HOLD_EDGE = [0.549, 0.251, 0.000, 1.00]; // #8c4000
-    const FX_HOLD_MID  = [1.000, 0.533, 0.000, 0.80]; // #ff8800cc
-    const FX_CHIP_EDGE = [0.667, 0.333, 0.000, 1.00]; // #aa5500
-    const FX_CHIP_MID  = [1.000, 0.800, 0.000, 1.00]; // #ffcc00
-    const BT_HOLD_TOP  = [0.565, 0.565, 0.800, 1.00]; // #9090cc
-    const BT_HOLD_BOT  = [0.910, 0.910, 1.000, 1.00]; // #e8e8ff
-    const BT_HOLD_HOT  = [1.000, 1.000, 1.000, 1.00]; // active highlight
-    const BT_CAP       = [0.973, 0.973, 1.000, 1.00]; // #f8f8ff
-    const BT_CHIP      = [0.910, 0.910, 1.000, 1.00]; // #e8e8ff
-    const BT_HIGHLIGHT = [1.000, 1.000, 1.000, 0.80]; // #ffffffcc
+    // Colors vary by interpretation mode:
+    // standard/colorblind: full gradients; simplified: flat solid; wireframe: transparent fill + bright outline
+    const FX_HOLD_EDGE = wireframe  ? [1.000, 0.533, 0.000, 0.00]   // transparent fill
+                       : simplified ? [1.000, 0.533, 0.000, 1.00]   // flat orange
+                       :              [0.549, 0.251, 0.000, 1.00];  // #8c4000
+    const FX_HOLD_MID  = wireframe  ? [1.000, 0.533, 0.000, 0.00]
+                       : simplified ? [1.000, 0.533, 0.000, 1.00]
+                       :              [1.000, 0.533, 0.000, 0.80];
+    const FX_CHIP_EDGE = wireframe  ? [1.000, 0.600, 0.000, 0.00]
+                       : simplified ? [1.000, 0.600, 0.000, 1.00]
+                       :              [0.667, 0.333, 0.000, 1.00];
+    const FX_CHIP_MID  = wireframe  ? [1.000, 0.800, 0.000, 0.00]
+                       : simplified ? [1.000, 0.800, 0.000, 1.00]
+                       :              [1.000, 0.800, 0.000, 1.00];
+    const BT_HOLD_TOP  = wireframe  ? [0.878, 0.878, 1.000, 0.00]
+                       : simplified ? [1.000, 1.000, 1.000, 1.00]
+                       :              [0.565, 0.565, 0.800, 1.00];
+    const BT_HOLD_BOT  = wireframe  ? [0.878, 0.878, 1.000, 0.00]
+                       : simplified ? [1.000, 1.000, 1.000, 1.00]
+                       :              [0.910, 0.910, 1.000, 1.00];
+    const BT_HOLD_HOT  = [1.000, 1.000, 1.000, 1.00];
+    const BT_CAP       = [0.973, 0.973, 1.000, 1.00];
+    const BT_CHIP      = wireframe  ? [1.000, 1.000, 1.000, 0.00]
+                       :              [0.910, 0.910, 1.000, 1.00];
+    const BT_HIGHLIGHT = wireframe  ? [1.000, 1.000, 1.000, 0.00]
+                       :              [1.000, 1.000, 1.000, 0.80];
+    // Wireframe outline colors (drawn as thin quads over transparent fills)
+    const WF_BT_OUT  = [1.000, 1.000, 1.000, 0.90];
+    const WF_FX_OUT  = [1.000, 0.600, 0.000, 0.90];
 
     // Helper to emit a perspective trapezoid with 4 corner colors.
     const trapQuad = (x_TL, y_T, x_TR, x_BR, y_B, x_BL, cTL, cTR, cBR, cBL) => {
@@ -388,6 +411,13 @@ class GLLaneRenderer {
         const x1r = gv._screenX(rn - FX_INSET, sy1, p);
         trapQuad(x0l, sy0, x0m, x1m, sy1, x1l, FX_HOLD_EDGE, FX_HOLD_MID, FX_HOLD_MID, FX_HOLD_EDGE);
         trapQuad(x0m, sy0, x0r, x1r, sy1, x1m, FX_HOLD_MID, FX_HOLD_EDGE, FX_HOLD_EDGE, FX_HOLD_MID);
+        if (wireframe) {
+          // Outline: left, right, top and bottom edges as 1.5px lines
+          this._line(...T(x0l, sy0), ...T(x1l, sy1), 1.5, WF_FX_OUT);
+          this._line(...T(x0r, sy0), ...T(x1r, sy1), 1.5, WF_FX_OUT);
+          this._line(...T(x0l, sy0), ...T(x0r, sy0), 1.5, WF_FX_OUT);
+          this._line(...T(x1l, sy1), ...T(x1r, sy1), 1.5, WF_FX_OUT);
+        }
       }
     }
 
@@ -406,6 +436,12 @@ class GLLaneRenderer {
         const yT = sy - chipH;
         trapQuad(lx,   yT, midX, midX, sy, lx,   FX_CHIP_EDGE, FX_CHIP_MID,  FX_CHIP_MID,  FX_CHIP_EDGE);
         trapQuad(midX, yT, rx,   rx,   sy, midX, FX_CHIP_MID,  FX_CHIP_EDGE, FX_CHIP_EDGE, FX_CHIP_MID);
+        if (wireframe) {
+          this._line(...T(lx, yT), ...T(rx, yT), 1.5, WF_FX_OUT);
+          this._line(...T(lx, sy), ...T(rx, sy), 1.5, WF_FX_OUT);
+          this._line(...T(lx, yT), ...T(lx, sy), 1.5, WF_FX_OUT);
+          this._line(...T(rx, yT), ...T(rx, sy), 1.5, WF_FX_OUT);
+        }
       }
     }
 
@@ -431,6 +467,12 @@ class GLLaneRenderer {
           const capH = Math.max(3, (x1r - x1l) * 0.07);
           trapQuad(x1l, sy1 - capH, x1r, x1r, sy1, x1l, BT_CAP, BT_CAP, BT_CAP, BT_CAP);
         }
+        if (wireframe) {
+          this._line(...T(x0l, sy0), ...T(x1l, sy1), 1.5, WF_BT_OUT);
+          this._line(...T(x0r, sy0), ...T(x1r, sy1), 1.5, WF_BT_OUT);
+          this._line(...T(x0l, sy0), ...T(x0r, sy0), 1.5, WF_BT_OUT);
+          this._line(...T(x1l, sy1), ...T(x1r, sy1), 1.5, WF_BT_OUT);
+        }
       }
     }
 
@@ -450,6 +492,12 @@ class GLLaneRenderer {
         trapQuad(lx, yT, rx, rx, sy, lx, BT_CHIP, BT_CHIP, BT_CHIP, BT_CHIP);
         // 2-pixel top highlight
         trapQuad(lx, yT, rx, rx, yT + 2, lx, BT_HIGHLIGHT, BT_HIGHLIGHT, BT_HIGHLIGHT, BT_HIGHLIGHT);
+        if (wireframe) {
+          this._line(...T(lx, yT), ...T(rx, yT), 1.5, WF_BT_OUT);
+          this._line(...T(lx, sy), ...T(rx, sy), 1.5, WF_BT_OUT);
+          this._line(...T(lx, yT), ...T(lx, sy), 1.5, WF_BT_OUT);
+          this._line(...T(rx, yT), ...T(rx, sy), 1.5, WF_BT_OUT);
+        }
       }
     }
   }
@@ -466,10 +514,12 @@ class GLLaneRenderer {
   //     is already smooth at any zoom level.
   //   • Tail-end cap and judgment-line indicator diamonds remain on
   //     the 2D overlay — they're small UI bits, not rendering hot path.
-  _emitLasers(p, gv, chart, laserColors, laserOpacity) {
+  _emitLasers(p, gv, chart, laserColors, laserOpacity, im = 'standard') {
     const T = this._T;
     const VT = gv.VISIBLE_TICKS;
     const tick = gv.playTick;
+    const wireframe  = im === 'wireframe';
+    const simplified = im === 'simplified';
     // Sourced from GameView so position and width stay in sync. Fallback
     // to 0.125 if the static is unreachable (shouldn't happen in practice).
     const LASER_FRAC = (typeof GameView !== 'undefined' && GameView.LASER_HALF_FRAC) || 0.125;
@@ -498,8 +548,12 @@ class GLLaneRenderer {
       : ((p0, p1) => (p1.ry - p0.ry) <= 6);
 
     for (let side = 0; side < 2; side++) {
-      const mainCol = parseHex(side === 0 ? laserColors.L  : laserColors.R,  opacity);
-      const edgeCol = parseHex(side === 0 ? laserColors.Le : laserColors.Re, opacity);
+      const rawMain = parseHex(side === 0 ? laserColors.L  : laserColors.R,  opacity);
+      const rawEdge = parseHex(side === 0 ? laserColors.Le : laserColors.Re, opacity);
+      // wireframe: transparent body, use edge color at full alpha for outline
+      // simplified: flat solid fill, no edge stripe
+      const mainCol = wireframe ? [rawMain[0], rawMain[1], rawMain[2], 0]    : rawMain;
+      const edgeCol = wireframe ? [rawEdge[0], rawEdge[1], rawEdge[2], opacity] : rawEdge;
       const whiteCol = [1, 1, 1, opacity];
 
       for (const sec of chart.lasers[side]) {
@@ -607,18 +661,22 @@ class GLLaneRenderer {
                      s.cx1 - s.hw1, s.sy1, mainCol);
 
             // Edge stripes — thin parallelograms along each side
-            const sw0 = Math.max(0.6, s.hw0 * 0.18);
-            const sw1 = Math.max(0.6, s.hw1 * 0.18);
-            // Left edge
-            flatQuad(s.cx0 - s.hw0,        s.sy0,
-                     s.cx0 - s.hw0 + sw0,  s.sy0,
-                     s.cx1 - s.hw1 + sw1,  s.sy1,
-                     s.cx1 - s.hw1,        s.sy1, edgeCol);
-            // Right edge
-            flatQuad(s.cx0 + s.hw0 - sw0,  s.sy0,
-                     s.cx0 + s.hw0,        s.sy0,
-                     s.cx1 + s.hw1,        s.sy1,
-                     s.cx1 + s.hw1 - sw1,  s.sy1, edgeCol);
+            // Wireframe: wider outline so it's visible over transparent fill.
+            // Simplified: skip edge stripes (flat solid color is cleaner).
+            if (!simplified) {
+              const sw0 = wireframe ? Math.max(1.5, s.hw0 * 0.35) : Math.max(0.6, s.hw0 * 0.18);
+              const sw1 = wireframe ? Math.max(1.5, s.hw1 * 0.35) : Math.max(0.6, s.hw1 * 0.18);
+              // Left edge
+              flatQuad(s.cx0 - s.hw0,        s.sy0,
+                       s.cx0 - s.hw0 + sw0,  s.sy0,
+                       s.cx1 - s.hw1 + sw1,  s.sy1,
+                       s.cx1 - s.hw1,        s.sy1, edgeCol);
+              // Right edge
+              flatQuad(s.cx0 + s.hw0 - sw0,  s.sy0,
+                       s.cx0 + s.hw0,        s.sy0,
+                       s.cx1 + s.hw1,        s.sy1,
+                       s.cx1 + s.hw1 - sw1,  s.sy1, edgeCol);
+            }
           }
         }
       }

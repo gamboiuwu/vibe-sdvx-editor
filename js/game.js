@@ -368,10 +368,9 @@ class GameView {
     const useGL = this.useGL && this._glRenderer?.ok;
     if (useGL) {
       this._glRenderer.render(
-        p, this,
-        typeof laserColors !== 'undefined' ? laserColors : null,
-        chart,
-        typeof laserOpacity !== 'undefined' ? laserOpacity : 0.7
+        p, this, LC, chart,
+        typeof laserOpacity !== 'undefined' ? laserOpacity : 0.7,
+        im
       );
       ctx.clearRect(0, 0, p.w, p.h);
     } else {
