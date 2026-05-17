@@ -114,6 +114,9 @@ class Renderer {
     this.numCols       = 3;
     this.playTick      = 0;
     this.playing       = false;
+    // svMode: when true, note Y positions are mapped via chart.scrollDistanceTo()
+    // so sections with higher chart velocity appear more spread out (Taiko-style SV view)
+    this.svMode        = false;
     // showLaserDots: true only when the laser tool is active — hides edit handles otherwise
     this.showLaserDots = false;
     // activeLaserSec: the laser section currently being drawn (gets a highlighted dot)
@@ -180,7 +183,19 @@ class Renderer {
 
   // Canvas-Y for a given tick within a column that starts at startY.
   // Always linear in the editor — scroll speed events only affect the game preview.
+  // Convert tick to canvas Y within its column.
+  // In svMode, position is proportional to accumulated scroll distance so that
+  // sections with higher chart velocity appear more spread out (Taiko-style SV).
   _pyAt(tick, startY) {
+    if (this.svMode && this.chart?.scrollDistanceTo) {
+      const colEnd = startY + this.colTicks;
+      const dStart = this.chart.scrollDistanceTo(startY);
+      const dEnd   = this.chart.scrollDistanceTo(colEnd);
+      const span   = dEnd - dStart;
+      if (span > 0) {
+        return this.colH - (this.chart.scrollDistanceTo(tick) - dStart) / span * this.colH;
+      }
+    }
     return this.colH - (tick - startY) * this.zoom;
   }
 
@@ -200,9 +215,29 @@ class Renderer {
     const localX     = cx - visColIdx * (SINGLE_COL_W + COL_GAP);
     const colLen     = this.colTicks;
     const startY     = colIdx * colLen;
-    // Always linear in the editor — exact inverse of _pyAt
-    const tick       = startY + Math.max(0, (this.colH - cy) / this.zoom);
-    const laneIdx    = this._localXToLane(localX);
+    let tick;
+    if (this.svMode && this.chart?.scrollDistanceTo) {
+      // Binary-search inversion of _pyAt for accurate click-to-tick in SV mode
+      const colEnd = startY + colLen;
+      const dStart = this.chart.scrollDistanceTo(startY);
+      const dEnd   = this.chart.scrollDistanceTo(colEnd);
+      const span   = dEnd - dStart;
+      if (span > 0) {
+        const ratio      = Math.max(0, Math.min(1, (this.colH - cy) / this.colH));
+        const targetDist = dStart + ratio * span;
+        let lo = startY, hi = colEnd;
+        for (let i = 0; i < 40; i++) {
+          const mid = (lo + hi) / 2;
+          if (this.chart.scrollDistanceTo(mid) < targetDist) lo = mid; else hi = mid;
+        }
+        tick = (lo + hi) / 2;
+      } else {
+        tick = startY + Math.max(0, (this.colH - cy) / this.zoom);
+      }
+    } else {
+      tick = startY + Math.max(0, (this.colH - cy) / this.zoom);
+    }
+    const laneIdx = this._localXToLane(localX);
     return { tick, laneIdx, localX, colIdx };
   }
 

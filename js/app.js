@@ -7146,6 +7146,7 @@ function _saveSession() {
       viewMode,
       laserOpacity,
       laserWideMode,
+      svMode:    renderer?.svMode ?? false,
       laserPreset: _currentLaserPreset,
       laserColorL: laserColors.L,
       laserColorR: laserColors.R,
@@ -7171,6 +7172,11 @@ function _restoreSession() {
       laserWideMode = s.laserWideMode;
       const cb = document.getElementById('laser-wide');
       if (cb) cb.checked = s.laserWideMode;
+    }
+    if (typeof s.svMode === 'boolean' && renderer) {
+      renderer.svMode = s.svMode;
+      const svCb = document.getElementById('sv-view-toggle');
+      if (svCb) svCb.checked = s.svMode;
     }
     if (s.laserPreset) {
       _currentLaserPreset = s.laserPreset;
@@ -7226,6 +7232,11 @@ window.addEventListener('DOMContentLoaded', () => {
   };
   document.getElementById('laser-wide')?.addEventListener('change', e => _syncWideCheckboxes(e.target.checked));
   document.getElementById('laser-wide-view')?.addEventListener('change', e => _syncWideCheckboxes(e.target.checked));
+
+  // SV View toggle — makes 2D editor space notes by scroll distance, not raw tick
+  document.getElementById('sv-view-toggle')?.addEventListener('change', e => {
+    if (renderer) { renderer.svMode = e.target.checked; render(); }
+  });
 
   // Recover autosave from File menu
   document.getElementById('btn-recover-autosave-file')?.addEventListener('click', recoverAutosave);
