@@ -7081,25 +7081,34 @@ function _levelToGlitchOptions(level) {
     createContainers: true,
     hideOverflow: false,
     timing: {
-      duration: Math.max(80, Math.round(900 - t * 780)),
+      // Short cycle = rapid, snappy glitch bursts rather than slow drift
+      duration: Math.max(50, Math.round(280 - t * 220)),
       iterations: Infinity,
     },
     glitchTimeSpan: {
-      start: Math.max(0,   0.5 - t * 0.45),
-      end:   Math.min(1.0, 0.5 + t * 0.45),
+      // Cover a wide fraction of the cycle so artifacts are frequent
+      start: Math.max(0,   0.3 - t * 0.28),
+      end:   Math.min(1.0, 0.7 + t * 0.28),
     },
     shake: {
-      velocity:   Math.round(10 + t * 25),
-      amplitudeX: t * 0.35,
-      amplitudeY: t * 0.12,
+      // Minimal camera-shake — glitch is about horizontal slice displacement, not wobble
+      velocity:   Math.round(4 + t * 8),
+      amplitudeX: 0.01 + t * 0.04,
+      amplitudeY: 0.005 + t * 0.015,
     },
     slice: {
-      count:     Math.max(1, Math.round(2 + t * 13)),
-      velocity:  Math.round(10 + t * 25),
+      // Many fast-moving slices with large bands — this is the real "digital glitch" look
+      count:     Math.max(3, Math.round(4 + t * 24)),
+      velocity:  Math.round(30 + t * 90),   // high velocity = big horizontal jumps
       minHeight: 0.01,
-      maxHeight: 0.04 + t * 0.2,
-      hueRotate: level >= 5,
+      maxHeight: 0.06 + t * 0.5,            // up to 56% of height for VHS-style bands
+      hueRotate: t > 0.1,                   // RGB split from level 1+
     },
+    pulse: t > 0.5 ? {
+      show: 0.85,
+      min:  0.0,
+      max:  0.04 + t * 0.08,               // brief opacity blink at high levels
+    } : false,
   };
 }
 
