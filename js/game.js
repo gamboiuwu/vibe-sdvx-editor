@@ -21,6 +21,10 @@ class GameView {
     // Judgment line Y position as fraction of canvas height (0.73 = default)
     this.judgeYFrac = 0.73;
 
+    // Visual interpretation mode for readability testing
+    // 'standard' | 'simplified' | 'colorblind' | 'wireframe'
+    this.interpMode = 'standard';
+
     // Autoplay scoring state
     this._score   = 0;
     this._chain   = 0;
@@ -335,6 +339,18 @@ class GameView {
     const hq = (typeof highQualityRendering === 'undefined' || highQualityRendering)
                && p.projMode !== 'ortho';
 
+    // ── Interpretation mode style overrides ───────────────────────────────────
+    // Controls per-note visual style for readability testing (v0.0.15).
+    const im = this.interpMode || 'standard';
+    // Suppress glow/shadows in simplified and wireframe modes
+    const hqE = hq && (im === 'standard' || im === 'colorblind');
+    // Colorblind mode: swap right laser to gold (deuteranopia/protanopia-safe)
+    const _lc = typeof laserColors !== 'undefined' ? laserColors
+      : { L:'#0088ff', Lg:'#0088ff88', Le:'#66bbff', R:'#ff1177', Rg:'#ff117788', Re:'#ff88cc' };
+    const LC = im === 'colorblind'
+      ? { ..._lc, R: '#ddaa00', Rg: '#ddaa0088', Re: '#ffdd55' }
+      : _lc;
+
     // Recompute total weight if chart changed
     if (chart && !this._totalWeight) {
       this._totalWeight = this._calcTotalWeight(chart);
@@ -441,8 +457,10 @@ class GameView {
         ctx.fillStyle = g;
         ctx.fillRect(Math.min(x, x + dir * w), p.cutoffY, w, p.judgeY - p.cutoffY);
       };
-      _drawGlow(volLeft,  -1, laserColors.L + '33');
-      _drawGlow(volRight,  1, laserColors.R + '33');
+      if (im !== 'wireframe' && im !== 'simplified') {
+        _drawGlow(volLeft,  -1, LC.L + '33');
+        _drawGlow(volRight,  1, LC.R + '33');
+      }
 
       // ── Scrolling grid (beat/measure lines) ───────────────────────────────
 
@@ -509,14 +527,21 @@ class GameView {
         ctx.moveTo(x0l, sy0); ctx.lineTo(x0r, sy0);
         ctx.lineTo(x1r, sy1); ctx.lineTo(x1l, sy1);
         ctx.closePath();
-        const fg = ctx.createLinearGradient(x1l, 0, x1r, 0);
-        fg.addColorStop(0,   '#8c4000');
-        fg.addColorStop(0.5, '#ff8800cc');
-        fg.addColorStop(1,   '#8c4000');
-        ctx.fillStyle = fg;
-        ctx.shadowColor = '#ff880055'; ctx.shadowBlur = hq ? 8 : 0;
-        ctx.fill();
-        ctx.shadowBlur = 0;
+        if (im === 'wireframe') {
+          ctx.fillStyle = 'rgba(255,136,0,0.07)';
+          ctx.strokeStyle = '#ff9900'; ctx.lineWidth = 2; ctx.shadowBlur = 0;
+          ctx.fill(); ctx.stroke();
+        } else {
+          const fg = ctx.createLinearGradient(x1l, 0, x1r, 0);
+          if (im === 'simplified' || im === 'colorblind') {
+            fg.addColorStop(0, '#ff8800'); fg.addColorStop(1, '#ff8800');
+          } else {
+            fg.addColorStop(0, '#8c4000'); fg.addColorStop(0.5, '#ff8800cc'); fg.addColorStop(1, '#8c4000');
+          }
+          ctx.fillStyle = fg;
+          ctx.shadowColor = '#ff880055'; ctx.shadowBlur = hqE ? 8 : 0;
+          ctx.fill(); ctx.shadowBlur = 0;
+        }
       }
     }
 
@@ -533,15 +558,24 @@ class GameView {
         const lx = this._screenX(ln + 0.01, sy, p);
         const rx = this._screenX(rn - 0.01, sy, p);
         const chipH = Math.max(5, (rx - lx) * 0.12);
-        const fg = ctx.createLinearGradient(lx, 0, rx, 0);
-        fg.addColorStop(0,   '#aa5500');
-        fg.addColorStop(0.3, '#ffcc00');
-        fg.addColorStop(0.7, '#ffcc00');
-        fg.addColorStop(1,   '#aa5500');
-        ctx.fillStyle = fg;
-        ctx.shadowColor = '#ffcc00cc'; ctx.shadowBlur = hq ? 18 : 0;
-        ctx.fillRect(lx, sy - chipH, rx - lx, chipH);
-        ctx.shadowBlur = 0;
+        if (im === 'wireframe') {
+          ctx.fillStyle = 'rgba(255,204,0,0.07)';
+          ctx.fillRect(lx, sy - chipH, rx - lx, chipH);
+          ctx.strokeStyle = '#ffcc00'; ctx.lineWidth = 1.5;
+          ctx.strokeRect(lx, sy - chipH, rx - lx, chipH);
+        } else {
+          if (im === 'simplified' || im === 'colorblind') {
+            ctx.fillStyle = '#ffaa00';
+          } else {
+            const fg = ctx.createLinearGradient(lx, 0, rx, 0);
+            fg.addColorStop(0, '#aa5500'); fg.addColorStop(0.3, '#ffcc00');
+            fg.addColorStop(0.7, '#ffcc00'); fg.addColorStop(1, '#aa5500');
+            ctx.fillStyle = fg;
+          }
+          ctx.shadowColor = '#ffcc00cc'; ctx.shadowBlur = hqE ? 18 : 0;
+          ctx.fillRect(lx, sy - chipH, rx - lx, chipH);
+          ctx.shadowBlur = 0;
+        }
       }
     }
 
@@ -568,30 +602,35 @@ class GameView {
         ctx.lineTo(x1r, sy1); ctx.lineTo(x1l, sy1);
         ctx.closePath();
 
-        // White/bright fill — same visual family as BT chips
-        const hg = ctx.createLinearGradient(0, sy0, 0, sy1);
-        hg.addColorStop(0,   '#9090cc');
-        hg.addColorStop(0.5, '#c8c8f0');
-        hg.addColorStop(1,   '#e8e8ff');
-        ctx.fillStyle = hg;
-        if (isActiveNow) {
-          ctx.shadowColor = '#ffffffcc'; ctx.shadowBlur = hq ? 18 : 0;
-        }
-        ctx.fill();
-        ctx.shadowBlur = 0;
-
-        // Bright white edge outline
-        ctx.strokeStyle = isActiveNow ? '#ffffffcc' : '#aaaaee88';
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-
-        // White top cap at the start of the hold (chip-style header)
-        if (n.y >= tick && n.y <= tick + VT) {
-          const capH = Math.max(3, (x1r - x1l) * 0.07);
-          ctx.fillStyle = '#f8f8ff';
-          ctx.shadowColor = '#ffffffaa'; ctx.shadowBlur = hq ? 14 : 0;
-          ctx.fillRect(x1l, sy1 - capH, x1r - x1l, capH);
+        // White/bright fill — mode-aware
+        if (im === 'wireframe') {
+          ctx.fillStyle = 'rgba(200,200,255,0.06)';
+          ctx.fill();
+          ctx.strokeStyle = '#ccccff'; ctx.lineWidth = 2; ctx.shadowBlur = 0;
+          ctx.stroke();
+        } else {
+          const hg = ctx.createLinearGradient(0, sy0, 0, sy1);
+          if (im === 'simplified' || im === 'colorblind') {
+            hg.addColorStop(0, '#c8c8f0'); hg.addColorStop(1, '#e8e8ff');
+          } else {
+            hg.addColorStop(0, '#9090cc'); hg.addColorStop(0.5, '#c8c8f0'); hg.addColorStop(1, '#e8e8ff');
+          }
+          ctx.fillStyle = hg;
+          if (isActiveNow) {
+            ctx.shadowColor = '#ffffffcc'; ctx.shadowBlur = hqE ? 18 : 0;
+          }
+          ctx.fill();
           ctx.shadowBlur = 0;
+          ctx.strokeStyle = isActiveNow ? '#ffffffcc' : '#aaaaee88';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          if (n.y >= tick && n.y <= tick + VT) {
+            const capH = Math.max(3, (x1r - x1l) * 0.07);
+            ctx.fillStyle = '#f8f8ff';
+            ctx.shadowColor = '#ffffffaa'; ctx.shadowBlur = hqE ? 14 : 0;
+            ctx.fillRect(x1l, sy1 - capH, x1r - x1l, capH);
+            ctx.shadowBlur = 0;
+          }
         }
       }
     }
@@ -611,13 +650,20 @@ class GameView {
         const chipH = Math.max(4, hw * 0.08 * this.btWidthScale);
         const lx = this._screenX(ln + 0.01, sy, p);
         const rx = this._screenX(rn - 0.01, sy, p);
-        ctx.fillStyle = '#e8e8ff';
-        ctx.shadowColor = '#ffffffaa'; ctx.shadowBlur = hq ? 12 : 0;
-        ctx.fillRect(lx, sy - chipH, rx - lx, chipH);
-        ctx.shadowBlur = 0;
-        // White top highlight
-        ctx.fillStyle = '#ffffffcc';
-        ctx.fillRect(lx, sy - chipH, rx - lx, 2);
+        if (im === 'wireframe') {
+          ctx.fillStyle = 'rgba(200,200,255,0.07)';
+          ctx.fillRect(lx, sy - chipH, rx - lx, chipH);
+          ctx.strokeStyle = '#ccccff'; ctx.lineWidth = 1.5;
+          ctx.strokeRect(lx, sy - chipH, rx - lx, chipH);
+          ctx.shadowBlur = 0;
+        } else {
+          ctx.fillStyle = '#e8e8ff';
+          ctx.shadowColor = '#ffffffaa'; ctx.shadowBlur = hqE ? 12 : 0;
+          ctx.fillRect(lx, sy - chipH, rx - lx, chipH);
+          ctx.shadowBlur = 0;
+          ctx.fillStyle = '#ffffffcc';
+          ctx.fillRect(lx, sy - chipH, rx - lx, 2);
+        }
       }
     }
 
@@ -629,9 +675,9 @@ class GameView {
     if (!useGL) {
 
     for (let side = 0; side < 2; side++) {
-      const mainCol = side === 0 ? laserColors.L  : laserColors.R;
-      const edgeCol = side === 0 ? laserColors.Le : laserColors.Re;
-      const glowCol = side === 0 ? laserColors.Lg : laserColors.Rg;
+      const mainCol = side === 0 ? LC.L  : LC.R;
+      const edgeCol = side === 0 ? LC.Le : LC.Re;
+      const glowCol = side === 0 ? LC.Lg : LC.Rg;
       // Laser ribbon half-width as fraction of lane half-width.
       // Sourced from the GameView static so the position/width pair stays in
       // sync: ribbon's outer edge lands on the BT lane boundary at v=0/v=1.
@@ -886,7 +932,7 @@ class GameView {
       // laser sections — previously they desynced because _laserX defaulted
       // to non-wide.
       const sx = this._laserX(lp.v, p.judgeY, p, lp.wide);
-      const col = side === 0 ? laserColors.L : laserColors.R;
+      const col = side === 0 ? LC.L : LC.R;
       const hw  = this._halfW(p.judgeY, p) * 0.105 * 2;
       ctx.save();
       // Animated diamond cursor — no solid block overlay
@@ -966,7 +1012,7 @@ class GameView {
       const WARN_TICKS = TICKS_PER_MEASURE * 2; // 2-measure lookahead
       const hw1 = this._halfW(p.judgeY, p);
       for (let side = 0; side < 2; side++) {
-        const col = side === 0 ? laserColors.L : laserColors.R;
+        const col = side === 0 ? LC.L : LC.R;
         // Find the nearest upcoming laser section that hasn't started yet
         let upcoming = null;
         for (const sec of chart.lasers[side]) {
