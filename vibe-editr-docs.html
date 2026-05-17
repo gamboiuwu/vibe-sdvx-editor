@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.15 · 2026</span>
+  <span class="version">v0.0.16 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,19 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.16</span>Velocity Envelope Editor <span style="font-size:11px;color:#ffcc44;font-weight:normal;">[Experimental]</span></h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Velocity Envelope Editor</strong> — Ableton-style clip-envelope canvas for chart scroll speed events. Open via "Open Envelope Editor" in the Chart Velocity panel on the left sidebar.</li>
+    <li><span class="tag add">add</span><strong>Drag-to-place nodes</strong> — left-click anywhere on the canvas to drop a new velocity node, or drag an existing node to reposition it. Right-click a node to delete it.</li>
+    <li><span class="tag add">add</span><strong>Linear ramps</strong> — double-click any segment to toggle between <em>Step</em> (instant velocity change) and <em>Linear</em> (smooth ramp to the next value). Linear segments display as diagonal ramp lines; step segments show the classic horizontal staircase.</li>
+    <li><span class="tag add">add</span><strong>Snap controls</strong> — snap tick position to Free / Measure / Beat / 1/2-Beat / 1/4-Beat, and snap speed to Free / 0.25 / 0.5 / 1.0 increments.</li>
+    <li><span class="tag add">add</span><strong>Step/Linear toggle in node popup</strong> — right-click a velocity pill in the 2D editor to open the existing velocity popup, which now includes Step and Linear ~ transition buttons to switch the outgoing segment type for that node.</li>
+    <li><span class="tag add">add</span><strong>KSON round-trip</strong> — linear segments are exported as <code>"l"</code> in the KSON scroll_speed array and re-imported correctly. Step segments are exported without the third element for backward compatibility.</li>
+    <li><span class="tag chg">chg</span>Velocity pills in the 2D lane editor show a tilde suffix (<code>vel ~</code>) when their outgoing segment is a linear ramp, so linear transitions are visually distinct in both the 2D and envelope views.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.15</span>Multi-Interpretation Preview Modes</h4>

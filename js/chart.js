@@ -70,34 +70,55 @@ class ChartData {
     this.scrollSpeedEvents = [{ y: 0, speed: 1.0 }];
   }
 
+  // Returns the effective scroll speed multiplier at tick y, supporting
+  // linear interpolation between consecutive events.
+  // Each event's .interp field ('step' | 'linear', default 'step') describes
+  // the transition FROM that event TO the next one.
   getScrollSpeedAt(y) {
     const evs = this.scrollSpeedEvents;
-    let s = evs?.[0]?.speed ?? 1.0;
-    if (!evs) return s;
-    for (const ev of evs) {
-      if (ev.y <= y) s = ev.speed;
-      else break;
+    if (!evs || !evs.length) return 1.0;
+    for (let i = 0; i < evs.length - 1; i++) {
+      const ev0 = evs[i], ev1 = evs[i + 1];
+      if (y < ev1.y) {
+        if ((ev0.interp ?? 'step') === 'linear' && ev1.y > ev0.y) {
+          const t = (y - ev0.y) / (ev1.y - ev0.y);
+          return ev0.speed + t * (ev1.speed - ev0.speed);
+        }
+        return ev0.speed;
+      }
     }
-    return s;
+    return evs[evs.length - 1].speed;
   }
 
   // Integrated visual scroll distance from tick 0 to y.
-  // Result is in "virtual tick" units that the game preview consumes as
-  // dt.  Pure ticks if no velocity events have been added.
+  // Uses trapezoidal integration for linear segments, rectangular for step.
   scrollDistanceTo(y) {
     const evs = this.scrollSpeedEvents;
     if (!evs || evs.length === 0) return y;
-    let dist  = 0;
-    let lastY = evs[0].y;
-    let speed = evs[0].speed;
-    for (let i = 1; i < evs.length; i++) {
-      const ev = evs[i];
-      if (ev.y >= y) break;
-      dist  += (ev.y - lastY) * speed;
-      lastY  = ev.y;
-      speed  = ev.speed;
+    let dist = 0;
+    for (let i = 0; i < evs.length - 1; i++) {
+      const ev0 = evs[i], ev1 = evs[i + 1];
+      if (ev1.y >= y) {
+        // y falls within this segment
+        const seg = y - ev0.y;
+        if ((ev0.interp ?? 'step') === 'linear' && ev1.y > ev0.y) {
+          const t = seg / (ev1.y - ev0.y);
+          const speedAtY = ev0.speed + t * (ev1.speed - ev0.speed);
+          dist += (ev0.speed + speedAtY) / 2 * seg;
+        } else {
+          dist += ev0.speed * seg;
+        }
+        return dist;
+      }
+      // Complete segment
+      if ((ev0.interp ?? 'step') === 'linear') {
+        dist += (ev0.speed + ev1.speed) / 2 * (ev1.y - ev0.y);
+      } else {
+        dist += ev0.speed * (ev1.y - ev0.y);
+      }
     }
-    dist += (y - lastY) * speed;
+    // y is beyond all events
+    dist += evs[evs.length - 1].speed * (y - evs[evs.length - 1].y);
     return dist;
   }
 
@@ -106,20 +127,30 @@ class ChartData {
     return this.scrollDistanceTo(to) - this.scrollDistanceTo(from);
   }
 
-  addScrollSpeedEvent(y, speed) {
+  // interp: 'step' | 'linear' — transition FROM this event TO the next.
+  addScrollSpeedEvent(y, speed, interp = 'step') {
     if (!Number.isFinite(speed) || speed <= 0) return;
     if (!Array.isArray(this.scrollSpeedEvents)) this.scrollSpeedEvents = [];
+    // Preserve existing interp when replacing an event at the same tick
+    const existing = this.scrollSpeedEvents.find(e => e.y === y);
+    const resolvedInterp = interp ?? existing?.interp ?? 'step';
     this.scrollSpeedEvents = this.scrollSpeedEvents.filter(e => e.y !== y);
-    this.scrollSpeedEvents.push({ y, speed });
+    this.scrollSpeedEvents.push({ y, speed, interp: resolvedInterp });
     this.scrollSpeedEvents.sort((a, b) => a.y - b.y);
     if (!this.scrollSpeedEvents.length || this.scrollSpeedEvents[0].y !== 0) {
-      this.scrollSpeedEvents.unshift({ y: 0, speed: 1.0 });
+      this.scrollSpeedEvents.unshift({ y: 0, speed: 1.0, interp: 'step' });
     }
   }
 
   removeScrollSpeedEvent(y) {
     if (y === 0) return; // anchor event at tick 0 is required
     this.scrollSpeedEvents = (this.scrollSpeedEvents || []).filter(e => e.y !== y);
+  }
+
+  // Set the interpolation type for the segment starting at tick y.
+  setScrollSpeedInterp(y, interp) {
+    const ev = (this.scrollSpeedEvents || []).find(e => e.y === y);
+    if (ev) ev.interp = interp === 'linear' ? 'linear' : 'step';
   }
 
   // Convert measure+beat (0-indexed) to tick

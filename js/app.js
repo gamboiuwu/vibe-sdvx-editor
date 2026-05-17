@@ -362,6 +362,7 @@ function switchToTab(idx) {
     renderer.playTick  = tabs[activeTabIdx].playTick  ?? 0;
   }
   if (gameView) { gameView.chart = chart; gameView.hispeed = chartSpeed; gameView._totalWeight = 0; gameView.playTick = renderer?.playTick ?? 0; }
+  if (typeof velEnvEditor !== 'undefined' && velEnvEditor) velEnvEditor.setChart(chart);
   // Sync hispeed UI sliders to restored value
   const _hsSl  = document.getElementById('pvc-hispeed');
   const _hsLbl = document.getElementById('pvc-hispeed-label');
@@ -2729,6 +2730,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
   // Chart Velocity modal
   document.getElementById('btn-add-scroll-speed').addEventListener('click', () => document.getElementById('modal-scroll-speed').style.display = 'flex');
+  document.getElementById('btn-open-velenv')?.addEventListener('click', () => openVelEnvEditor());
   document.getElementById('ss-ev-cancel').addEventListener('click', () => document.getElementById('modal-scroll-speed').style.display = 'none');
   document.getElementById('ss-ev-ok').addEventListener('click', () => {
     const measure = +document.getElementById('ss-ev-measure').value - 1;
@@ -5692,6 +5694,7 @@ function updateTimeSigList() {
 }
 
 function updateScrollSpeedEventList() {
+  if (typeof velEnvEditor !== 'undefined' && velEnvEditor) velEnvEditor.invalidate();
   const list = document.getElementById('scroll-speed-event-list');
   if (!list) return;
   list.innerHTML = '';
@@ -5804,6 +5807,7 @@ function _showVelPopup(tick, clientX, clientY) {
   const m = Math.floor(tick / TICKS_PER_MEASURE) + 1;
   const b = Math.floor((tick % TICKS_PER_MEASURE) / TICKS_PER_BEAT) + 1;
 
+  const curInterp = ev.interp ?? 'step';
   pop.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
       <span style="color:#ff9900;font-weight:700;font-size:11px;letter-spacing:1px">CHART VELOCITY</span>
@@ -5816,6 +5820,19 @@ function _showVelPopup(tick, clientX, clientY) {
       <input type="number" id="vel-pop-num" min="0.05" max="5" step="0.05"
         value="${ev.speed.toFixed(2)}"
         style="width:54px;background:#111;border:1px solid #333;border-radius:3px;color:#ddd;padding:2px 4px;font-size:11px">
+    </div>
+    <div style="display:flex;align-items:center;gap:5px;margin-bottom:8px">
+      <span style="color:#888;font-size:9px;white-space:nowrap">Transition:</span>
+      <button id="vel-pop-step"   data-mode="step"
+        style="flex:1;font-size:9px;padding:2px 6px;border-radius:3px;cursor:pointer;
+               background:${curInterp==='step'?'#2a1e00':'#111'};
+               border:1px solid ${curInterp==='step'?'#ff9900':'#444'};
+               color:${curInterp==='step'?'#ff9900':'#777'}">Step</button>
+      <button id="vel-pop-linear" data-mode="linear"
+        style="flex:1;font-size:9px;padding:2px 6px;border-radius:3px;cursor:pointer;
+               background:${curInterp==='linear'?'#2a1e00':'#111'};
+               border:1px solid ${curInterp==='linear'?'#ff9900':'#444'};
+               color:${curInterp==='linear'?'#ff9900':'#777'}">Linear ~</button>
     </div>
     <div style="text-align:right">
       <button id="vel-pop-del"
@@ -5836,6 +5853,23 @@ function _showVelPopup(tick, clientX, clientY) {
     updateScrollSpeedEventList();
     render();
   };
+  const stepBtn   = pop.querySelector('#vel-pop-step');
+  const linearBtn = pop.querySelector('#vel-pop-linear');
+  const _syncInterp = (mode) => {
+    saveUndo(`Chart Velocity transition → ${mode}`);
+    chart.setScrollSpeedInterp(tick, mode);
+    const isStep = mode === 'step';
+    stepBtn.style.background   = isStep  ? '#2a1e00' : '#111';
+    stepBtn.style.borderColor  = isStep  ? '#ff9900' : '#444';
+    stepBtn.style.color        = isStep  ? '#ff9900' : '#777';
+    linearBtn.style.background = !isStep ? '#2a1e00' : '#111';
+    linearBtn.style.borderColor= !isStep ? '#ff9900' : '#444';
+    linearBtn.style.color      = !isStep ? '#ff9900' : '#777';
+    render();
+  };
+  stepBtn.addEventListener('click',   () => _syncInterp('step'));
+  linearBtn.addEventListener('click', () => _syncInterp('linear'));
+
   slider.addEventListener('input', () => _sync(slider.value));
   numInp.addEventListener('input', () => _sync(numInp.value));
   delBtn.addEventListener('click', () => {

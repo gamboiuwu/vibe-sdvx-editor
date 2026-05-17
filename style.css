@@ -3102,3 +3102,11 @@ kbd {
 .wn-tag.add { background: #1f5a1f; color: #d8f5d0; }
 .wn-tag.fix { background: #7a2a10; color: #ffe0d8; }
 .wn-tag.chg { background: #20308a; color: #e0e4ff; }
+
+/* Velocity Envelope Editor window */
+#velenv-win button:hover {
+  filter: brightness(1.2);
+}
+#velenv-canvas {
+  cursor: crosshair;
+}

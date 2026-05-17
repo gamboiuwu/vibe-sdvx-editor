@@ -114,7 +114,11 @@ function exportKson(chart) {
     beat: {
       bpm:          chart.bpmEvents.map(ev => [Math.round(ev.y * KSH_TO_KSON), ev.bpm]),
       time_sig:     chart.timeSigEvents.map(ev => [ev.measure, [ev.num, ev.den]]),
-      scroll_speed: (chart.scrollSpeedEvents || []).map(ev => [Math.round(ev.y * KSH_TO_KSON), ev.speed]),
+      scroll_speed: (chart.scrollSpeedEvents || []).map(ev => {
+        const entry = [Math.round(ev.y * KSH_TO_KSON), ev.speed];
+        if (ev.interp === 'linear') entry.push('l'); // 'l' = linear interpolation
+        return entry;
+      }),
     },
     note: {
       bt: chart.bt.map(lane =>
@@ -228,7 +232,8 @@ function importKson(text) {
   if (Array.isArray(beat.scroll_speed) && beat.scroll_speed.length) {
     chart.scrollSpeedEvents = beat.scroll_speed.map(e => {
       const p = readByPulse(e);
-      return { y: Math.round(p.y / KSH_TO_KSON), speed: Number(p.v) || 1.0 };
+      const interp = Array.isArray(e) && e[2] === 'l' ? 'linear' : 'step';
+      return { y: Math.round(p.y / KSH_TO_KSON), speed: Number(p.v) || 1.0, interp };
     });
     // Ensure anchor at y=0
     if (!chart.scrollSpeedEvents.some(ev => ev.y === 0)) {

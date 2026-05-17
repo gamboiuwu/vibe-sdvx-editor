@@ -791,12 +791,13 @@ class Renderer {
       }
       ctx.globalAlpha = 1;
 
-      // "vel" label
+      // "vel" label (with "~" indicator when outgoing segment is linear)
+      const isLinear = ev.interp === 'linear';
       ctx.font         = 'bold 7px monospace';
       ctx.fillStyle    = isHov ? '#ffffff' : VEL_COLOR;
       ctx.textAlign    = 'left';
       ctx.textBaseline = 'middle';
-      ctx.fillText('vel', pillX + 6, yBase - PILL_H / 2);
+      ctx.fillText(isLinear ? 'vel ~' : 'vel', pillX + 6, yBase - PILL_H / 2);
 
       // Speed value right-aligned
       const valStr = `×${ev.speed.toFixed(2).replace(/\.?0+$/, '')}`;
