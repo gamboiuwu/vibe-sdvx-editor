@@ -10,26 +10,28 @@ const TOOL_REGISTRY = [
   { id: 'laser-smooth',cat: 'Edit',     label: 'Laser Smooth',     icon: '〜' },
   { id: 'fx-gen',      cat: 'Edit',     label: 'FX Generator',     icon: '⚡' },
   { id: 'hold-render', cat: 'Edit',     label: 'Hold Editor',      icon: '▬' },
-  { id: 'scale',       cat: 'Edit',     label: 'Scale Suggester',  icon: '🎵' },
-  { id: 'pattern-lib', cat: 'Edit',     label: 'Pattern Library',  icon: '📚' },
+  { id: 'scale',       cat: 'Edit',     label: 'Scale Suggester',  icon: '♫' },
+  { id: 'pattern-lib', cat: 'Edit',     label: 'Pattern Library',  icon: '≡' },
   // Analysis
-  { id: 'density-heatmap',cat:'Analysis',label:'Density Heatmap',  icon: '🌡' },
+  { id: 'density-heatmap',cat:'Analysis',label:'Density Heatmap',  icon: '≋'  },
   { id: 'multi-sync',  cat: 'Analysis', label: 'Multi-Chart Sync', icon: '⇄'  },
   { id: 'vol-angle',   cat: 'Analysis', label: 'VOL Rotation',     icon: '↻'  },
-  { id: 'hand-opt',    cat: 'Analysis', label: 'Hand Optimizer',   icon: '✋' },
+  { id: 'hand-opt',    cat: 'Analysis', label: 'Hand Optimizer',   icon: '◈'  },
   { id: 'symmetry',    cat: 'Analysis', label: 'Symmetry Check',   icon: '⚖'  },
   { id: 'timing-window',cat:'Analysis', label: 'Timing Windows',   icon: '⏱'  },
+  // Preview
+  { id: 'visual-mode', cat: 'Preview',  label: 'Visual Mode',      icon: '◑'  },
   // Audio
-  { id: 'offset-finder',cat:'Audio',   label: 'Offset Finder',    icon: '🎙'  },
-  { id: 'keysound',    cat: 'Audio',    label: 'Keysound Map',     icon: '🔑'  },
-  { id: 'waveform-align',cat:'Audio',  label: 'Waveform Align',   icon: '🌊'  },
-  { id: 'audio-anchor', cat: 'Audio',  label: 'Audio Anchoring',  icon: '🎯'  },
+  { id: 'offset-finder',cat:'Audio',    label: 'Offset Finder',    icon: '◉'  },
+  { id: 'keysound',    cat: 'Audio',    label: 'Keysound Map',     icon: '◆'  },
+  { id: 'waveform-align',cat:'Audio',   label: 'Waveform Align',   icon: '≈'  },
+  { id: 'audio-anchor', cat: 'Audio',   label: 'Audio Anchoring',  icon: '◎'  },
   // Metadata
-  { id: 'jacket-meta', cat: 'Metadata',label: 'Jacket Meta',      icon: '🖼'  },
+  { id: 'jacket-meta', cat: 'Metadata', label: 'Jacket Meta',      icon: '▣'  },
   // Validate
-  { id: 'validity',    cat: 'Validate', label: 'Validity Checker', icon: '✓'   },
-  { id: 'collision',   cat: 'Validate', label: 'Collision Detect', icon: '💥'  },
-  { id: 'export-validate',cat:'Validate',label:'Export Validator', icon: '🚀'  },
+  { id: 'validity',    cat: 'Validate', label: 'Validity Checker', icon: '✓'  },
+  { id: 'collision',   cat: 'Validate', label: 'Collision Detect', icon: '✗'  },
+  { id: 'export-validate',cat:'Validate',label:'Export Validator', icon: '▶'  },
 ];
 
 // ── Per-tool settings schema ──────────────────────────────────────────────────
@@ -143,19 +145,18 @@ function _buildWindow() {
         <button class="tw-tl tw-tl-min"    id="tw-min"   title="Minimize"></button>
         <button class="tw-tl tw-tl-max"    id="tw-max"   title="Maximize/Restore"></button>
       </div>
-      <span class="tw-win-title">🔧 Tools Hub — vibe-editr</span>
+      <span class="tw-win-title">Tools Hub — vibe-editr</span>
       <span class="tw-win-spacer"></span>
     </div>
     <div class="tw-body">
       <nav class="tw-sidebar" id="tw-sidebar">
         <div class="tw-search-wrap">
-          <input class="tw-search-inp" id="tw-search" placeholder="🔍  Search tools…" type="text">
+          <input class="tw-search-inp" id="tw-search" placeholder="Search tools…" type="text">
         </div>
         <div class="tw-tool-list" id="tw-tool-list"></div>
       </nav>
       <div class="tw-main" id="tw-main">
         <div class="tw-welcome" id="tw-welcome">
-          <div style="font-size:40px;margin-bottom:10px">🔧</div>
           <div style="font-size:16px;font-weight:700;color:#d8d8f0;margin-bottom:6px">Tools Hub</div>
           <div style="font-size:12px;color:#5558a0">Select a tool from the sidebar to get started.<br>Pin your favourites with ★ for quick access.</div>
         </div>
@@ -500,6 +501,7 @@ function _renderTool(id, container) {
     case 'audio-anchor':  return _toolAudioAnchor(container);
     case 'collision':     return _toolCollision(container);
     case 'export-validate':return _toolExportValidate(container);
+    case 'visual-mode':   return _toolVisualMode(container);
     default: container.textContent = 'Unknown tool: ' + id;
   }
 }
@@ -1140,7 +1142,7 @@ function _toolDensityHeatmap(c) {
 
   const winSel  = mkSel([[1,'1 measure'],[2,'2 measures'],[4,'4 measures'],[8,'8 measures'],[16,'16 measures']], 2);
   const modeSel = mkSel([['perLane','Per Lane'],['combined','Combined']], 'perLane');
-  const metSel  = mkSel([['volatility','⚡ Volatility'],['ticks','Tick Weight'],['beats','Beats Covered'],['pct','% Fill']], 'volatility');
+  const metSel  = mkSel([['volatility','Volatility'],['ticks','Tick Weight'],['beats','Beats Covered'],['pct','% Fill']], 'volatility');
 
   ctrl1.append(mkLbl('Window:'), winSel, mkLbl('View:'), modeSel, mkLbl('Metric:'), metSel);
   wrap.appendChild(ctrl1);
@@ -1601,8 +1603,8 @@ function _toolDensityHeatmap(c) {
       return card;
     };
 
-    snapshotWrap.appendChild(makeCard(peakCol, '🔥 Peak',     '#ff8844'));
-    snapshotWrap.appendChild(makeCard(lowCol,  '❄ Quietest',  '#4499ff'));
+    snapshotWrap.appendChild(makeCard(peakCol, 'Peak',    '#ff8844'));
+    snapshotWrap.appendChild(makeCard(lowCol,  'Quietest','#4499ff'));
   }
 
   // ── Difficulty estimate card ───────────────────────────────────────────────
@@ -1863,7 +1865,7 @@ function _toolDensityHeatmap(c) {
     ctx.fillText(
       _metric === 'ticks'      ? 'density  (BT/FX: ticks · VOL: Σ|Δpos|)' :
       _metric === 'beats'      ? 'beats covered' :
-      _metric === 'volatility' ? '⚡ volatility  (change events + simultaneity bonus)' :
+      _metric === 'volatility' ? 'volatility  (change events + simultaneity bonus)' :
       '% fill',
       lgX + lgW / 2, lgY + lgH + 10);
   }
@@ -1889,7 +1891,7 @@ function _toolDensityHeatmap(c) {
     jumpLbl.textContent = `Measure ${startM}${_windowM > 1 ? '–' + endM : ''}`;
 
     const visLanes = ALL_LANES.filter(l => _groups[l.group]);
-    let lines = [`📍 M${startM}`];
+    let lines = [`M${startM}`];
     visLanes.forEach(lane => {
       const li  = ALL_LANES.indexOf(lane);
       const v   = _counts[li]?.[ci_abs] ?? 0;
@@ -2261,12 +2263,12 @@ function _toolVolAngle(c) {
 
     // ── D. Difficulty Tags ─────────────────────────────────────────────────
     const tags = [];
-    if (globalAvgVel > 3.0)   tags.push({ text: '⚡ High Speed',       color: '#ffcc00', bg: '#2a2000' });
-    if (oscPerMin > 10)        tags.push({ text: '↺ Heavy Rotation',    color: '#ff8833', bg: '#2a1500' });
-    if (totalSlams > 5)        tags.push({ text: '🎯 Precision Slams',  color: '#ff4499', bg: '#2a001a' });
-    if (peakSingleTravel > 0.8)tags.push({ text: '↔ Full Range',        color: '#44aaff', bg: '#001a2a' });
-    if (+oscPct > 50)          tags.push({ text: '🌀 Oscillating',      color: '#aa44ff', bg: '#150022' });
-    if (globalAvgVel < 0.5)    tags.push({ text: '😌 Calm Lasers',      color: '#44ff88', bg: '#002211' });
+    if (globalAvgVel > 3.0)   tags.push({ text: 'High Speed',         color: '#ffcc00', bg: '#2a2000' });
+    if (oscPerMin > 10)        tags.push({ text: '↺ Heavy Rotation',   color: '#ff8833', bg: '#2a1500' });
+    if (totalSlams > 5)        tags.push({ text: 'Precision Slams',    color: '#ff4499', bg: '#2a001a' });
+    if (peakSingleTravel > 0.8)tags.push({ text: '↔ Full Range',       color: '#44aaff', bg: '#001a2a' });
+    if (+oscPct > 50)          tags.push({ text: 'Oscillating',         color: '#aa44ff', bg: '#150022' });
+    if (globalAvgVel < 0.5)    tags.push({ text: 'Calm Lasers',        color: '#44ff88', bg: '#002211' });
 
     if (tags.length > 0) {
       const tagsWrap = document.createElement('div');
@@ -3023,7 +3025,7 @@ function _showHandPopup(popup, s, e) {
     'line-height:1.5',
   ].join(';');
   suggestBox.innerHTML =
-    `<div style="font-size:8px;font-weight:700;color:#44aa77;margin-bottom:3px;font-family:monospace;letter-spacing:.03em">💡 SUGGESTION</div>`+
+    `<div style="font-size:8px;font-weight:700;color:#44aa77;margin-bottom:3px;font-family:monospace;letter-spacing:.03em">SUGGESTION</div>`+
     `<div>${suggest}</div>`;
   popup.appendChild(suggestBox);
 
@@ -4027,9 +4029,9 @@ function _toolTimingWindow(c) {
 
     // Cards to render: dense1, dense2, dense3, laser1, quietest
     const cards = [
-      ...topDense.map((d, i) => ({ m: d.m, label: i === 0 ? '🔥 Densest' : `🔥 Dense #${i+1}`, color: '#ff8844', sub: `${d.cnt} chips` })),
-      ...topLaser.map(d    => ({ m: d.m, label: '🌊 Most VOL', color: '#4477ff', sub: `${d.v} pts` })),
-      ...quietest.map(d    => ({ m: d.m, label: '❄ Quietest',  color: '#44aaff', sub: `${d.cnt} chips` })),
+      ...topDense.map((d, i) => ({ m: d.m, label: i === 0 ? 'Densest' : `Dense #${i+1}`, color: '#ff8844', sub: `${d.cnt} chips` })),
+      ...topLaser.map(d    => ({ m: d.m, label: 'Most VOL',  color: '#4477ff', sub: `${d.v} pts` })),
+      ...quietest.map(d    => ({ m: d.m, label: 'Quietest',  color: '#44aaff', sub: `${d.cnt} chips` })),
     ];
 
     if (!cards.length) {
@@ -4324,7 +4326,7 @@ function _toolAudioAnchor(c) {
   // ── Header ──────────────────────────────────────────────────────────────
   const hdr = document.createElement('div');
   hdr.style.cssText = 'font-size:10px;font-weight:bold;color:#ffaa55;letter-spacing:0.05em';
-  hdr.textContent = '🎯 Audio Event Anchoring';
+  hdr.textContent = 'Audio Event Anchoring';
   wrap.appendChild(hdr);
 
   const desc = document.createElement('div');
@@ -4371,7 +4373,7 @@ function _toolAudioAnchor(c) {
   mgnSlider.style.cssText='flex:1;min-width:60px;accent-color:#ffaa55';
   mgnSlider.addEventListener('input', () => { localMarginMs=+mgnSlider.value; mgnVal.textContent=localMarginMs+'ms'; });
 
-  const detectBtn = mkBtn2('🔍 Detect Transients', '#ffaa55', () => {
+  const detectBtn = mkBtn2('Detect Transients', '#ffaa55', () => {
     const buf = _buf();
     if (!buf) { statusDiv.style.color='#f87'; statusDiv.textContent='⚠ No audio loaded.'; return; }
     statusDiv.style.color='#aac'; statusDiv.textContent='⏳ Detecting…';
@@ -4451,7 +4453,7 @@ function _toolAudioAnchor(c) {
   // ── Place notes at transients ─────────────────────────────────────────────
   const placeHdr = document.createElement('div');
   placeHdr.style.cssText='font-size:10px;font-weight:bold;color:#aaff88;letter-spacing:0.05em';
-  placeHdr.textContent='🎹 Place Notes at Transients';
+  placeHdr.textContent='Place Notes at Transients';
   wrap.appendChild(placeHdr);
 
   const laneLabels = ['BT-A','BT-B','BT-C','BT-D','FX-L','FX-R'];
@@ -4503,7 +4505,7 @@ function _toolAudioAnchor(c) {
   // ── Transient list ────────────────────────────────────────────────────────
   const listHdr = document.createElement('div');
   listHdr.style.cssText='font-size:10px;font-weight:bold;color:#aac;letter-spacing:0.05em';
-  listHdr.textContent='📋 Detected Transients';
+  listHdr.textContent='Detected Transients';
   wrap.appendChild(listHdr);
 
   const listBox = document.createElement('div');
@@ -4811,7 +4813,7 @@ function _toolWaveformAlign(c) {
   const statusDiv = document.createElement('div');
   statusDiv.style.cssText = 'font-size:10px;color:#778;padding:2px 0';
 
-  const decodeBtn = mkBtn2('🎵 Decode Audio', '#88ccff', () => {
+  const decodeBtn = mkBtn2('Decode Audio', '#88ccff', () => {
     const buf = _buf();
     if (!buf) {
       statusDiv.textContent = '⚠ No audio loaded — use Chart menu → Load Audio File first.';
@@ -4853,7 +4855,7 @@ function _toolWaveformAlign(c) {
   // ── Overlay controls ──────────────────────────────────────────────────────
   const overlayHdr = document.createElement('div');
   overlayHdr.style.cssText = 'font-size:10px;font-weight:bold;color:#88ccff;letter-spacing:0.05em';
-  overlayHdr.textContent = '🌊 Editor Overlay';
+  overlayHdr.textContent = 'Editor Overlay';
   wrap.appendChild(overlayHdr);
 
   const ovToggle   = mkChk('Show waveform on editor lanes', false, v => { showOverlay = v; applyOverlay(); });
@@ -4933,7 +4935,7 @@ function _toolWaveformAlign(c) {
   }
 
   // Auto-align: set offset so first transient lands on beat 1 (tick 0)
-  const autoBtn = mkBtn2('⚡ Auto-align to first transient', '#ffcc44', () => {
+  const autoBtn = mkBtn2('Auto-align to first transient', '#ffcc44', () => {
     if (!transients.length) { return; }
     // First transient in audio should be the first beat
     localOffsetMs = Math.round(transients[0] * 1000);
@@ -4947,7 +4949,7 @@ function _toolWaveformAlign(c) {
   wrap.append(autoBtn, autoMsg);
 
   // Apply + Reset
-  const applyBtn = mkBtn2('💾 Save offset to chart metadata', '#88ffaa', () => {
+  const applyBtn = mkBtn2('Save offset to chart metadata', '#88ffaa', () => {
     const ch = _ch();
     if (!ch) return;
     ch.meta.offset = localOffsetMs;
@@ -4974,7 +4976,7 @@ function _toolWaveformAlign(c) {
   // ── Waveform overview canvas ──────────────────────────────────────────────
   const ovHdr = document.createElement('div');
   ovHdr.style.cssText = 'font-size:10px;font-weight:bold;color:#aa88ff;letter-spacing:0.05em';
-  ovHdr.textContent = '📊 Waveform Overview';
+  ovHdr.textContent = 'Waveform Overview';
   wrap.appendChild(ovHdr);
 
   const ovCanvasWrap = document.createElement('div');
@@ -5007,7 +5009,7 @@ function _toolWaveformAlign(c) {
   // ── Analysis ──────────────────────────────────────────────────────────────
   const anaHdr = document.createElement('div');
   anaHdr.style.cssText = 'font-size:10px;font-weight:bold;color:#88ffcc;letter-spacing:0.05em';
-  anaHdr.textContent = '🔍 Audio Analysis';
+  anaHdr.textContent = 'Audio Analysis';
   wrap.appendChild(anaHdr);
   const analysisBox = document.createElement('div');
   analysisBox.style.cssText = 'background:#0c0c1e;border:1px solid #1e1e3a;border-radius:5px;padding:6px 8px;min-height:20px';
@@ -5170,6 +5172,98 @@ function _toolExportValidate(c) {
   sec.appendChild(runBtn);
   sec.appendChild(summary);
   sec.appendChild(results);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Visual Mode — multi-interpretation preview rendering
+   ═══════════════════════════════════════════════════════════════════════════ */
+function _toolVisualMode(c) {
+  const gv = () => (typeof gameView !== 'undefined' ? gameView : null);
+
+  const modes = [
+    {
+      id: 'standard',
+      label: 'Standard',
+      desc: 'Full SDVX-style rendering with gradients and glow. Default behavior, unchanged from the arcade aesthetic.',
+    },
+    {
+      id: 'simplified',
+      label: 'Simple',
+      desc: 'Flat solid colors, no gradients or glow effects. BT notes render white, FX notes orange. Best for reading dense sections at high hi-speed.',
+    },
+    {
+      id: 'colorblind',
+      label: 'Colorblind',
+      desc: 'Deuteranopia and protanopia-safe palette. Right laser is remapped from pink/magenta to gold. All other elements retain standard appearance.',
+    },
+    {
+      id: 'wireframe',
+      label: 'Wireframe',
+      desc: 'Near-transparent fills with bright outlines only. BT notes are white stroked boxes, FX notes orange, lasers drawn as outlines. Use for structural analysis.',
+    },
+  ];
+
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'display:flex;flex-direction:column;gap:8px;padding:2px 0';
+
+  const desc = document.createElement('div');
+  desc.style.cssText = 'font-size:9px;color:#556;line-height:1.5;padding:2px 0';
+  desc.textContent = 'Changes the visual rendering style of the game preview for readability testing. Switches instantly without modifying chart data. Saved with Save Config.';
+  wrap.appendChild(desc);
+
+  const btnWrap = document.createElement('div');
+  btnWrap.style.cssText = 'display:flex;flex-direction:column;gap:5px';
+
+  const buttons = {};
+
+  function syncActive() {
+    const active = gv()?.interpMode ?? 'standard';
+    for (const [id, el] of Object.entries(buttons)) {
+      const on = id === active;
+      el.style.background   = on ? '#0d2240' : '#07071a';
+      el.style.borderColor  = on ? '#00cfff' : '#1e1e40';
+      el.querySelector('.vm-lbl').style.color      = on ? '#00cfff' : '#8888bb';
+      el.querySelector('.vm-lbl').style.fontWeight = on ? '700' : '400';
+    }
+  }
+
+  function applyMode(id) {
+    const v = gv();
+    if (!v) return;
+    v.interpMode = id;
+    // Mirror to any multi-chart views
+    if (typeof _multiViews !== 'undefined') {
+      for (const mv of _multiViews) mv.gv.interpMode = id;
+    }
+    // Persist to prefs
+    if (typeof prefs !== 'undefined') {
+      prefs.interpMode = id;
+      try { localStorage.setItem('vibe-editr-prefs', JSON.stringify(prefs)); } catch (_) {}
+    }
+    if (!playing && typeof render === 'function') render();
+    syncActive();
+  }
+
+  for (const mode of modes) {
+    const btn = document.createElement('button');
+    btn.style.cssText = [
+      'text-align:left', 'padding:8px 10px', 'background:#07071a',
+      'border:1px solid #1e1e40', 'border-radius:6px', 'cursor:pointer',
+      'font-family:inherit', 'width:100%', 'transition:border-color .12s,background .12s',
+    ].join(';');
+    btn.innerHTML =
+      `<div class="vm-lbl" style="font-size:11px;font-family:monospace;color:#8888bb;transition:color .12s">${mode.label}</div>` +
+      `<div style="font-size:9px;color:#3a3a66;margin-top:3px;line-height:1.4">${mode.desc}</div>`;
+    btn.addEventListener('mouseenter', () => { if (btn.style.borderColor !== 'rgb(0, 207, 255)') btn.style.borderColor = '#3a3a70'; });
+    btn.addEventListener('mouseleave', syncActive);
+    btn.addEventListener('click', () => applyMode(mode.id));
+    buttons[mode.id] = btn;
+    btnWrap.appendChild(btn);
+  }
+
+  wrap.appendChild(btnWrap);
+  syncActive();
+  c.appendChild(wrap);
 }
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────

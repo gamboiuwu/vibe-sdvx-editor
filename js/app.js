@@ -7141,9 +7141,8 @@ function _initProjectionControls() {
     // Judge Y
     const jyEl = document.getElementById('pvc-judge-y');
     if (jyEl) prefs.judgeYFrac = +jyEl.value;
-    // Visual interpretation mode
-    const activeInterp = document.querySelector('.pvc-interp-btn.active');
-    if (activeInterp) prefs.interpMode = activeInterp.dataset.interp;
+    // Visual interpretation mode (managed by Tools Hub → Visual Mode)
+    if (gameView) prefs.interpMode = gameView.interpMode;
     // Persist
     try { localStorage.setItem('vibe-editr-prefs', JSON.stringify(prefs)); } catch(_) {}
     // Show "Saved!" flash
@@ -7187,24 +7186,8 @@ function _initProjectionControls() {
   // Set default projection to SDVX on load (only if no saved proj mode)
   if (!prefs.projMode) document.querySelector('.pvc-proj-btn[data-proj="sdvx"]')?.click();
 
-  // ── Visual interpretation mode buttons ────────────────────────────────────
-  document.querySelectorAll('.pvc-interp-btn[data-interp]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const mode = btn.dataset.interp;
-      if (!gameView) return;
-      gameView.interpMode = mode;
-      document.querySelectorAll('.pvc-interp-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      if (!playing) gameView.draw();
-      _saveSession();
-    });
-  });
-
-  // Restore saved interpretation mode on load
-  if (prefs.interpMode) {
-    const btn = document.querySelector(`.pvc-interp-btn[data-interp="${prefs.interpMode}"]`);
-    if (btn) btn.click();
-  }
+  // Restore saved interpretation mode directly onto gameView (Visual Mode is now in Tools Hub)
+  if (prefs.interpMode && gameView) gameView.interpMode = prefs.interpMode;
 }
 
 // ── Donation modal ────────────────────────────────────────────────────────────
