@@ -68,6 +68,11 @@ class ChartData {
     // 2.0 = twice as fast, 0.5 = half speed. Notes BEFORE a velocity-change
     // event keep their previous speed; notes after run at the new speed.
     this.scrollSpeedEvents = [{ y: 0, speed: 1.0 }];
+
+    // Glitch intensity events. Each: { y: tick, level: 0-10 }
+    // level 0 = no glitch, 1-10 = increasing intensity.
+    // Sampled at playback time to drive PowerGlitch dynamically.
+    this.glitchEvents = [{ y: 0, level: 0 }];
   }
 
   // Returns the effective scroll speed multiplier at tick y, supporting
@@ -151,6 +156,34 @@ class ChartData {
   setScrollSpeedInterp(y, interp) {
     const ev = (this.scrollSpeedEvents || []).find(e => e.y === y);
     if (ev) ev.interp = interp === 'linear' ? 'linear' : 'step';
+  }
+
+  // ── Glitch events ────────────────────────────────────────────────────────
+
+  addGlitchEvent(y, level) {
+    if (!Array.isArray(this.glitchEvents)) this.glitchEvents = [];
+    this.glitchEvents = this.glitchEvents.filter(e => e.y !== y);
+    this.glitchEvents.push({ y, level: Math.max(0, Math.min(10, level)) });
+    this.glitchEvents.sort((a, b) => a.y - b.y);
+    if (!this.glitchEvents.length || this.glitchEvents[0].y !== 0) {
+      this.glitchEvents.unshift({ y: 0, level: 0 });
+    }
+  }
+
+  removeGlitchEvent(y) {
+    if (y === 0) return;
+    this.glitchEvents = (this.glitchEvents || []).filter(e => e.y !== y);
+  }
+
+  getGlitchLevelAt(y) {
+    const evs = this.glitchEvents;
+    if (!evs || !evs.length) return 0;
+    let last = evs[0];
+    for (const ev of evs) {
+      if (ev.y > y) break;
+      last = ev;
+    }
+    return last.level;
   }
 
   // Convert measure+beat (0-indexed) to tick

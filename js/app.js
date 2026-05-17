@@ -364,10 +364,9 @@ function switchToTab(idx) {
   if (gameView) { gameView.chart = chart; gameView.hispeed = chartSpeed; gameView._totalWeight = 0; gameView.playTick = renderer?.playTick ?? 0; }
   if (typeof velEnvEditor !== 'undefined' && velEnvEditor) {
     velEnvEditor.setChart(chart);
-    const glitch = tabs[activeTabIdx].glitch ?? { enabled: false, level: 3 };
-    velEnvEditor.syncGlitch?.(glitch);
-    _applyGlitch(glitch.enabled, glitch.level);
   }
+  _glitchAppliedLevel = -1; // force re-evaluation for the new chart
+  _updateGlitchFromTick(renderer?.playTick ?? 0);
   // Sync hispeed UI sliders to restored value
   const _hsSl  = document.getElementById('pvc-hispeed');
   const _hsLbl = document.getElementById('pvc-hispeed-label');
@@ -764,6 +763,7 @@ function playFrame(now) {
   // Laser filter + FX audio effects
   updateLaserFilter(renderer.playTick);
   updateFxEffects(renderer.playTick);
+  _updateGlitchFromTick(renderer.playTick);
 
   // Live camera animation from KSH cameraEvents
   updateCameraFromEvents(renderer.playTick);
@@ -2322,7 +2322,7 @@ window.addEventListener('DOMContentLoaded', () => {
   });
   document.getElementById('audio-file-input')?.addEventListener('change', async e => {
     const f = e.target.files[0];
-    if (f) { await loadAudioFile(f); tabs[activeTabIdx].audioBuffer = audioBuffer; }
+    if (f) { await loadAudioFile(f); tabs.forEach(t => { t.audioBuffer = audioBuffer; }); }
     e.target.value = '';
   });
 
@@ -2525,6 +2525,10 @@ window.addEventListener('DOMContentLoaded', () => {
             tabs[slot].chart = c;
             tabs[slot].name  = fallbackName;
           }
+          // Propagate any already-loaded audio to all pack tabs so switching
+          // between difficulties doesn't lose the track.
+          if (audioBuffer) tabs.forEach(t => { if (!t.audioBuffer) t.audioBuffer = audioBuffer; });
+
           // Update global chart before switchToTab so it doesn't save the
           // stale reference back over the first pack chart we just loaded.
           chart = packCharts[0];
@@ -2817,7 +2821,7 @@ window.addEventListener('DOMContentLoaded', () => {
       const musicName = chart.meta.music?.split(/[\\/]/).pop();
       const audioFile = (musicName && files.find(f => f.name === musicName))
                      || files.find(f => audioExts.some(x => f.name.toLowerCase().endsWith(x)));
-      if (audioFile) { await loadAudioFile(audioFile); tabs[activeTabIdx].audioBuffer = audioBuffer; }
+      if (audioFile) { await loadAudioFile(audioFile); tabs.forEach(t => { t.audioBuffer = audioBuffer; }); }
 
       // Jacket
       const imgExts = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
@@ -3255,7 +3259,7 @@ async function _linkAudioFile(file, decodedBuffer = null) {
     audioArrayBuffer = ab.slice(0); // preserve before decodeAudioData may transfer ownership
     audioBuffer = await audioCtx.decodeAudioData(ab);
   }
-  tabs[activeTabIdx].audioBuffer = audioBuffer;
+  tabs.forEach(t => { t.audioBuffer = audioBuffer; });
   document.getElementById('audio-status').textContent = `Audio: ${file.name}`;
   _idbAutosave();
 }
@@ -3540,6 +3544,7 @@ function selCopy() {
     fx:     chart.fx.map(l   => l.filter(n => n.y >= lo && n.y <= hi).map(n => ({...n, y: n.y - lo}))),
     lasers: chart.lasers.map(arr => arr.filter(s => s.y >= lo && s.y <= hi).map(s => ({...s, y: s.y - lo, points: s.points.map(p => ({...p}))}))),
     vel:    (chart.scrollSpeedEvents ?? []).filter(e => e.y >= lo && e.y <= hi).map(e => ({...e, y: e.y - lo})),
+    glitch: (chart.glitchEvents ?? []).filter(e => e.y >= lo && e.y <= hi).map(e => ({...e, y: e.y - lo})),
     dur: hi - lo,
   };
 }
@@ -3600,7 +3605,7 @@ function selPaste() {
   if (!sel.clipboard) return;
   saveUndo('Pasted Notes');
   const at = snapTick(sel.active ? Math.min(sel.startTick, sel.endTick) : renderer.playTick);
-  const { bt, fx, lasers, vel = [] } = sel.clipboard;
+  const { bt, fx, lasers, vel = [], glitch = [] } = sel.clipboard;
   for (let li = 0; li < 4; li++) bt[li].forEach(n => chart.addBtNote(li, at + n.y, n.len));
   for (let li = 0; li < 2; li++) fx[li].forEach(n => chart.addFxNote(li, at + n.y, n.len));
   for (let s = 0; s < 2; s++) {
@@ -3610,7 +3615,9 @@ function selPaste() {
     chart.lasers[s].sort((a, b) => a.y - b.y);
   }
   vel.forEach(ev => chart.addScrollSpeedEvent(at + ev.y, ev.speed, ev.interp ?? 'step'));
+  glitch.forEach(ev => chart.addGlitchEvent(at + ev.y, ev.level));
   if (vel.length) updateScrollSpeedEventList();
+  if (glitch.length) { updateGlitchEventList(); _glitchAppliedLevel = -1; _updateGlitchFromTick(renderer?.playTick ?? 0); }
   render();
 }
 
@@ -4496,6 +4503,26 @@ function onMouseDown(e) {
     }
   }
 
+  // ── Glitch pill click ─────────────────────────────────────────────────────
+  if (e.button === 0 && renderer) {
+    const gHit = _findGlitchPillAt(e.offsetX, e.offsetY);
+    if (gHit !== null) {
+      if (_glitchPopupFixedTick === gHit.tick) {
+        _glitchPopupFixedTick = null;
+        _hideGlitchPopup();
+      } else {
+        _glitchPopupFixedTick = gHit.tick;
+        _showGlitchPopup(gHit.tick, e.clientX, e.clientY);
+      }
+      return;
+    } else {
+      if (_glitchPopupFixedTick !== null) {
+        _glitchPopupFixedTick = null;
+        _hideGlitchPopup();
+      }
+    }
+  }
+
   // ── FX hold click: open param popup (left-click, not during playback) ────
   if (e.button === 0 && renderer && !playing) {
     const fxHit = _findFxHoldAt(e.offsetX, e.offsetY);
@@ -4750,6 +4777,14 @@ function onMouseMove(e) {
       const prevVel = renderer._hoveredVelTick;
       renderer._hoveredVelTick = velHit !== null ? velHit.tick : null;
       if (prevVel !== renderer._hoveredVelTick) render();
+    }
+
+    // ── Glitch pill highlight ─────────────────────────────────────────────
+    if (renderer) {
+      const gHit  = _findGlitchPillAt(e.offsetX, e.offsetY);
+      const prevG = renderer._hoveredGlitchTick;
+      renderer._hoveredGlitchTick = gHit !== null ? gHit.tick : null;
+      if (prevG !== renderer._hoveredGlitchTick) render();
     }
 
     // ── FX hold highlight (hover only — popup fixed by click) ─────────────
@@ -5787,9 +5822,22 @@ function _findCamPillAt(cx, cy) {
   return null;
 }
 
+function updateGlitchEventList() {
+  if (typeof velEnvEditor !== 'undefined' && velEnvEditor) velEnvEditor._gDirty = true;
+  render();
+}
+
 function _findVelPillAt(cx, cy) {
   if (!renderer?._velPillHitZones?.length) return null;
   for (const z of renderer._velPillHitZones) {
+    if (cx >= z.x && cx <= z.x + z.w && cy >= z.y && cy <= z.y + z.h) return z;
+  }
+  return null;
+}
+
+function _findGlitchPillAt(cx, cy) {
+  if (!renderer?._glitchPillHitZones?.length) return null;
+  for (const z of renderer._glitchPillHitZones) {
     if (cx >= z.x && cx <= z.x + z.w && cy >= z.y && cy <= z.y + z.h) return z;
   }
   return null;
@@ -5907,6 +5955,96 @@ function _hideVelPopup() {
   const pop = document.getElementById('vel-hover-popup');
   if (pop) pop.style.display = 'none';
   if (renderer) { renderer._hoveredVelTick = null; render(); }
+}
+
+let _glitchPopupPinned = false;
+let _glitchPopupFixedTick = null;
+
+function _showGlitchPopup(tick, clientX, clientY) {
+  let pop = document.getElementById('glitch-hover-popup');
+  if (!pop) {
+    pop = document.createElement('div');
+    pop.id = 'glitch-hover-popup';
+    pop.style.cssText = [
+      'position:fixed', 'z-index:9999', 'background:#0d0518',
+      'border:1.5px solid #aa44ff', 'border-radius:6px', 'padding:10px 12px',
+      'min-width:180px', 'font-size:12px', 'color:#ddd',
+      'box-shadow:0 4px 16px #aa44ff33', 'display:none',
+    ].join(';');
+    document.body.appendChild(pop);
+    pop.addEventListener('mouseenter', () => { _glitchPopupPinned = true; });
+    pop.addEventListener('mouseleave', () => {
+      _glitchPopupPinned = false;
+      if (_glitchPopupFixedTick === null) _hideGlitchPopup();
+    });
+  }
+
+  const ev = (chart?.glitchEvents ?? []).find(e => e.y === tick);
+  if (!ev) { pop.style.display = 'none'; return; }
+
+  const m = Math.floor(tick / TICKS_PER_MEASURE) + 1;
+  const b = Math.floor((tick % TICKS_PER_MEASURE) / TICKS_PER_BEAT) + 1;
+
+  pop.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <span style="color:#aa44ff;font-weight:700;font-size:11px;letter-spacing:1px">GLITCH</span>
+      <span style="color:#666;font-size:10px">M${m} B${b}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+      <span style="color:#888;font-size:10px">Level</span>
+      <input type="range" id="glitch-pop-slider" min="0" max="10" step="0.5"
+        value="${ev.level}" style="flex:1;accent-color:#aa44ff">
+      <input type="number" id="glitch-pop-num" min="0" max="10" step="0.5"
+        value="${ev.level.toFixed(1)}"
+        style="width:44px;background:#111;border:1px solid #333;border-radius:3px;color:#ddd;padding:2px 4px;font-size:11px">
+    </div>
+    <div style="text-align:right">
+      <button id="glitch-pop-del"
+        style="font-size:10px;background:#3a1010;border:1px solid #aa3333;border-radius:3px;color:#ff6666;padding:2px 8px;cursor:pointer">
+        Delete
+      </button>
+    </div>`;
+
+  const slider = pop.querySelector('#glitch-pop-slider');
+  const numInp = pop.querySelector('#glitch-pop-num');
+  const delBtn = pop.querySelector('#glitch-pop-del');
+
+  const _sync = val => {
+    const v = Math.max(0, Math.min(10, parseFloat(val) || 0));
+    ev.level = v;
+    if (slider !== document.activeElement) slider.value = v;
+    if (numInp !== document.activeElement) numInp.value = v.toFixed(1);
+    _glitchAppliedLevel = -1; // force re-apply
+    _updateGlitchFromTick(renderer?.playTick ?? 0);
+    updateGlitchEventList();
+    render();
+  };
+  slider.addEventListener('input', () => _sync(slider.value));
+  numInp.addEventListener('input', () => _sync(numInp.value));
+  delBtn.addEventListener('click', () => {
+    saveUndo(`Deleted Glitch at M${m}`);
+    chart.removeGlitchEvent(tick);
+    _glitchAppliedLevel = -1;
+    _updateGlitchFromTick(renderer?.playTick ?? 0);
+    updateGlitchEventList();
+    render();
+    _glitchPopupFixedTick = null;
+    _glitchPopupPinned    = false;
+    _hideGlitchPopup();
+  });
+
+  const px = Math.min(clientX + 12, window.innerWidth  - 200);
+  const py = Math.min(clientY - 10, window.innerHeight - 100);
+  pop.style.left    = px + 'px';
+  pop.style.top     = py + 'px';
+  pop.style.display = 'block';
+}
+
+function _hideGlitchPopup() {
+  if (_glitchPopupPinned || _glitchPopupFixedTick !== null) return;
+  const pop = document.getElementById('glitch-hover-popup');
+  if (pop) pop.style.display = 'none';
+  if (renderer) { renderer._hoveredGlitchTick = null; render(); }
 }
 
 // Build and display the hover popup for all camera events at `tick`.
@@ -6707,7 +6845,7 @@ async function recoverAutosave() {
         ensureAudioCtx();
         audioArrayBuffer = savedAudio;
         audioBuffer = await audioCtx.decodeAudioData(savedAudio.slice(0));
-        tabs[activeTabIdx].audioBuffer = audioBuffer;
+        tabs.forEach(t => { t.audioBuffer = audioBuffer; });
         document.getElementById('audio-status').textContent = `Audio: ${data.audioName} (restored)`;
       }
     } catch(audioErr) {
@@ -6933,8 +7071,8 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ── Glitch effect (PowerGlitch) ───────────────────────────────────────────────
-let _glitchCtrl   = null;
-let _glitchActive = false;
+let _glitchCtrl          = null;
+let _glitchActive        = false;
 
 function _levelToGlitchOptions(level) {
   const t = Math.max(0, Math.min(10, level)) / 10;
@@ -6965,27 +7103,26 @@ function _levelToGlitchOptions(level) {
   };
 }
 
-function _applyGlitch(enabled, level) {
+let _glitchAppliedLevel = -1; // -1 = not applied; avoids reinitialization unless level changes
+
+function _updateGlitchFromTick(tick) {
   if (typeof PowerGlitch === 'undefined') return;
   const el = document.getElementById('game-canvas-wrap');
   if (!el) return;
-  if (!enabled || level <= 0) {
+  const level = chart?.getGlitchLevelAt?.(tick) ?? 0;
+  if (level === _glitchAppliedLevel) return; // no change
+  _glitchAppliedLevel = level;
+  if (level <= 0) {
     _glitchCtrl?.stopGlitch();
     _glitchActive = false;
     return;
   }
-  if (!_glitchCtrl) {
-    _glitchCtrl = PowerGlitch.glitch(el, _levelToGlitchOptions(level));
-  }
-  _glitchCtrl.startGlitch();
-  _glitchActive = true;
-}
-
-function _reapplyGlitch(level) {
-  // Full reinitialization so new level options take effect.
+  // Reinitialize with new level options
   _glitchCtrl?.stopGlitch();
   _glitchCtrl = null;
-  if (_glitchActive) _applyGlitch(true, level);
+  _glitchCtrl = PowerGlitch.glitch(el, _levelToGlitchOptions(level));
+  _glitchCtrl.startGlitch();
+  _glitchActive = true;
 }
 
 // ── Session persistence ───────────────────────────────────────────────────────

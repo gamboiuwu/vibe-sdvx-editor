@@ -136,6 +136,10 @@ class Renderer {
     this._velPillHitZones = [];
     this._hoveredVelTick  = null;
 
+    // _glitchPillHitZones: same structure but for glitch events
+    this._glitchPillHitZones = [];
+    this._hoveredGlitchTick  = null;
+
     // FX hold hit zones — rebuilt every draw(); each entry is a canvas-space rect
     //   { x, y, w, h, li, note }  for click-to-popup
     this._fxHoldHitZones = [];
@@ -234,8 +238,9 @@ class Renderer {
     const { ctx } = this;
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     // Rebuild hit-zones every frame so they stay in sync with scroll/zoom
-    this._camPillHitZones = [];
-    this._velPillHitZones = [];
+    this._camPillHitZones   = [];
+    this._velPillHitZones   = [];
+    this._glitchPillHitZones = [];
     this._fxHoldHitZones  = [];
 
     for (let vi = 0; vi < this.numCols; vi++) {
@@ -817,6 +822,67 @@ class Renderer {
 
       // Register hit zone for mouse detection in app.js
       this._velPillHitZones.push({ x: pillX, y: pillTop, w: pillW, h: PILL_H, tick: ev.y });
+    }
+
+    // ── Glitch level pills — in left ruler margin ─────────────────────────
+    const GLITCH_COLOR = '#aa44ff';
+    const glitchEvs = this.chart?.glitchEvents ?? [];
+    const GPILL_W   = RULER_W - 2;
+    const GPILL_H   = PILL_H;
+    for (const ev of glitchEvs) {
+      if (ev.y === 0 || ev.y < startY || ev.y >= endY || ev.level <= 0) continue;
+      const yBase    = this._pyAt(ev.y, startY);
+      const gpillTop = yBase - GPILL_H;
+      const gpillX   = ox;
+      const isHov    = this._hoveredGlitchTick === ev.y;
+
+      ctx.save();
+
+      // Dashed guide line
+      ctx.globalAlpha = 0.35;
+      ctx.strokeStyle = GLITCH_COLOR;
+      ctx.lineWidth   = 1;
+      ctx.setLineDash([2, 3]);
+      ctx.beginPath();
+      ctx.moveTo(gpillX, yBase);
+      ctx.lineTo(gpillX + GPILL_W, yBase);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+
+      // Pill background
+      ctx.fillStyle = isHov ? '#1a0a28' : '#0d0518';
+      ctx.fillRect(gpillX, gpillTop, GPILL_W, GPILL_H);
+
+      // Left accent bar
+      ctx.fillStyle = GLITCH_COLOR;
+      ctx.fillRect(gpillX, gpillTop, 2, GPILL_H);
+
+      // Intensity bar
+      const mag  = ev.level / 10;
+      const barW = Math.round(mag * (GPILL_W - 6));
+      if (barW > 0) {
+        ctx.globalAlpha = 0.25;
+        ctx.fillStyle   = GLITCH_COLOR;
+        ctx.fillRect(gpillX + 3, gpillTop + 2, barW, GPILL_H - 4);
+        ctx.globalAlpha = 1;
+      }
+
+      // Level label
+      ctx.font         = 'bold 7px monospace';
+      ctx.fillStyle    = isHov ? '#cc88ff' : GLITCH_COLOR;
+      ctx.textAlign    = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`G${ev.level}`, gpillX + 3, yBase - GPILL_H / 2);
+
+      if (isHov) {
+        ctx.strokeStyle = GLITCH_COLOR;
+        ctx.lineWidth   = 1;
+        ctx.strokeRect(gpillX + 0.5, gpillTop + 0.5, GPILL_W - 1, GPILL_H - 1);
+      }
+
+      ctx.restore();
+      this._glitchPillHitZones.push({ x: gpillX, y: gpillTop, w: GPILL_W, h: GPILL_H, tick: ev.y });
     }
   }
 

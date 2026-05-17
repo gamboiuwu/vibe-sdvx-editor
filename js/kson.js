@@ -120,6 +120,7 @@ function exportKson(chart) {
         return entry;
       }),
     },
+    _glitchEvents: (chart.glitchEvents || []).map(ev => [ev.y, ev.level]),
     note: {
       bt: chart.bt.map(lane =>
         lane.map(n => [Math.round(n.y * KSH_TO_KSON), Math.round((n.len || 0) * KSH_TO_KSON)])
@@ -239,6 +240,15 @@ function importKson(text) {
     if (!chart.scrollSpeedEvents.some(ev => ev.y === 0)) {
       chart.scrollSpeedEvents.unshift({ y: 0, speed: 1.0 });
       chart.scrollSpeedEvents.sort((a, b) => a.y - b.y);
+    }
+  }
+
+  // Glitch events (custom field)
+  if (Array.isArray(data._glitchEvents) && data._glitchEvents.length) {
+    chart.glitchEvents = data._glitchEvents.map(e => ({ y: e[0], level: e[1] ?? 0 }));
+    if (!chart.glitchEvents.some(ev => ev.y === 0)) {
+      chart.glitchEvents.unshift({ y: 0, level: 0 });
+      chart.glitchEvents.sort((a, b) => a.y - b.y);
     }
   }
 

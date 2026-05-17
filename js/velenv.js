@@ -21,10 +21,16 @@ class VelocityEnvelopeEditor {
     this._minSpeed  = 0.05;
     this._maxSpeed  = 5.0;
 
-    // Glitch state (mirrors app.js per-tab settings)
-    this._glitch = { enabled: false, level: 3 };
-    // Callback fired when user changes glitch settings
-    this.onGlitchChange = null;
+    // Glitch envelope canvas state (mirrors velocity canvas but for glitchEvents)
+    this._gCanvas    = null;
+    this._gCtx       = null;
+    this._gDirty     = true;
+    this._gDrag      = null;
+    this._gSel       = null;
+    this._gViewStart = 0;
+    this._gViewEnd   = 192 * 64;
+    this._gRaf       = null;
+    this._gTab       = false; // true when glitch tab is visible
 
     this._build();
   }
@@ -35,34 +41,40 @@ class VelocityEnvelopeEditor {
     const isNew = chart !== this._chart;
     this._chart = chart;
     if (chart && isNew) {
-      this._viewStart = 0;
-      this._viewEnd   = chart.totalTicks ? chart.totalTicks() : 192 * 64;
-      this._sel = null;
+      const total = chart.totalTicks ? chart.totalTicks() : 192 * 64;
+      this._viewStart  = 0;
+      this._viewEnd    = total;
+      this._gViewStart = 0;
+      this._gViewEnd   = total;
+      this._sel  = null;
+      this._gSel = null;
     }
     this.invalidate();
-  }
-
-  syncGlitch(settings) {
-    if (!settings) return;
-    this._glitch = { ...settings };
-    this._updateGlitchUI();
+    this._gDirty = true;
   }
 
   invalidate() { this._dirty = true; }
 
   show() {
-    if (this._win) { this._win.style.display = 'flex'; this._startLoop(); this.invalidate(); }
+    if (this._win) {
+      this._win.style.display = 'flex';
+      this._startLoop();
+      if (this._gTab) this._startGlitchLoop();
+      this.invalidate();
+      this._gDirty = true;
+    }
   }
   hide() {
     if (this._win) this._win.style.display = 'none';
     this._stopLoop();
+    this._stopGlitchLoop();
   }
   toggle() {
     if (!this._win) return;
     if (this._win.style.display === 'none') this.show(); else this.hide();
   }
   isVisible() { return this._win && this._win.style.display !== 'none'; }
-  destroy()   { this._stopLoop(); this._win?.remove(); this._win = null; }
+  destroy()   { this._stopLoop(); this._stopGlitchLoop(); this._win?.remove(); this._win = null; }
 
   // ── Build DOM ──────────────────────────────────────────────────────────────
 
@@ -162,50 +174,51 @@ class VelocityEnvelopeEditor {
     // ── Glitch section ────────────────────────────────────────────────────
     const glitchSection = document.createElement('div');
     glitchSection.id = 'velenv-section-glitch';
-    glitchSection.style.cssText = 'flex:1;display:none;flex-direction:column;padding:14px 16px;gap:12px;';
-    glitchSection.innerHTML = `
-      <div style="display:flex;align-items:center;gap:10px">
-        <span style="color:#ff9900;font-weight:700;font-size:10px;letter-spacing:1px">GLITCH EFFECT</span>
-        <span style="color:#555;font-size:9px">(applies to active chart)</span>
-        <label style="margin-left:auto;display:flex;align-items:center;gap:5px;cursor:pointer">
-          <input type="checkbox" id="velenv-glitch-enabled">
-          <span style="color:#ccc;font-size:10px">Enabled</span>
-        </label>
-      </div>
-      <div style="display:flex;align-items:center;gap:8px">
-        <span style="color:#888;font-size:10px;min-width:44px">Level</span>
-        <input type="range" id="velenv-glitch-level" min="0" max="10" step="0.5"
-          style="flex:1;accent-color:#ff9900">
-        <span id="velenv-glitch-level-label"
-          style="color:#ff9900;font-size:11px;font-weight:700;min-width:28px;text-align:right">3.0</span>
-      </div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <button id="velenv-glitch-apply"
-          style="background:#1a1500;border:1px solid #ff9900;border-radius:3px;
-                 color:#ff9900;font-size:10px;padding:3px 14px;cursor:pointer;">
-          Apply Level</button>
-        <span style="color:#555;font-size:9px">Changes to level take effect on Apply or re-enable.</span>
-      </div>
-      <div style="margin-top:4px;border-top:1px solid #1e1e33;padding-top:10px">
-        <div style="color:#888;font-size:9px;line-height:1.6">
-          <b style="color:#aaa">Glitch Effect</b> distorts the game preview visually using layered CSS animations.<br>
-          Powered by <a href="https://github.com/7PH/powerglitch" target="_blank"
-            style="color:#ff9900;text-decoration:none">PowerGlitch</a>.
-          Adjust level 1–10 (higher = more chaotic). Each chart stores its own setting.
-        </div>
-      </div>`;
+    glitchSection.style.cssText = 'flex:1;display:none;flex-direction:column;overflow:hidden;';
+
+    const gtb = document.createElement('div');
+    gtb.style.cssText = [
+      'display:flex', 'align-items:center', 'gap:6px', 'padding:3px 8px',
+      'border-bottom:1px solid #1a1a2a', 'flex-shrink:0', 'background:#0d0d1d',
+    ].join(';');
+    gtb.innerHTML = `
+      <span style="color:#666;font-size:9px">Snap:</span>
+      <select id="velenv-gsnap"
+        style="background:#111;border:1px solid #333;border-radius:3px;
+               color:#ccc;font-size:9px;padding:1px 2px">
+        <option value="0">Free</option>
+        <option value="192" selected>Measure</option>
+        <option value="48">Beat</option>
+        <option value="24">½ Beat</option>
+        <option value="12">¼ Beat</option>
+      </select>
+      <span style="color:#555;font-size:9px;margin-left:4px">Click: add/drag · Right-click: remove · Scroll: zoom</span>
+      <button id="velenv-glitch-reset"
+        style="margin-left:auto;background:#111;border:1px solid #333;border-radius:3px;
+               color:#888;font-size:9px;padding:1px 8px;cursor:pointer">Reset 0</button>`;
+    glitchSection.appendChild(gtb);
+
+    const gCanvasWrap = document.createElement('div');
+    gCanvasWrap.style.cssText = 'flex:1;overflow:hidden;position:relative;';
+    const gCanvas = document.createElement('canvas');
+    gCanvas.id = 'velenv-glitch-canvas';
+    gCanvas.style.cssText = 'display:block;width:100%;height:100%;cursor:crosshair;';
+    gCanvasWrap.appendChild(gCanvas);
+    glitchSection.appendChild(gCanvasWrap);
     win.appendChild(glitchSection);
 
     document.body.appendChild(win);
     this._win    = win;
     this._canvas = canvas;
     this._ctx    = canvas.getContext('2d');
+    this._gCanvas = gCanvas;
+    this._gCtx    = gCanvas.getContext('2d');
 
     this._makeDraggable(bar, win);
     this._makeResizable(win);
     this._bindTabStrip(tabStrip, velSection, glitchSection);
     this._bindEvents();
-    this._bindGlitchControls();
+    this._bindGlitchCanvas();
   }
 
   // ── Tab strip ─────────────────────────────────────────────────────────────
@@ -215,64 +228,314 @@ class VelocityEnvelopeEditor {
     const glitchBtn = strip.querySelector('#velenv-tab-glitch');
     const activate  = (tab) => {
       const isVel = tab === 'vel';
+      this._gTab = !isVel;
       velSec.style.display    = isVel ? 'flex' : 'none';
       glitchSec.style.display = isVel ? 'none' : 'flex';
       velBtn.style.borderBottomColor    = isVel ? '#ff9900' : 'transparent';
       velBtn.style.background           = isVel ? '#15151f' : '#0d0d1d';
       velBtn.style.color                = isVel ? '#ff9900' : '#666';
-      glitchBtn.style.borderBottomColor = isVel ? 'transparent' : '#ff9900';
+      glitchBtn.style.borderBottomColor = isVel ? 'transparent' : '#aa44ff';
       glitchBtn.style.background        = isVel ? '#0d0d1d' : '#15151f';
-      glitchBtn.style.color             = isVel ? '#666' : '#ff9900';
-      if (isVel) this.invalidate();
+      glitchBtn.style.color             = isVel ? '#666' : '#aa44ff';
+      if (isVel) this.invalidate(); else { this._gDirty = true; this._startGlitchLoop(); }
     };
     velBtn.addEventListener('click',    () => activate('vel'));
     glitchBtn.addEventListener('click', () => activate('glitch'));
   }
 
-  // ── Glitch control bindings ────────────────────────────────────────────────
+  // ── Glitch canvas bindings ────────────────────────────────────────────────
 
-  _bindGlitchControls() {
-    const win = this._win;
-    const checkbox = win.querySelector('#velenv-glitch-enabled');
-    const slider   = win.querySelector('#velenv-glitch-level');
-    const label    = win.querySelector('#velenv-glitch-level-label');
-    const applyBtn = win.querySelector('#velenv-glitch-apply');
+  _bindGlitchCanvas() {
+    const canvas = this._gCanvas;
+    if (!canvas) return;
 
-    const notifyChange = () => {
-      if (typeof this.onGlitchChange === 'function') {
-        this.onGlitchChange({ ...this._glitch });
-      }
-    };
-
-    checkbox.addEventListener('change', () => {
-      this._glitch.enabled = checkbox.checked;
-      notifyChange();
+    this._win.querySelector('#velenv-glitch-reset')?.addEventListener('click', () => {
+      if (!this._chart) return;
+      if (typeof saveUndo === 'function') saveUndo('Reset glitch envelope to 0');
+      this._chart.glitchEvents = [{ y: 0, level: 0 }];
+      this._gSel = null;
+      this._notifyGlitchChange();
     });
 
-    slider.addEventListener('input', () => {
-      const v = parseFloat(slider.value);
-      this._glitch.level = v;
-      label.textContent = v.toFixed(1);
-      // Live update: just store, don't reapply until Apply is clicked
-      notifyChange();
-    });
+    canvas.addEventListener('mousedown',   e => this._onGMouseDown(e));
+    canvas.addEventListener('mousemove',   e => this._onGMouseMove(e));
+    canvas.addEventListener('mouseup',     e => this._onGMouseUp(e));
+    canvas.addEventListener('mouseleave',  e => this._onGMouseUp(e));
+    canvas.addEventListener('contextmenu', e => { e.preventDefault(); this._onGRightClick(e); });
+    canvas.addEventListener('wheel',       e => this._onGWheel(e), { passive: false });
 
-    applyBtn.addEventListener('click', () => {
-      this._glitch.level = parseFloat(slider.value);
-      if (typeof _reapplyGlitch === 'function') _reapplyGlitch(this._glitch.level);
-      notifyChange();
+    const ro = new ResizeObserver(() => {
+      canvas.width  = canvas.clientWidth  * devicePixelRatio;
+      canvas.height = canvas.clientHeight * devicePixelRatio;
+      this._gDirty = true;
     });
+    ro.observe(canvas);
   }
 
-  _updateGlitchUI() {
-    const win = this._win;
-    if (!win) return;
-    const checkbox = win.querySelector('#velenv-glitch-enabled');
-    const slider   = win.querySelector('#velenv-glitch-level');
-    const label    = win.querySelector('#velenv-glitch-level-label');
-    if (checkbox) checkbox.checked = !!this._glitch.enabled;
-    if (slider)   slider.value = this._glitch.level;
-    if (label)    label.textContent = (+this._glitch.level).toFixed(1);
+  // ── Glitch canvas coordinate helpers ─────────────────────────────────────
+
+  _gSnapTick(tick) {
+    const snap = parseInt(this._win?.querySelector('#velenv-gsnap')?.value ?? '192', 10);
+    if (!snap) return Math.round(tick);
+    return Math.round(tick / snap) * snap;
+  }
+  _gTickToX(tick) {
+    const W = this._gCanvas.width / devicePixelRatio;
+    return ((tick - this._gViewStart) / (this._gViewEnd - this._gViewStart)) * W;
+  }
+  _gXToTick(x) {
+    const W = this._gCanvas.width / devicePixelRatio;
+    return this._gViewStart + (x / W) * (this._gViewEnd - this._gViewStart);
+  }
+  _gLevelToY(level) {
+    const H = this._gCanvas.height / devicePixelRatio;
+    const pad = 20;
+    return pad + (1 - level / 10) * (H - pad * 2);
+  }
+  _gYToLevel(y) {
+    const H = this._gCanvas.height / devicePixelRatio;
+    const pad = 20;
+    return Math.max(0, Math.min(10, (1 - (y - pad) / (H - pad * 2)) * 10));
+  }
+  _gGetCanvasXY(e) {
+    const r = this._gCanvas.getBoundingClientRect();
+    return [e.clientX - r.left, e.clientY - r.top];
+  }
+  _gHitNode(cx, cy, radius = 8) {
+    if (!this._chart) return -1;
+    const dpr = devicePixelRatio;
+    const evs = this._chart.glitchEvents || [];
+    for (let i = evs.length - 1; i >= 0; i--) {
+      const nx = this._gTickToX(evs[i].y) * dpr;
+      const ny = this._gLevelToY(evs[i].level) * dpr;
+      if (Math.hypot(cx - nx, cy - ny) <= radius * dpr) return i;
+    }
+    return -1;
+  }
+
+  // ── Glitch canvas mouse handlers ──────────────────────────────────────────
+
+  _onGMouseDown(e) {
+    if (e.button !== 0) return;
+    const [cx, cy] = this._gGetCanvasXY(e);
+    const idx = this._gHitNode(cx * devicePixelRatio, cy * devicePixelRatio);
+    if (idx >= 0) {
+      this._gSel  = idx;
+      this._gDrag = { evIdx: idx };
+      e.preventDefault();
+    } else {
+      this._gAddNodeAt(cx, cy);
+    }
+    this._gDirty = true;
+  }
+
+  _onGMouseMove(e) {
+    if (!this._gDrag) { this._gDirty = true; return; }
+    const [cx, cy] = this._gGetCanvasXY(e);
+    const evs = this._chart?.glitchEvents;
+    if (!evs) return;
+    const ev = evs[this._gDrag.evIdx];
+    if (!ev) return;
+
+    let tick  = this._gSnapTick(this._gXToTick(cx));
+    let level = Math.round(this._gYToLevel(cy) * 2) / 2; // 0.5 steps
+    level = Math.max(0, Math.min(10, level));
+
+    if (this._gDrag.evIdx === 0) { tick = 0; }
+    else {
+      const prev = evs[this._gDrag.evIdx - 1];
+      const next = evs[this._gDrag.evIdx + 1];
+      tick = Math.max((prev?.y ?? 0) + 1, tick);
+      if (next) tick = Math.min(next.y - 1, tick);
+    }
+
+    ev.y = tick; ev.level = level;
+    this._notifyGlitchChange(false);
+    this._gDirty = true;
+  }
+
+  _onGMouseUp(e) {
+    if (this._gDrag) {
+      if (typeof saveUndo === 'function') saveUndo('Adjusted glitch envelope node');
+      this._gDrag = null;
+    }
+    this._gDirty = true;
+  }
+
+  _onGRightClick(e) {
+    const [cx, cy] = this._gGetCanvasXY(e);
+    const idx = this._gHitNode(cx * devicePixelRatio, cy * devicePixelRatio);
+    if (idx < 0 || !this._chart) return;
+    if ((this._chart.glitchEvents || [])[idx]?.y === 0) return;
+    if (typeof saveUndo === 'function') saveUndo('Deleted glitch envelope node');
+    this._chart.glitchEvents.splice(idx, 1);
+    this._gSel = null;
+    this._notifyGlitchChange();
+  }
+
+  _onGWheel(e) {
+    e.preventDefault();
+    const [cx] = this._gGetCanvasXY(e);
+    const pivotTick = this._gXToTick(cx);
+    const zoomFactor = e.deltaY > 0 ? 1.25 : 0.8;
+    const span = (this._gViewEnd - this._gViewStart) * zoomFactor;
+    const total = this._chart?.totalTicks?.() ?? 192 * 64;
+    const minSpan = 4 * 48;
+    const clampedSpan = Math.min(Math.max(span, minSpan), total);
+    const ratio = (pivotTick - this._gViewStart) / (this._gViewEnd - this._gViewStart);
+    let newStart = pivotTick - ratio * clampedSpan;
+    let newEnd   = newStart + clampedSpan;
+    if (newStart < 0) { newStart = 0; newEnd = clampedSpan; }
+    if (newEnd > total) { newEnd = total; newStart = Math.max(0, total - clampedSpan); }
+    this._gViewStart = newStart;
+    this._gViewEnd   = newEnd;
+    this._gDirty = true;
+  }
+
+  _gAddNodeAt(cx, cy) {
+    if (!this._chart) return;
+    let tick  = this._gSnapTick(this._gXToTick(cx));
+    let level = Math.round(this._gYToLevel(cy) * 2) / 2;
+    level = Math.max(0, Math.min(10, level));
+    tick  = Math.max(0, tick);
+    if (typeof saveUndo === 'function') saveUndo('Added glitch envelope node');
+    this._chart.addGlitchEvent(tick, level);
+    const evs = this._chart.glitchEvents || [];
+    this._gSel = evs.findIndex(e => e.y === tick);
+    this._notifyGlitchChange();
+  }
+
+  _notifyGlitchChange(doUndo = false) {
+    if (typeof updateGlitchEventList === 'function') updateGlitchEventList();
+    if (typeof render === 'function') render();
+    this._gDirty = true;
+  }
+
+  // ── Glitch RAF loop ───────────────────────────────────────────────────────
+
+  _startGlitchLoop() {
+    if (this._gRaf) return;
+    const loop = () => {
+      if (this._gDirty) { this._drawGlitch(); this._gDirty = false; }
+      this._gRaf = requestAnimationFrame(loop);
+    };
+    this._gRaf = requestAnimationFrame(loop);
+  }
+  _stopGlitchLoop() {
+    if (this._gRaf) { cancelAnimationFrame(this._gRaf); this._gRaf = null; }
+  }
+
+  // ── Glitch canvas drawing ─────────────────────────────────────────────────
+
+  _drawGlitch() {
+    const canvas = this._gCanvas;
+    const ctx    = this._gCtx;
+    if (!canvas || !ctx) return;
+    const dpr = devicePixelRatio;
+    const W = canvas.width  / dpr;
+    const H = canvas.height / dpr;
+    const GCOL = '#aa44ff';
+
+    ctx.save();
+    ctx.scale(dpr, dpr);
+    ctx.fillStyle = '#09091a';
+    ctx.fillRect(0, 0, W, H);
+
+    const evs = this._chart?.glitchEvents;
+    if (!evs || evs.length === 0) {
+      ctx.fillStyle = '#444'; ctx.font = '11px monospace'; ctx.textAlign = 'center';
+      ctx.fillText('No chart loaded', W / 2, H / 2);
+      ctx.restore();
+      return;
+    }
+
+    const pad = 20;
+    // Grid: horizontal level lines
+    for (let lv = 0; lv <= 10; lv += 2) {
+      const y = this._gLevelToY(lv);
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y);
+      ctx.strokeStyle = lv === 0 ? '#2a2a4a' : '#1a1a2e';
+      ctx.lineWidth = lv === 0 ? 1.5 : 1;
+      ctx.stroke();
+    }
+    // Grid: vertical measure lines
+    const vs = this._gViewStart, ve = this._gViewEnd;
+    const startM2 = Math.ceil(vs / TICKS_PER_MEASURE);
+    const endM2   = Math.floor(ve / TICKS_PER_MEASURE);
+    ctx.strokeStyle = '#1a1a2e'; ctx.lineWidth = 1;
+    for (let m = startM2; m <= endM2; m++) {
+      const x = this._gTickToX(m * TICKS_PER_MEASURE);
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+    }
+
+    // Envelope fill
+    ctx.beginPath();
+    const firstX = this._gTickToX(evs[0].y);
+    const firstY = this._gLevelToY(evs[0].level);
+    ctx.moveTo(firstX, H); ctx.lineTo(firstX, firstY);
+    for (let i = 0; i < evs.length - 1; i++) {
+      const e0 = evs[i], e1 = evs[i + 1];
+      const x1 = this._gTickToX(e1.y);
+      const y0 = this._gLevelToY(e0.level);
+      const y1 = this._gLevelToY(e1.level);
+      ctx.lineTo(x1, y0); ctx.lineTo(x1, y1);
+    }
+    const lx2 = this._gTickToX(this._gViewEnd);
+    const ly2  = this._gLevelToY(evs[evs.length - 1].level);
+    ctx.lineTo(lx2, ly2); ctx.lineTo(lx2, H); ctx.closePath();
+    const grad2 = ctx.createLinearGradient(0, pad, 0, H);
+    grad2.addColorStop(0, '#aa44ff33'); grad2.addColorStop(1, '#aa44ff08');
+    ctx.fillStyle = grad2; ctx.fill();
+
+    // Envelope line
+    ctx.beginPath(); ctx.moveTo(firstX, firstY);
+    for (let i = 0; i < evs.length - 1; i++) {
+      const e0 = evs[i], e1 = evs[i + 1];
+      const x1 = this._gTickToX(e1.y);
+      const y0 = this._gLevelToY(e0.level);
+      const y1 = this._gLevelToY(e1.level);
+      ctx.lineTo(x1, y0); ctx.lineTo(x1, y1);
+    }
+    ctx.lineTo(lx2, ly2);
+    ctx.strokeStyle = GCOL; ctx.lineWidth = 1.5; ctx.stroke();
+
+    // Nodes
+    for (let i = 0; i < evs.length; i++) {
+      const ev = evs[i];
+      const x = this._gTickToX(ev.y), y = this._gLevelToY(ev.level);
+      const sel = i === this._gSel;
+      ctx.beginPath(); ctx.arc(x, y, sel ? 6 : 4, 0, Math.PI * 2);
+      ctx.fillStyle   = sel ? '#cc88ff' : GCOL; ctx.fill();
+      ctx.strokeStyle = sel ? '#fff8'   : '#aa44ff88'; ctx.lineWidth = 1; ctx.stroke();
+      if (sel) {
+        ctx.fillStyle = '#cc88ff'; ctx.font = '10px monospace'; ctx.textAlign = 'center';
+        ctx.fillText(`${ev.level.toFixed(1)}`, x, y - 10);
+      }
+    }
+
+    // Y axis labels
+    ctx.fillStyle = '#555'; ctx.font = '9px monospace'; ctx.textAlign = 'right';
+    for (let lv = 0; lv <= 10; lv += 2) {
+      const y = this._gLevelToY(lv);
+      if (y < pad || y > H - 4) continue;
+      ctx.fillText(`L${lv}`, 20, y + 3);
+    }
+
+    // Measure labels
+    const totalM2 = Math.ceil((ve - vs) / TICKS_PER_MEASURE);
+    const step2   = totalM2 <= 16 ? 1 : totalM2 <= 32 ? 2 : totalM2 <= 64 ? 4 : 8;
+    ctx.fillStyle = '#444'; ctx.font = '8px monospace'; ctx.textAlign = 'center';
+    for (let m = startM2; m <= endM2; m++) {
+      if ((m % step2) !== 0) continue;
+      ctx.fillText(`M${m}`, this._gTickToX(m * TICKS_PER_MEASURE), H - 4);
+    }
+
+    // Zoom hint
+    const measures2 = Math.round((this._gViewEnd - this._gViewStart) / TICKS_PER_MEASURE);
+    ctx.fillStyle = '#333'; ctx.font = '8px monospace'; ctx.textAlign = 'right';
+    ctx.fillText(`${measures2}m visible · scroll to zoom`, W - 4, 10);
+
+    ctx.restore();
   }
 
   // ── Velocity canvas events ─────────────────────────────────────────────────
@@ -664,16 +927,6 @@ let velEnvEditor = null;
 function getVelEnvEditor() {
   if (!velEnvEditor) {
     velEnvEditor = new VelocityEnvelopeEditor();
-    // Wire glitch callback back to app.js
-    velEnvEditor.onGlitchChange = (settings) => {
-      if (typeof tabs !== 'undefined' && typeof activeTabIdx !== 'undefined') {
-        if (!tabs[activeTabIdx].glitch) tabs[activeTabIdx].glitch = { enabled: false, level: 3 };
-        tabs[activeTabIdx].glitch = { ...settings };
-        if (typeof _applyGlitch === 'function') {
-          _applyGlitch(settings.enabled, settings.level);
-        }
-      }
-    };
   }
   return velEnvEditor;
 }
@@ -681,9 +934,6 @@ function getVelEnvEditor() {
 function openVelEnvEditor() {
   const ed = getVelEnvEditor();
   if (typeof chart !== 'undefined' && chart) ed.setChart(chart);
-  const g = (typeof tabs !== 'undefined' && typeof activeTabIdx !== 'undefined')
-    ? (tabs[activeTabIdx].glitch ?? { enabled: false, level: 3 }) : { enabled: false, level: 3 };
-  ed.syncGlitch(g);
   ed.show();
 }
 
