@@ -1823,6 +1823,7 @@ function _multiRebuild() {
     gv.projMode       = gvRef ? gvRef.projMode       : 'sdvx';
     gv.perspIntensity = gvRef ? gvRef.perspIntensity : 65;
     gv.judgeYFrac     = gvRef ? gvRef.judgeYFrac     : 0.73;
+    gv.interpMode     = gvRef ? gvRef.interpMode     : 'standard';
     gv.playTick       = renderer.playTick;
 
     const mv = { wrap, canvas, gv, tabIdx, mirrored: false, tickOffset: 0, hsSlider, hsVal };
@@ -1902,6 +1903,7 @@ function _multiSyncSettings() {
     mv.gv.projMode       = gameView.projMode;
     mv.gv.perspIntensity = gameView.perspIntensity;
     mv.gv.judgeYFrac     = gameView.judgeYFrac;
+    mv.gv.interpMode     = gameView.interpMode;
   }
 }
 
@@ -7139,6 +7141,9 @@ function _initProjectionControls() {
     // Judge Y
     const jyEl = document.getElementById('pvc-judge-y');
     if (jyEl) prefs.judgeYFrac = +jyEl.value;
+    // Visual interpretation mode
+    const activeInterp = document.querySelector('.pvc-interp-btn.active');
+    if (activeInterp) prefs.interpMode = activeInterp.dataset.interp;
     // Persist
     try { localStorage.setItem('vibe-editr-prefs', JSON.stringify(prefs)); } catch(_) {}
     // Show "Saved!" flash
@@ -7181,6 +7186,25 @@ function _initProjectionControls() {
 
   // Set default projection to SDVX on load (only if no saved proj mode)
   if (!prefs.projMode) document.querySelector('.pvc-proj-btn[data-proj="sdvx"]')?.click();
+
+  // ── Visual interpretation mode buttons ────────────────────────────────────
+  document.querySelectorAll('.pvc-interp-btn[data-interp]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const mode = btn.dataset.interp;
+      if (!gameView) return;
+      gameView.interpMode = mode;
+      document.querySelectorAll('.pvc-interp-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      if (!playing) gameView.draw();
+      _saveSession();
+    });
+  });
+
+  // Restore saved interpretation mode on load
+  if (prefs.interpMode) {
+    const btn = document.querySelector(`.pvc-interp-btn[data-interp="${prefs.interpMode}"]`);
+    if (btn) btn.click();
+  }
 }
 
 // ── Donation modal ────────────────────────────────────────────────────────────

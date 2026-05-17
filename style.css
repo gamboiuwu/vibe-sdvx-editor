@@ -1013,6 +1013,25 @@ kbd {
   color: var(--accent);
   font-weight: 700;
 }
+.pvc-interp-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  padding: 2px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 10px;
+  font-family: monospace;
+  transition: all .12s;
+  white-space: nowrap;
+}
+.pvc-interp-btn:hover { color: var(--text); border-color: var(--accent); }
+.pvc-interp-btn.active {
+  background: #0d2240;
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 700;
+}
 #preview-controls input[type="range"] {
   width: 80px;
   accent-color: var(--accent);

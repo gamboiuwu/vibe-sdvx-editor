@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.14 · 2026</span>
+  <span class="version">v0.0.15 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,18 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.15</span>Multi-Interpretation Preview Modes</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Visual Mode</strong> selector added to the game preview side panel (below BT Width). Four modes are available and switch instantly without modifying chart data.</li>
+    <li><span class="tag add">add</span><strong>Standard</strong> — existing full SDVX-style rendering with gradients and glow effects. Default behavior, unchanged.</li>
+    <li><span class="tag add">add</span><strong>Simple</strong> — flat solid colors, no gradients, no glow or shadow effects. BT notes render as solid white, FX notes as solid orange. Maximizes note clarity for reading dense sections and high-speed hi-speed passes. Lane side glow is also suppressed.</li>
+    <li><span class="tag add">add</span><strong>Colorblind</strong> — deuteranopia and protanopia friendly palette. The right laser color is remapped from magenta/pink to gold (#ddaa00) while all other elements retain their standard appearance. Safe for the most common forms of color vision deficiency.</li>
+    <li><span class="tag add">add</span><strong>Wireframe</strong> — all note shapes render with near-transparent fills and bright colored outlines only. BT notes show a white stroke box, FX notes an orange stroke box, laser ribbons use their standard color as an outline. Useful for analyzing chart structure and density without color or glow interference.</li>
+    <li><span class="tag chg">chg</span>The selected Visual Mode is saved by the <em>Save Config</em> button alongside Projection, HiSpeed, BT Width, and Judge Y, and is restored automatically on next launch.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.14</span>Audio Event Anchoring <span style="font-size:11px;color:#ffcc44;font-weight:normal;">[Experimental]</span></h4>
