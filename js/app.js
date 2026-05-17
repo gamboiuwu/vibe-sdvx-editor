@@ -362,7 +362,12 @@ function switchToTab(idx) {
     renderer.playTick  = tabs[activeTabIdx].playTick  ?? 0;
   }
   if (gameView) { gameView.chart = chart; gameView.hispeed = chartSpeed; gameView._totalWeight = 0; gameView.playTick = renderer?.playTick ?? 0; }
-  if (typeof velEnvEditor !== 'undefined' && velEnvEditor) velEnvEditor.setChart(chart);
+  if (typeof velEnvEditor !== 'undefined' && velEnvEditor) {
+    velEnvEditor.setChart(chart);
+    const glitch = tabs[activeTabIdx].glitch ?? { enabled: false, level: 3 };
+    velEnvEditor.syncGlitch?.(glitch);
+    _applyGlitch(glitch.enabled, glitch.level);
+  }
   // Sync hispeed UI sliders to restored value
   const _hsSl  = document.getElementById('pvc-hispeed');
   const _hsLbl = document.getElementById('pvc-hispeed-label');
@@ -2504,20 +2509,21 @@ window.addEventListener('DOMContentLoaded', () => {
 
         // ── .ksonpack bundle: explode into one tab per chart ─────────────
         if (isPack) {
-          const { charts: packCharts, meta: packMeta } = importKsonPack(result);
+          const { charts: packCharts, meta: packMeta, tabNames: packTabNames = [] } = importKsonPack(result);
           if (!packCharts.length) throw new Error('Pack contains no charts.');
-          // First chart goes into the active tab (replacing only if it's
-          // the empty default), the rest get their own new tabs.
           const startIdx = activeTabIdx;
           for (let i = 0; i < packCharts.length; i++) {
             const c = packCharts[i];
-            // Do NOT rename any tab when loading a ksonpack — preserve existing
-            // tab names ("Chart 1", user-renamed tabs, etc.) exactly as they are.
+            const savedName = packTabNames[i];
+            const fallbackName = savedName || (c.meta?.title
+              ? (c.meta.difficulty ? `${c.meta.title} - ${c.meta.difficulty.toUpperCase()}` : c.meta.title)
+              : `Chart ${tabs.length + 1}`);
             const slot = (i === 0) ? startIdx : (tabs.push({
-              name: `Chart ${tabs.length + 1}`,
+              name: fallbackName,
               chart: c, audioBuffer: null, hispeed: 1.0,
             }) - 1);
             tabs[slot].chart = c;
+            tabs[slot].name  = fallbackName;
           }
           // Update global chart before switchToTab so it doesn't save the
           // stale reference back over the first pack chart we just loaded.
@@ -2609,7 +2615,9 @@ window.addEventListener('DOMContentLoaded', () => {
 
   document.getElementById('btn-export-ksonpack')?.addEventListener('click', () => {
     if (!tabs.length) return;
-    const charts = tabs.map(t => t.chart).filter(Boolean);
+    const validTabs = tabs.filter(t => t.chart);
+    const charts = validTabs.map(t => t.chart);
+    const tabNames = validTabs.map(t => t.name);
     if (!charts.length) { alert('No charts to export.'); return; }
     const packName = (charts[0].meta.title || 'pack').replace(/[^a-zA-Z0-9_]/g, '_');
     const filename = packName + '.ksonpack';
@@ -2622,7 +2630,7 @@ window.addEventListener('DOMContentLoaded', () => {
       showExportProgress('Exporting .ksonpack bundle…');
       updateExportProgress(10, `Preparing ${charts.length} chart(s)…`);
       updateExportProgress(25, 'Serializing charts…', `Processing ${charts.length} chart(s)`);
-      const pack = exportKsonPack(charts, packMeta);
+      const pack = exportKsonPack(charts, packMeta, tabNames);
       updateExportProgress(80, 'Preparing download…', `Generated ${(pack.length / 1024).toFixed(1)}KB pack`);
       console.log(`[Export] Calling downloadText('${filename}', ...)`);
       updateExportProgress(85, 'Starting download…', `Triggering download of ${filename}`);
@@ -6903,7 +6911,76 @@ document.addEventListener('DOMContentLoaded', () => {
     _geDrag.active = false;
     if (gameView) { gameView._editGhost = null; if (!playing) gameView.draw(); }
   });
+
+  // ── Preview scroll: move playhead with mouse wheel ────────────────────
+  gameCanvas.addEventListener('wheel', e => {
+    if (playing) return;
+    e.preventDefault();
+    const step = TICKS_PER_BEAT * (e.shiftKey ? 4 : 1);
+    const delta = e.deltaY > 0 ? step : -step;
+    const total = chart ? chart.totalTicks() : TICKS_PER_MEASURE * 64;
+    const newTick = Math.max(0, Math.min(total, (renderer?.playTick ?? 0) + delta));
+    if (renderer)   { renderer.playTick  = newTick; }
+    if (gameView)   { gameView.playTick   = newTick; gameView.draw(); }
+    updateSeekbar(newTick);
+  }, { passive: false });
 });
+
+// ── Glitch effect (PowerGlitch) ───────────────────────────────────────────────
+let _glitchCtrl   = null;
+let _glitchActive = false;
+
+function _levelToGlitchOptions(level) {
+  const t = Math.max(0, Math.min(10, level)) / 10;
+  return {
+    playMode: 'manual',
+    createContainers: true,
+    hideOverflow: false,
+    timing: {
+      duration: Math.max(80, Math.round(900 - t * 780)),
+      iterations: Infinity,
+    },
+    glitchTimeSpan: {
+      start: Math.max(0,   0.5 - t * 0.45),
+      end:   Math.min(1.0, 0.5 + t * 0.45),
+    },
+    shake: {
+      velocity:   Math.round(10 + t * 25),
+      amplitudeX: t * 0.35,
+      amplitudeY: t * 0.12,
+    },
+    slice: {
+      count:     Math.max(1, Math.round(2 + t * 13)),
+      velocity:  Math.round(10 + t * 25),
+      minHeight: 0.01,
+      maxHeight: 0.04 + t * 0.2,
+      hueRotate: level >= 5,
+    },
+  };
+}
+
+function _applyGlitch(enabled, level) {
+  if (typeof PowerGlitch === 'undefined') return;
+  const el = document.getElementById('game-canvas-wrap');
+  if (!el) return;
+  if (!enabled || level <= 0) {
+    _glitchCtrl?.stopGlitch();
+    _glitchActive = false;
+    return;
+  }
+  if (!_glitchCtrl) {
+    _glitchCtrl = PowerGlitch.glitch(el, _levelToGlitchOptions(level));
+  }
+  _glitchCtrl.startGlitch();
+  _glitchActive = true;
+}
+
+function _reapplyGlitch(level) {
+  // Full reinitialization so new level options take effect.
+  _glitchCtrl?.stopGlitch();
+  _glitchCtrl = null;
+  if (_glitchActive) _applyGlitch(true, level);
+}
 
 // ── Session persistence ───────────────────────────────────────────────────────
 const SESSION_KEY = 'vibe-editr-session';

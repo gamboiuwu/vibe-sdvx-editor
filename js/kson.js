@@ -434,12 +434,17 @@ function importKson(text) {
 // reading `charts[i]` and serialising that subtree back out as KSON.
 // ─────────────────────────────────────────────────────────────────────────────
 
-function exportKsonPack(charts, packMeta = {}) {
+function exportKsonPack(charts, packMeta = {}, tabNames = []) {
   // Reuse exportKson then re-parse so each chart sits as a JS object inside
   // the bundle. Slightly wasteful but keeps a single export code path.
   const entries = charts
     .filter(c => c && c.meta)
-    .map(c => JSON.parse(exportKson(c)));
+    .map((c, i) => {
+      const obj = JSON.parse(exportKson(c));
+      const name = tabNames[i];
+      if (name) obj._tabName = name;
+      return obj;
+    });
   const pack = {
     format:  'ksonpack',
     version: '0.1.0',
@@ -460,6 +465,7 @@ function importKsonPack(text) {
   if (data.format !== 'ksonpack' || !Array.isArray(data.charts)) {
     throw new Error('Not a ksonpack file (missing format:"ksonpack" or charts[]).');
   }
+  const tabNames = data.charts.map(c => c._tabName || null);
   const charts = data.charts.map(c => importKson(JSON.stringify(c)));
-  return { meta: data.meta || {}, charts };
+  return { meta: data.meta || {}, charts, tabNames };
 }

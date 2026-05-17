@@ -1,28 +1,30 @@
 'use strict';
 
-// ─── Velocity Envelope Editor ────────────────────────────────────────────────
-// Ableton-style clip-envelope view for chart scrollSpeedEvents.
-// Displays velocity nodes as draggable points on a time×speed canvas;
-// segments between nodes are drawn as filled ramps (linear) or steps (step).
-// Left-click empty area → add node; left-click node → select / drag;
-// right-click node → delete; double-click segment → toggle step ↔ linear.
+// ─── Envelope Control ─────────────────────────────────────────────────────────
+// Floating MDI window with two sections:
+//  1. Velocity Envelope — Ableton-style canvas editor for scrollSpeedEvents
+//  2. Glitch Effect — PowerGlitch intensity control per chart
 // ─────────────────────────────────────────────────────────────────────────────
 
 class VelocityEnvelopeEditor {
   constructor() {
-    this._win       = null;   // outer window div
-    this._canvas    = null;   // <canvas>
+    this._win       = null;
+    this._canvas    = null;
     this._ctx       = null;
     this._chart     = null;
-    this._drag      = null;   // { evIdx, startY, startSpeed, ox, oy }
-    this._sel       = null;   // selected event index
+    this._drag      = null;
+    this._sel       = null;
     this._raf       = null;
     this._dirty     = true;
-    this._viewStart = 0;      // view start tick
-    this._viewEnd   = 0;      // view end tick (computed from chart)
+    this._viewStart = 0;
+    this._viewEnd   = 192 * 64;
     this._minSpeed  = 0.05;
     this._maxSpeed  = 5.0;
-    this._bound     = {};     // cached bound handlers
+
+    // Glitch state (mirrors app.js per-tab settings)
+    this._glitch = { enabled: false, level: 3 };
+    // Callback fired when user changes glitch settings
+    this.onGlitchChange = null;
 
     this._build();
   }
@@ -30,46 +32,37 @@ class VelocityEnvelopeEditor {
   // ── Public API ─────────────────────────────────────────────────────────────
 
   setChart(chart) {
+    const isNew = chart !== this._chart;
     this._chart = chart;
-    if (chart) {
+    if (chart && isNew) {
       this._viewStart = 0;
       this._viewEnd   = chart.totalTicks ? chart.totalTicks() : 192 * 64;
+      this._sel = null;
     }
     this.invalidate();
   }
 
-  invalidate() {
-    this._dirty = true;
+  syncGlitch(settings) {
+    if (!settings) return;
+    this._glitch = { ...settings };
+    this._updateGlitchUI();
   }
+
+  invalidate() { this._dirty = true; }
 
   show() {
-    if (this._win) {
-      this._win.style.display = 'flex';
-      this._startLoop();
-      this.invalidate();
-    }
+    if (this._win) { this._win.style.display = 'flex'; this._startLoop(); this.invalidate(); }
   }
-
   hide() {
     if (this._win) this._win.style.display = 'none';
     this._stopLoop();
   }
-
   toggle() {
     if (!this._win) return;
-    if (this._win.style.display === 'none') this.show();
-    else this.hide();
+    if (this._win.style.display === 'none') this.show(); else this.hide();
   }
-
-  isVisible() {
-    return this._win && this._win.style.display !== 'none';
-  }
-
-  destroy() {
-    this._stopLoop();
-    this._win?.remove();
-    this._win = null;
-  }
+  isVisible() { return this._win && this._win.style.display !== 'none'; }
+  destroy()   { this._stopLoop(); this._win?.remove(); this._win = null; }
 
   // ── Build DOM ──────────────────────────────────────────────────────────────
 
@@ -80,8 +73,8 @@ class VelocityEnvelopeEditor {
       'display:none', 'flex-direction:column',
       'position:fixed', 'z-index:8500',
       'left:80px', 'top:80px',
-      'width:640px', 'height:260px',
-      'min-width:360px', 'min-height:140px',
+      'width:660px', 'height:340px',
+      'min-width:380px', 'min-height:200px',
       'background:#0a0a1a', 'border:1.5px solid #ff9900',
       'border-radius:6px', 'box-shadow:0 6px 28px #ff990044',
       'font-family:monospace', 'font-size:11px', 'color:#ddd',
@@ -93,30 +86,43 @@ class VelocityEnvelopeEditor {
     bar.id = 'velenv-bar';
     bar.style.cssText = [
       'display:flex', 'align-items:center', 'justify-content:space-between',
-      'background:#15151f', 'padding:4px 8px',
+      'background:#15151f', 'padding:4px 10px',
       'border-bottom:1px solid #333', 'cursor:move', 'flex-shrink:0',
     ].join(';');
     bar.innerHTML = `
-      <span style="color:#ff9900;font-weight:700;letter-spacing:1px;font-size:10px">
-        VELOCITY ENVELOPE
-      </span>
+      <span style="color:#ff9900;font-weight:700;letter-spacing:1.5px;font-size:10px">ENVELOPE CONTROL</span>
       <div style="display:flex;align-items:center;gap:6px">
-        <button id="velenv-hint-btn"
-          title="Left-click: add / drag node  |  Right-click node: delete  |  Double-click segment: toggle ramp"
-          style="background:#111;border:1px solid #333;border-radius:3px;color:#888;
-                 font-size:9px;padding:1px 6px;cursor:pointer">?</button>
         <button id="velenv-close"
           style="background:#2a1010;border:1px solid #aa3333;border-radius:3px;
                  color:#ff6666;font-size:10px;padding:1px 8px;cursor:pointer">✕</button>
       </div>`;
     win.appendChild(bar);
 
-    // Toolbar
+    // Tab strip
+    const tabStrip = document.createElement('div');
+    tabStrip.style.cssText = [
+      'display:flex', 'align-items:stretch',
+      'background:#0d0d1d', 'border-bottom:1px solid #1e1e33',
+      'flex-shrink:0',
+    ].join(';');
+    tabStrip.innerHTML = `
+      <button id="velenv-tab-vel" style="flex:1;padding:5px 0;font-size:10px;font-family:monospace;
+        cursor:pointer;border:none;border-bottom:2px solid #ff9900;
+        background:#15151f;color:#ff9900;letter-spacing:.5px">VELOCITY</button>
+      <button id="velenv-tab-glitch" style="flex:1;padding:5px 0;font-size:10px;font-family:monospace;
+        cursor:pointer;border:none;border-bottom:2px solid transparent;
+        background:#0d0d1d;color:#666;letter-spacing:.5px">GLITCH</button>`;
+    win.appendChild(tabStrip);
+
+    // ── Velocity section ──────────────────────────────────────────────────
+    const velSection = document.createElement('div');
+    velSection.id = 'velenv-section-vel';
+    velSection.style.cssText = 'flex:1;display:flex;flex-direction:column;overflow:hidden;';
+
     const tb = document.createElement('div');
     tb.style.cssText = [
-      'display:flex', 'align-items:center', 'gap:6px', 'padding:4px 8px',
-      'border-bottom:1px solid #1a1a2a', 'flex-shrink:0',
-      'background:#0d0d1d',
+      'display:flex', 'align-items:center', 'gap:6px', 'padding:3px 8px',
+      'border-bottom:1px solid #1a1a2a', 'flex-shrink:0', 'background:#0d0d1d',
     ].join(';');
     tb.innerHTML = `
       <span style="color:#666;font-size:9px">Snap:</span>
@@ -126,10 +132,10 @@ class VelocityEnvelopeEditor {
         <option value="0">Free</option>
         <option value="192" selected>Measure</option>
         <option value="48">Beat</option>
-        <option value="24">1/2 Beat</option>
-        <option value="12">1/4 Beat</option>
+        <option value="24">½ Beat</option>
+        <option value="12">¼ Beat</option>
       </select>
-      <span style="color:#666;font-size:9px;margin-left:6px">Speed snap:</span>
+      <span style="color:#666;font-size:9px;margin-left:4px">Speed:</span>
       <select id="velenv-spsnap"
         style="background:#111;border:1px solid #333;border-radius:3px;
                color:#ccc;font-size:9px;padding:1px 2px">
@@ -138,21 +144,57 @@ class VelocityEnvelopeEditor {
         <option value="0.5">0.5</option>
         <option value="1">1.0</option>
       </select>
+      <span style="color:#555;font-size:9px;margin-left:4px">Scroll: zoom  Dbl-click: toggle ramp</span>
       <button id="velenv-reset"
         style="margin-left:auto;background:#111;border:1px solid #333;border-radius:3px;
-               color:#888;font-size:9px;padding:1px 8px;cursor:pointer">
-        Reset to 1×</button>`;
-    win.appendChild(tb);
+               color:#888;font-size:9px;padding:1px 8px;cursor:pointer">Reset 1×</button>`;
+    velSection.appendChild(tb);
 
-    // Canvas area
     const canvasWrap = document.createElement('div');
     canvasWrap.style.cssText = 'flex:1;overflow:hidden;position:relative;';
-
     const canvas = document.createElement('canvas');
     canvas.id = 'velenv-canvas';
     canvas.style.cssText = 'display:block;width:100%;height:100%;cursor:crosshair;';
     canvasWrap.appendChild(canvas);
-    win.appendChild(canvasWrap);
+    velSection.appendChild(canvasWrap);
+    win.appendChild(velSection);
+
+    // ── Glitch section ────────────────────────────────────────────────────
+    const glitchSection = document.createElement('div');
+    glitchSection.id = 'velenv-section-glitch';
+    glitchSection.style.cssText = 'flex:1;display:none;flex-direction:column;padding:14px 16px;gap:12px;';
+    glitchSection.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="color:#ff9900;font-weight:700;font-size:10px;letter-spacing:1px">GLITCH EFFECT</span>
+        <span style="color:#555;font-size:9px">(applies to active chart)</span>
+        <label style="margin-left:auto;display:flex;align-items:center;gap:5px;cursor:pointer">
+          <input type="checkbox" id="velenv-glitch-enabled">
+          <span style="color:#ccc;font-size:10px">Enabled</span>
+        </label>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="color:#888;font-size:10px;min-width:44px">Level</span>
+        <input type="range" id="velenv-glitch-level" min="0" max="10" step="0.5"
+          style="flex:1;accent-color:#ff9900">
+        <span id="velenv-glitch-level-label"
+          style="color:#ff9900;font-size:11px;font-weight:700;min-width:28px;text-align:right">3.0</span>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button id="velenv-glitch-apply"
+          style="background:#1a1500;border:1px solid #ff9900;border-radius:3px;
+                 color:#ff9900;font-size:10px;padding:3px 14px;cursor:pointer;">
+          Apply Level</button>
+        <span style="color:#555;font-size:9px">Changes to level take effect on Apply or re-enable.</span>
+      </div>
+      <div style="margin-top:4px;border-top:1px solid #1e1e33;padding-top:10px">
+        <div style="color:#888;font-size:9px;line-height:1.6">
+          <b style="color:#aaa">Glitch Effect</b> distorts the game preview visually using layered CSS animations.<br>
+          Powered by <a href="https://github.com/7PH/powerglitch" target="_blank"
+            style="color:#ff9900;text-decoration:none">PowerGlitch</a>.
+          Adjust level 1–10 (higher = more chaotic). Each chart stores its own setting.
+        </div>
+      </div>`;
+    win.appendChild(glitchSection);
 
     document.body.appendChild(win);
     this._win    = win;
@@ -161,10 +203,79 @@ class VelocityEnvelopeEditor {
 
     this._makeDraggable(bar, win);
     this._makeResizable(win);
+    this._bindTabStrip(tabStrip, velSection, glitchSection);
     this._bindEvents();
+    this._bindGlitchControls();
   }
 
-  // ── Event wiring ──────────────────────────────────────────────────────────
+  // ── Tab strip ─────────────────────────────────────────────────────────────
+
+  _bindTabStrip(strip, velSec, glitchSec) {
+    const velBtn    = strip.querySelector('#velenv-tab-vel');
+    const glitchBtn = strip.querySelector('#velenv-tab-glitch');
+    const activate  = (tab) => {
+      const isVel = tab === 'vel';
+      velSec.style.display    = isVel ? 'flex' : 'none';
+      glitchSec.style.display = isVel ? 'none' : 'flex';
+      velBtn.style.borderBottomColor    = isVel ? '#ff9900' : 'transparent';
+      velBtn.style.background           = isVel ? '#15151f' : '#0d0d1d';
+      velBtn.style.color                = isVel ? '#ff9900' : '#666';
+      glitchBtn.style.borderBottomColor = isVel ? 'transparent' : '#ff9900';
+      glitchBtn.style.background        = isVel ? '#0d0d1d' : '#15151f';
+      glitchBtn.style.color             = isVel ? '#666' : '#ff9900';
+      if (isVel) this.invalidate();
+    };
+    velBtn.addEventListener('click',    () => activate('vel'));
+    glitchBtn.addEventListener('click', () => activate('glitch'));
+  }
+
+  // ── Glitch control bindings ────────────────────────────────────────────────
+
+  _bindGlitchControls() {
+    const win = this._win;
+    const checkbox = win.querySelector('#velenv-glitch-enabled');
+    const slider   = win.querySelector('#velenv-glitch-level');
+    const label    = win.querySelector('#velenv-glitch-level-label');
+    const applyBtn = win.querySelector('#velenv-glitch-apply');
+
+    const notifyChange = () => {
+      if (typeof this.onGlitchChange === 'function') {
+        this.onGlitchChange({ ...this._glitch });
+      }
+    };
+
+    checkbox.addEventListener('change', () => {
+      this._glitch.enabled = checkbox.checked;
+      notifyChange();
+    });
+
+    slider.addEventListener('input', () => {
+      const v = parseFloat(slider.value);
+      this._glitch.level = v;
+      label.textContent = v.toFixed(1);
+      // Live update: just store, don't reapply until Apply is clicked
+      notifyChange();
+    });
+
+    applyBtn.addEventListener('click', () => {
+      this._glitch.level = parseFloat(slider.value);
+      if (typeof _reapplyGlitch === 'function') _reapplyGlitch(this._glitch.level);
+      notifyChange();
+    });
+  }
+
+  _updateGlitchUI() {
+    const win = this._win;
+    if (!win) return;
+    const checkbox = win.querySelector('#velenv-glitch-enabled');
+    const slider   = win.querySelector('#velenv-glitch-level');
+    const label    = win.querySelector('#velenv-glitch-level-label');
+    if (checkbox) checkbox.checked = !!this._glitch.enabled;
+    if (slider)   slider.value = this._glitch.level;
+    if (label)    label.textContent = (+this._glitch.level).toFixed(1);
+  }
+
+  // ── Velocity canvas events ─────────────────────────────────────────────────
 
   _bindEvents() {
     const canvas = this._canvas;
@@ -178,33 +289,44 @@ class VelocityEnvelopeEditor {
       this._notifyChange();
     });
 
-    this._win.querySelector('#velenv-hint-btn').addEventListener('click', () => {
-      alert(
-        'Velocity Envelope Editor\n\n' +
-        'Left-click empty area → add a new velocity node\n' +
-        'Left-click node → select / drag to reposition\n' +
-        'Right-click node → delete\n' +
-        'Double-click segment → toggle Step ↔ Linear ramp\n\n' +
-        'Snap settings control how nodes snap to the grid.\n' +
-        'Segments shown as diagonals are Linear (smooth ramp);\n' +
-        'horizontal segments are Step (instant change).'
-      );
-    });
+    canvas.addEventListener('mousedown',   e => this._onMouseDown(e));
+    canvas.addEventListener('mousemove',   e => this._onMouseMove(e));
+    canvas.addEventListener('mouseup',     e => this._onMouseUp(e));
+    canvas.addEventListener('mouseleave',  e => this._onMouseUp(e));
+    canvas.addEventListener('contextmenu', e => { e.preventDefault(); this._onRightClick(e); });
+    canvas.addEventListener('dblclick',    e => this._onDblClick(e));
+    canvas.addEventListener('wheel',       e => this._onWheel(e), { passive: false });
 
-    canvas.addEventListener('mousedown',  e => this._onMouseDown(e));
-    canvas.addEventListener('mousemove',  e => this._onMouseMove(e));
-    canvas.addEventListener('mouseup',    e => this._onMouseUp(e));
-    canvas.addEventListener('mouseleave', e => this._onMouseUp(e));
-    canvas.addEventListener('contextmenu',e => { e.preventDefault(); this._onRightClick(e); });
-    canvas.addEventListener('dblclick',   e => this._onDblClick(e));
-
-    // ResizeObserver to keep canvas pixel size in sync
     const ro = new ResizeObserver(() => {
       canvas.width  = canvas.clientWidth  * devicePixelRatio;
       canvas.height = canvas.clientHeight * devicePixelRatio;
       this.invalidate();
     });
     ro.observe(canvas);
+  }
+
+  // ── Zoom via scroll wheel ──────────────────────────────────────────────────
+
+  _onWheel(e) {
+    e.preventDefault();
+    const [cx] = this._getCanvasXY(e);
+    const pivotTick = this._xToTick(cx);
+    const zoomFactor = e.deltaY > 0 ? 1.25 : 0.8;
+    const span = (this._viewEnd - this._viewStart) * zoomFactor;
+    const total = this._chart?.totalTicks?.() ?? 192 * 64;
+    // Clamp minimum to 4 beats visible, max to full chart
+    const minSpan = 4 * 48;
+    const clampedSpan = Math.min(Math.max(span, minSpan), total);
+    // Keep pivot point stationary under cursor
+    const ratio = (pivotTick - this._viewStart) / (this._viewEnd - this._viewStart);
+    let newStart = pivotTick - ratio * clampedSpan;
+    let newEnd   = newStart + clampedSpan;
+    // Clamp to chart bounds
+    if (newStart < 0) { newStart = 0; newEnd = clampedSpan; }
+    if (newEnd > total) { newEnd = total; newStart = Math.max(0, total - clampedSpan); }
+    this._viewStart = newStart;
+    this._viewEnd   = newEnd;
+    this.invalidate();
   }
 
   // ── Draggable title bar ────────────────────────────────────────────────────
@@ -238,15 +360,14 @@ class VelocityEnvelopeEditor {
     win.appendChild(grip);
     let ox = 0, oy = 0, ow = 0, oh = 0, resizing = false;
     grip.addEventListener('mousedown', e => {
-      resizing = true;
-      ox = e.clientX; oy = e.clientY;
+      resizing = true; ox = e.clientX; oy = e.clientY;
       ow = win.offsetWidth; oh = win.offsetHeight;
       e.preventDefault(); e.stopPropagation();
     });
     document.addEventListener('mousemove', e => {
       if (!resizing) return;
-      win.style.width  = Math.max(360, ow + e.clientX - ox) + 'px';
-      win.style.height = Math.max(140, oh + e.clientY - oy) + 'px';
+      win.style.width  = Math.max(380, ow + e.clientX - ox) + 'px';
+      win.style.height = Math.max(200, oh + e.clientY - oy) + 'px';
     });
     document.addEventListener('mouseup', () => { resizing = false; });
   }
@@ -254,35 +375,28 @@ class VelocityEnvelopeEditor {
   // ── Coordinate helpers ────────────────────────────────────────────────────
 
   _snapTick(tick) {
-    const snap = parseInt(this._win.querySelector('#velenv-snap').value, 10);
+    const snap = parseInt(this._win?.querySelector('#velenv-snap')?.value ?? '192', 10);
     if (!snap) return Math.round(tick);
     return Math.round(tick / snap) * snap;
   }
-
   _snapSpeed(spd) {
-    const snap = parseFloat(this._win.querySelector('#velenv-spsnap').value);
+    const snap = parseFloat(this._win?.querySelector('#velenv-spsnap')?.value ?? '0.25');
     if (!snap) return +spd.toFixed(3);
     return Math.round(spd / snap) * snap;
   }
-
   _tickToX(tick) {
-    const { _viewStart: vs, _viewEnd: ve } = this;
     const W = this._canvas.width / devicePixelRatio;
-    return ((tick - vs) / (ve - vs)) * W;
+    return ((tick - this._viewStart) / (this._viewEnd - this._viewStart)) * W;
   }
-
   _xToTick(x) {
-    const { _viewStart: vs, _viewEnd: ve } = this;
     const W = this._canvas.width / devicePixelRatio;
-    return vs + (x / W) * (ve - vs);
+    return this._viewStart + (x / W) * (this._viewEnd - this._viewStart);
   }
-
   _speedToY(spd) {
     const H = this._canvas.height / devicePixelRatio;
     const pad = 20;
     return pad + (1 - (spd - this._minSpeed) / (this._maxSpeed - this._minSpeed)) * (H - pad * 2);
   }
-
   _yToSpeed(y) {
     const H = this._canvas.height / devicePixelRatio;
     const pad = 20;
@@ -293,8 +407,8 @@ class VelocityEnvelopeEditor {
 
   _hitNode(cx, cy, radius = 8) {
     if (!this._chart) return -1;
-    const evs = this._chart.scrollSpeedEvents;
     const dpr = devicePixelRatio;
+    const evs = this._chart.scrollSpeedEvents;
     for (let i = evs.length - 1; i >= 0; i--) {
       const nx = this._tickToX(evs[i].y) * dpr;
       const ny = this._speedToY(evs[i].speed) * dpr;
@@ -316,7 +430,7 @@ class VelocityEnvelopeEditor {
     const idx = this._hitNode(cx * devicePixelRatio, cy * devicePixelRatio);
     if (idx >= 0) {
       this._sel  = idx;
-      this._drag = { evIdx: idx, startX: cx, startY: cy };
+      this._drag = { evIdx: idx };
       e.preventDefault();
     } else {
       this._addNodeAt(cx, cy);
@@ -336,7 +450,6 @@ class VelocityEnvelopeEditor {
     let speed = this._snapSpeed(this._yToSpeed(cy));
     speed = Math.max(this._minSpeed, Math.min(this._maxSpeed, speed));
 
-    // Clamp: tick 0 always stays at 0
     if (this._drag.evIdx === 0) { tick = 0; }
     else {
       const prev = evs[this._drag.evIdx - 1];
@@ -345,9 +458,8 @@ class VelocityEnvelopeEditor {
       if (next) tick = Math.min(next.y - 1, tick);
     }
 
-    ev.y     = tick;
-    ev.speed = speed;
-    this._notifyChange(false); // no undo during drag
+    ev.y = tick; ev.speed = speed;
+    this._notifyChange(false);
     this.invalidate();
   }
 
@@ -363,34 +475,29 @@ class VelocityEnvelopeEditor {
     const [cx, cy] = this._getCanvasXY(e);
     const idx = this._hitNode(cx * devicePixelRatio, cy * devicePixelRatio);
     if (idx < 0 || !this._chart) return;
-    const evs = this._chart.scrollSpeedEvents;
-    if (evs[idx].y === 0) return; // cannot remove anchor
+    if (this._chart.scrollSpeedEvents[idx].y === 0) return;
     if (typeof saveUndo === 'function') saveUndo('Deleted velocity envelope node');
-    evs.splice(idx, 1);
+    this._chart.scrollSpeedEvents.splice(idx, 1);
     this._sel = null;
     this._notifyChange();
   }
 
   _onDblClick(e) {
-    // Toggle the interpolation of the segment clicked
     if (!this._chart) return;
-    const [cx, cy] = this._getCanvasXY(e);
+    const [cx] = this._getCanvasXY(e);
     const tick = this._xToTick(cx);
     const evs  = this._chart.scrollSpeedEvents;
-    // Find which segment's start event the click falls in
     let segIdx = -1;
     for (let i = 0; i < evs.length - 1; i++) {
       if (tick >= evs[i].y && tick < evs[i + 1].y) { segIdx = i; break; }
     }
     if (segIdx < 0) return;
-    const cur = evs[segIdx].interp ?? 'step';
+    const cur  = evs[segIdx].interp ?? 'step';
     const next = cur === 'step' ? 'linear' : 'step';
     if (typeof saveUndo === 'function') saveUndo(`Velocity segment → ${next}`);
     this._chart.setScrollSpeedInterp(evs[segIdx].y, next);
     this._notifyChange();
   }
-
-  // ── Add node ──────────────────────────────────────────────────────────────
 
   _addNodeAt(cx, cy) {
     if (!this._chart) return;
@@ -400,13 +507,10 @@ class VelocityEnvelopeEditor {
     tick  = Math.max(0, tick);
     if (typeof saveUndo === 'function') saveUndo('Added velocity envelope node');
     this._chart.addScrollSpeedEvent(tick, speed, 'step');
-    // Select the newly added node
     const evs = this._chart.scrollSpeedEvents;
     this._sel = evs.findIndex(e => e.y === tick);
     this._notifyChange();
   }
-
-  // ── Notify external render ────────────────────────────────────────────────
 
   _notifyChange(doUndo = false) {
     if (typeof updateScrollSpeedEventList === 'function') updateScrollSpeedEventList();
@@ -424,7 +528,6 @@ class VelocityEnvelopeEditor {
     };
     this._raf = requestAnimationFrame(loop);
   }
-
   _stopLoop() {
     if (this._raf) { cancelAnimationFrame(this._raf); this._raf = null; }
   }
@@ -440,55 +543,41 @@ class VelocityEnvelopeEditor {
 
     ctx.save();
     ctx.scale(dpr, dpr);
-
-    // Background
     ctx.fillStyle = '#09091a';
     ctx.fillRect(0, 0, W, H);
 
-    // Ensure chart is present
     const evs = this._chart?.scrollSpeedEvents;
     if (!evs || evs.length === 0) {
-      ctx.fillStyle = '#444';
-      ctx.font = '11px monospace';
-      ctx.textAlign = 'center';
+      ctx.fillStyle = '#444'; ctx.font = '11px monospace'; ctx.textAlign = 'center';
       ctx.fillText('No chart loaded', W / 2, H / 2);
       ctx.restore();
       return;
     }
 
     const pad = 20;
-
     this._drawGrid(ctx, W, H, pad);
     this._drawEnvelope(ctx, W, H, pad, evs);
     this._drawNodes(ctx, evs);
     this._drawAxisLabels(ctx, W, H, pad);
     this._drawMeasureLabels(ctx, W, H);
-
+    this._drawZoomHint(ctx, W, H);
     ctx.restore();
   }
 
   _drawGrid(ctx, W, H, pad) {
-    ctx.strokeStyle = '#1a1a2e';
-    ctx.lineWidth   = 1;
-
-    // Horizontal speed lines
     const steps = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0];
     for (const s of steps) {
       if (s < this._minSpeed || s > this._maxSpeed) continue;
       const y = this._speedToY(s);
-      ctx.beginPath();
-      ctx.moveTo(0, y); ctx.lineTo(W, y);
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y);
       if (s === 1.0) { ctx.strokeStyle = '#2a2a4a'; ctx.lineWidth = 1.5; }
       else           { ctx.strokeStyle = '#1a1a2e'; ctx.lineWidth = 1; }
       ctx.stroke();
     }
-
-    // Vertical measure lines
     const vs = this._viewStart, ve = this._viewEnd;
     const startM = Math.ceil(vs / TICKS_PER_MEASURE);
     const endM   = Math.floor(ve / TICKS_PER_MEASURE);
-    ctx.strokeStyle = '#1a1a2e';
-    ctx.lineWidth   = 1;
+    ctx.strokeStyle = '#1a1a2e'; ctx.lineWidth = 1;
     for (let m = startM; m <= endM; m++) {
       const x = this._tickToX(m * TICKS_PER_MEASURE);
       ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
@@ -496,96 +585,51 @@ class VelocityEnvelopeEditor {
   }
 
   _drawEnvelope(ctx, W, H, pad, evs) {
-    if (evs.length === 0) return;
-
-    // Build path for filled area under envelope
+    if (!evs.length) return;
     ctx.beginPath();
-    let firstX = this._tickToX(evs[0].y);
-    let firstY = this._speedToY(evs[0].speed);
-    ctx.moveTo(firstX, H);
-    ctx.lineTo(firstX, firstY);
-
+    const firstX = this._tickToX(evs[0].y), firstY = this._speedToY(evs[0].speed);
+    ctx.moveTo(firstX, H); ctx.lineTo(firstX, firstY);
     for (let i = 0; i < evs.length - 1; i++) {
       const e0 = evs[i], e1 = evs[i + 1];
-      const x0 = this._tickToX(e0.y), y0 = this._speedToY(e0.speed);
-      const x1 = this._tickToX(e1.y), y1 = this._speedToY(e1.speed);
-      const isLinear = (e0.interp ?? 'step') === 'linear';
-      if (isLinear) {
-        ctx.lineTo(x1, y1);
-      } else {
-        ctx.lineTo(x1, y0); // step: horizontal then drop
-        ctx.lineTo(x1, y1);
-      }
+      const x1 = this._tickToX(e1.y), y0 = this._speedToY(e0.speed), y1 = this._speedToY(e1.speed);
+      if ((e0.interp ?? 'step') === 'linear') { ctx.lineTo(x1, y1); }
+      else { ctx.lineTo(x1, y0); ctx.lineTo(x1, y1); }
     }
-
-    // Last node extends to view end
-    const last = evs[evs.length - 1];
-    const lx = this._tickToX(this._viewEnd);
-    const ly = this._speedToY(last.speed);
-    ctx.lineTo(lx, ly);
-    ctx.lineTo(lx, H);
-    ctx.closePath();
-
+    const lx = this._tickToX(this._viewEnd), ly = this._speedToY(evs[evs.length - 1].speed);
+    ctx.lineTo(lx, ly); ctx.lineTo(lx, H); ctx.closePath();
     const grad = ctx.createLinearGradient(0, pad, 0, H);
-    grad.addColorStop(0, '#ff990033');
-    grad.addColorStop(1, '#ff990008');
-    ctx.fillStyle = grad;
-    ctx.fill();
+    grad.addColorStop(0, '#ff990033'); grad.addColorStop(1, '#ff990008');
+    ctx.fillStyle = grad; ctx.fill();
 
-    // Draw the envelope line on top
-    ctx.beginPath();
-    ctx.moveTo(firstX, firstY);
+    ctx.beginPath(); ctx.moveTo(firstX, firstY);
     for (let i = 0; i < evs.length - 1; i++) {
       const e0 = evs[i], e1 = evs[i + 1];
-      const x0 = this._tickToX(e0.y), y0 = this._speedToY(e0.speed);
-      const x1 = this._tickToX(e1.y), y1 = this._speedToY(e1.speed);
-      const isLinear = (e0.interp ?? 'step') === 'linear';
-      if (isLinear) {
-        ctx.lineTo(x1, y1);
-      } else {
-        ctx.lineTo(x1, y0);
-        ctx.lineTo(x1, y1);
-      }
+      const x1 = this._tickToX(e1.y), y0 = this._speedToY(e0.speed), y1 = this._speedToY(e1.speed);
+      if ((e0.interp ?? 'step') === 'linear') { ctx.lineTo(x1, y1); }
+      else { ctx.lineTo(x1, y0); ctx.lineTo(x1, y1); }
     }
     ctx.lineTo(lx, ly);
-
-    ctx.strokeStyle = '#ff9900';
-    ctx.lineWidth   = 1.5;
-    ctx.stroke();
+    ctx.strokeStyle = '#ff9900'; ctx.lineWidth = 1.5; ctx.stroke();
   }
 
   _drawNodes(ctx, evs) {
     for (let i = 0; i < evs.length; i++) {
       const ev = evs[i];
-      const x  = this._tickToX(ev.y);
-      const y  = this._speedToY(ev.speed);
+      const x = this._tickToX(ev.y), y = this._speedToY(ev.speed);
       const sel = i === this._sel;
-
-      ctx.beginPath();
-      ctx.arc(x, y, sel ? 6 : 4, 0, Math.PI * 2);
-      ctx.fillStyle   = sel ? '#ffcc44' : '#ff9900';
-      ctx.fill();
-      ctx.strokeStyle = sel ? '#fff8' : '#ff990088';
-      ctx.lineWidth   = 1;
-      ctx.stroke();
-
-      // Speed label for selected node
+      ctx.beginPath(); ctx.arc(x, y, sel ? 6 : 4, 0, Math.PI * 2);
+      ctx.fillStyle   = sel ? '#ffcc44' : '#ff9900'; ctx.fill();
+      ctx.strokeStyle = sel ? '#fff8'   : '#ff990088'; ctx.lineWidth = 1; ctx.stroke();
       if (sel) {
-        ctx.fillStyle = '#ffcc44';
-        ctx.font      = '10px monospace';
-        ctx.textAlign = 'center';
+        ctx.fillStyle = '#ffcc44'; ctx.font = '10px monospace'; ctx.textAlign = 'center';
         ctx.fillText(`×${ev.speed.toFixed(2)}`, x, y - 10);
       }
     }
   }
 
   _drawAxisLabels(ctx, W, H, pad) {
-    ctx.fillStyle = '#555';
-    ctx.font      = '9px monospace';
-    ctx.textAlign = 'right';
-
-    const labelSpeeds = [0.5, 1.0, 2.0, 3.0, 4.0, 5.0];
-    for (const s of labelSpeeds) {
+    ctx.fillStyle = '#555'; ctx.font = '9px monospace'; ctx.textAlign = 'right';
+    for (const s of [0.5, 1.0, 2.0, 3.0, 4.0, 5.0]) {
       const y = this._speedToY(s);
       if (y < pad || y > H - 4) continue;
       ctx.fillText(`×${s.toFixed(1)}`, 28, y + 3);
@@ -594,41 +638,57 @@ class VelocityEnvelopeEditor {
 
   _drawMeasureLabels(ctx, W, H) {
     const vs = this._viewStart, ve = this._viewEnd;
-    // Only draw labels every N measures to avoid clutter
     const totalM = Math.ceil((ve - vs) / TICKS_PER_MEASURE);
-    const step   = totalM <= 32 ? 4 : totalM <= 64 ? 8 : 16;
-
-    ctx.fillStyle = '#444';
-    ctx.font      = '8px monospace';
-    ctx.textAlign = 'center';
-
+    const step   = totalM <= 16 ? 1 : totalM <= 32 ? 2 : totalM <= 64 ? 4 : totalM <= 128 ? 8 : 16;
+    ctx.fillStyle = '#444'; ctx.font = '8px monospace'; ctx.textAlign = 'center';
     const startM = Math.ceil(vs / TICKS_PER_MEASURE);
     const endM   = Math.floor(ve / TICKS_PER_MEASURE);
     for (let m = startM; m <= endM; m++) {
       if ((m % step) !== 0) continue;
-      const x = this._tickToX(m * TICKS_PER_MEASURE);
-      ctx.fillText(`M${m}`, x, H - 4);
+      ctx.fillText(`M${m}`, this._tickToX(m * TICKS_PER_MEASURE), H - 4);
     }
+  }
+
+  _drawZoomHint(ctx, W, H) {
+    // Show current zoom range in top-right
+    const measures = Math.round((this._viewEnd - this._viewStart) / TICKS_PER_MEASURE);
+    ctx.fillStyle = '#333'; ctx.font = '8px monospace'; ctx.textAlign = 'right';
+    ctx.fillText(`${measures}m visible · scroll to zoom`, W - 4, 10);
   }
 }
 
-// ── Singleton instance ────────────────────────────────────────────────────────
+// ── Singleton ─────────────────────────────────────────────────────────────────
 
 let velEnvEditor = null;
 
 function getVelEnvEditor() {
-  if (!velEnvEditor) velEnvEditor = new VelocityEnvelopeEditor();
+  if (!velEnvEditor) {
+    velEnvEditor = new VelocityEnvelopeEditor();
+    // Wire glitch callback back to app.js
+    velEnvEditor.onGlitchChange = (settings) => {
+      if (typeof tabs !== 'undefined' && typeof activeTabIdx !== 'undefined') {
+        if (!tabs[activeTabIdx].glitch) tabs[activeTabIdx].glitch = { enabled: false, level: 3 };
+        tabs[activeTabIdx].glitch = { ...settings };
+        if (typeof _applyGlitch === 'function') {
+          _applyGlitch(settings.enabled, settings.level);
+        }
+      }
+    };
+  }
   return velEnvEditor;
 }
 
 function openVelEnvEditor() {
   const ed = getVelEnvEditor();
   if (typeof chart !== 'undefined' && chart) ed.setChart(chart);
+  const g = (typeof tabs !== 'undefined' && typeof activeTabIdx !== 'undefined')
+    ? (tabs[activeTabIdx].glitch ?? { enabled: false, level: 3 }) : { enabled: false, level: 3 };
+  ed.syncGlitch(g);
   ed.show();
 }
 
 function toggleVelEnvEditor() {
   const ed = getVelEnvEditor();
-  if (typeof chart !== 'undefined' && chart && !ed.isVisible()) ed.setChart(chart);
-  ed.toggle();
+  if (ed.isVisible()) { ed.hide(); return; }
+  openVelEnvEditor();
 }
