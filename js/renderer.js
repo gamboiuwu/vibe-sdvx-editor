@@ -1370,7 +1370,7 @@ class Renderer {
 
 // Draw selection overlay on top of the chart
 Renderer.prototype.drawSelection = function(sel) {
-  if (!sel || !sel.active) return;
+  if (!sel || (!sel.active && !sel.dragging)) return;
   const { ctx } = this;
   const colLen = this.colTicks;
   const lo = Math.min(sel.startTick, sel.endTick);

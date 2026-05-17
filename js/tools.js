@@ -657,9 +657,15 @@ function _toolValidity(c) {
   const sec = _section('Chart Validity Checker');
   c.appendChild(sec);
 
-  const runBtn = _btn('Run Checks');
+  const runBtn   = _btn('Run Checks');
+  const fixBtn   = _btn('Auto Fix');
+  fixBtn.style.cssText = 'margin-left:6px;background:#1a3a1a;border-color:#3a7a3a;color:#88ff88';
   const results = _h('div', 'tool-result-box');
-  sec.appendChild(runBtn);
+  const btnRow = _h('div', '');
+  btnRow.style.cssText = 'display:flex;gap:6px;margin-bottom:4px';
+  btnRow.appendChild(runBtn);
+  btnRow.appendChild(fixBtn);
+  sec.appendChild(btnRow);
   sec.appendChild(results);
 
   runBtn.addEventListener('click', () => {
@@ -895,6 +901,89 @@ function _toolValidity(c) {
       }
       results.appendChild(row);
     });
+  });
+
+  fixBtn.addEventListener('click', () => {
+    results.innerHTML = '';
+    if (!(typeof chart !== 'undefined' && chart)) {
+      results.innerHTML = '<div class="tool-result-item tool-result-err">No chart loaded</div>';
+      return;
+    }
+    if (typeof saveUndo === 'function') saveUndo('Auto Fix');
+    let fixed = 0;
+
+    // Fix BT overlaps: trim preceding note so it doesn't overlap
+    for (let i = 0; i < 4; i++) {
+      chart.bt[i].sort((a, b) => a.y - b.y);
+      for (let j = 0; j < chart.bt[i].length - 1; j++) {
+        const n = chart.bt[i][j], nx = chart.bt[i][j + 1];
+        const maxEnd = nx.y - 1;
+        if (n.y + Math.max(n.len, 1) > nx.y) {
+          n.len = Math.max(0, maxEnd - n.y);
+          fixed++;
+        }
+      }
+    }
+    // Fix FX overlaps
+    for (let i = 0; i < 2; i++) {
+      chart.fx[i].sort((a, b) => a.y - b.y);
+      for (let j = 0; j < chart.fx[i].length - 1; j++) {
+        const n = chart.fx[i][j], nx = chart.fx[i][j + 1];
+        if (n.y + Math.max(n.len, 1) > nx.y) {
+          n.len = Math.max(0, nx.y - 1 - n.y);
+          fixed++;
+        }
+      }
+    }
+    // Fix laser: remove sections with < 2 points
+    for (let s = 0; s < 2; s++) {
+      const before = chart.lasers[s].length;
+      chart.lasers[s] = chart.lasers[s].filter(sec2 => sec2.points.length >= 2);
+      fixed += before - chart.lasers[s].length;
+    }
+    // Fix laser v out of range
+    for (let s = 0; s < 2; s++) {
+      chart.lasers[s].forEach(sec2 => {
+        sec2.points.forEach(p => {
+          if (p.v < 0 || p.v > 1) { p.v = Math.max(0, Math.min(1, p.v)); fixed++; }
+        });
+      });
+    }
+    // Fix zero-duration laser sections: remove them
+    for (let s = 0; s < 2; s++) {
+      const before = chart.lasers[s].length;
+      chart.lasers[s] = chart.lasers[s].filter(sec2 => {
+        const lastPt = sec2.points[sec2.points.length - 1];
+        return (lastPt?.ry ?? 0) > 0;
+      });
+      fixed += before - chart.lasers[s].length;
+    }
+    // Fix overlapping laser sections: trim earlier section's last point ry
+    for (let s = 0; s < 2; s++) {
+      chart.lasers[s].sort((a, b) => a.y - b.y);
+      for (let i = 0; i < chart.lasers[s].length - 1; i++) {
+        const A = chart.lasers[s][i];
+        const lastPt = A.points[A.points.length - 1];
+        const aEnd   = A.y + (lastPt?.ry ?? 0);
+        const B      = chart.lasers[s][i + 1];
+        if (B.y < aEnd && lastPt) {
+          lastPt.ry = Math.max(0, B.y - A.y - 1);
+          fixed++;
+        }
+      }
+      // Remove any that became zero-duration from above fix
+      chart.lasers[s] = chart.lasers[s].filter(sec2 => {
+        const lp = sec2.points[sec2.points.length - 1];
+        return (lp?.ry ?? 0) > 0;
+      });
+    }
+
+    if (typeof render === 'function') render();
+
+    const msg = fixed > 0
+      ? `<div class="tool-result-item tool-result-ok">Auto Fix applied ${fixed} correction${fixed !== 1 ? 's' : ''}. Run Checks to verify.</div>`
+      : `<div class="tool-result-item tool-result-ok">No fixable issues found.</div>`;
+    results.innerHTML = msg;
   });
 }
 

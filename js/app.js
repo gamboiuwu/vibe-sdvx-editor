@@ -3539,6 +3539,7 @@ function selCopy() {
     bt:     chart.bt.map(l   => l.filter(n => n.y >= lo && n.y <= hi).map(n => ({...n, y: n.y - lo}))),
     fx:     chart.fx.map(l   => l.filter(n => n.y >= lo && n.y <= hi).map(n => ({...n, y: n.y - lo}))),
     lasers: chart.lasers.map(arr => arr.filter(s => s.y >= lo && s.y <= hi).map(s => ({...s, y: s.y - lo, points: s.points.map(p => ({...p}))}))),
+    vel:    (chart.scrollSpeedEvents ?? []).filter(e => e.y >= lo && e.y <= hi).map(e => ({...e, y: e.y - lo})),
     dur: hi - lo,
   };
 }
@@ -3598,16 +3599,18 @@ function selTransform() {
 function selPaste() {
   if (!sel.clipboard) return;
   saveUndo('Pasted Notes');
-  const at = sel.active ? Math.min(sel.startTick, sel.endTick) : renderer.playTick;
-  const { bt, fx, lasers } = sel.clipboard;
-  for (let li = 0; li < 4; li++) bt[li].forEach(n => chart.addBtNote(li, snapTick(at + n.y), n.len));
-  for (let li = 0; li < 2; li++) fx[li].forEach(n => chart.addFxNote(li, snapTick(at + n.y), n.len));
+  const at = snapTick(sel.active ? Math.min(sel.startTick, sel.endTick) : renderer.playTick);
+  const { bt, fx, lasers, vel = [] } = sel.clipboard;
+  for (let li = 0; li < 4; li++) bt[li].forEach(n => chart.addBtNote(li, at + n.y, n.len));
+  for (let li = 0; li < 2; li++) fx[li].forEach(n => chart.addFxNote(li, at + n.y, n.len));
   for (let s = 0; s < 2; s++) {
     lasers[s].forEach(sec => {
-      chart.lasers[s].push({ y: snapTick(at + sec.y), points: sec.points.map(p => ({...p})), wide: sec.wide });
+      chart.lasers[s].push({ y: at + sec.y, points: sec.points.map(p => ({...p})), wide: sec.wide });
     });
     chart.lasers[s].sort((a, b) => a.y - b.y);
   }
+  vel.forEach(ev => chart.addScrollSpeedEvent(at + ev.y, ev.speed, ev.interp ?? 'step'));
+  if (vel.length) updateScrollSpeedEventList();
   render();
 }
 
@@ -6830,7 +6833,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Right-click always erases, regardless of selected tool
     if (ev.button === 2 || tool === 'erase') {
       saveUndo(`Erased at M${m} (Preview)`);
-      eraseAt(li, tick);
+      if (norm < 0) chart.removeLaserAt(0, tick);
+      else if (norm > 1) chart.removeLaserAt(1, tick);
+      else eraseAt(li, tick);
       render(); if (gameView) gameView.draw();
       return;
     }
@@ -6905,6 +6910,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
     _geDrag.active = false;
+    render(); if (gameView) gameView.draw();
   });
 
   gameCanvas.addEventListener('mouseleave', () => {
