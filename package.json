@@ -1,0 +1,22 @@
+{
+  "name": "vibe-sdvx-editor",
+  "version": "1.0.0",
+  "description": "A browser-based chart editor for **Sound Voltex** style rhythm charts. KSON-first, with KSH import/export, real-time audio playback, an FX effect chain, and a 3D game preview that mirrors the actual gameplay perspective.",
+  "main": "server.js",
+  "scripts": {
+    "start":       "node server.js",
+    "build":       "node build.js",
+    "build:watch": "node build.js --watch",
+    "test":        "echo \"No tests configured\" && exit 0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "http://local_proxy@127.0.0.1:33959/git/gamboiuwu/vibe-sdvx-editor"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "esbuild": "^0.28.0"
+  }
+}

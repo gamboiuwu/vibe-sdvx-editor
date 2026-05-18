@@ -3,8 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>vibecoded-sdvx-clone</title>
+<title>vibe-editr — SDVX Chart Editor</title>
+<!-- Critical CSS loads synchronously; scripts below are deferred (parallel download, post-parse exec) -->
 <link rel="stylesheet" href="style.css">
+<link rel="dns-prefetch" href="//unpkg.com">
+<link rel="preload" href="js/app.js?v=18"    as="script">
+<link rel="preload" href="js/tools.js?v=4"   as="script">
+<link rel="preload" href="js/renderer.js?v=3" as="script">
 </head>
 <body>
 
@@ -1150,14 +1155,17 @@
   </div>
 </div>
 
-<script src="js/logger.js"></script>
-<script src="js/effects.js"></script>
-<script src="https://unpkg.com/powerglitch@latest/dist/powerglitch.min.js"></script>
-<script src="js/chart.js?v=2"></script>
-<script src="js/renderer.js?v=3"></script>
-<script src="js/game.js?v=6"></script>
-<script src="js/velenv.js?v=1"></script>
-<script src="js/ksh.js?v=3"></script>
+<script src="js/logger.js" defer></script>
+<script src="js/effects.js" defer></script>
+<!-- PowerGlitch CDN with inline no-op fallback so the app works fully offline -->
+<script src="https://unpkg.com/powerglitch@latest/dist/powerglitch.min.js"
+        onerror="window.PowerGlitch={glitch:function(){return{startGlitch:function(){},stopGlitch:function(){}};}}"
+        defer></script>
+<script src="js/chart.js?v=2" defer></script>
+<script src="js/renderer.js?v=3" defer></script>
+<script src="js/game.js?v=6" defer></script>
+<script src="js/velenv.js?v=1" defer></script>
+<script src="js/ksh.js?v=3" defer></script>
 <!-- Laser interpolation context menu -->
 <div id="laser-interp-menu" style="display:none;position:fixed;z-index:3000">
   <div class="lim-item" data-type="linear">
@@ -1417,17 +1425,17 @@
   </div>
 </div>
 
-<script src="js/kson.js?v=3"></script>
-<script src="js/calibration.js"></script>
-<script src="js/i18n.js"></script>
-<script src="js/gl-lane.js?v=4"></script>
-<script src="js/app.js?v=18"></script>
-<script src="js/dock.js?v=5"></script>
-<script src="js/tools.js?v=4"></script>
-<script src="js/heatmap.js?v=1"></script>
-<script src="js/radar.js?v=1"></script>
-<script src="js/handsim.js?v=1"></script>
-<script src="js/gameplay.js?v=3"></script>
+<script src="js/kson.js?v=3" defer></script>
+<script src="js/calibration.js" defer></script>
+<script src="js/i18n.js" defer></script>
+<script src="js/gl-lane.js?v=4" defer></script>
+<script src="js/app.js?v=18" defer></script>
+<script src="js/dock.js?v=5" defer></script>
+<script src="js/tools.js?v=4" defer></script>
+<script src="js/heatmap.js?v=1" defer></script>
+<script src="js/radar.js?v=1" defer></script>
+<script src="js/handsim.js?v=1" defer></script>
+<script src="js/gameplay.js?v=3" defer></script>
 <!-- Snap display (animated) -->
 <div id="snap-display" style="position:fixed;z-index:10001;pointer-events:none;display:none;font-family:monospace;font-size:16px;font-weight:bold;color:#88ccff;text-shadow:0 0 8px #0088ff;padding:8px 14px;border:1.5px solid #0088ff;border-radius:4px;background:#000000dd;white-space:nowrap;">
   <div id="snap-display-text" style="height:20px;overflow:hidden;position:relative;min-width:5ch">
