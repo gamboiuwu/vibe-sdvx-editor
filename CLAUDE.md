@@ -135,9 +135,12 @@ Two places must stay in sync:
 node server.js          # dev server on :3000 (gzip, in-memory cache)
 npm run build           # → dist/bundle.min.js + dist/index.html  (production)
 npm run build:watch     # rebuild on change
+npm run lint            # ESLint — catches undefined globals, unused vars, etc.
 ```
 
 `dist/` is git-ignored. To deploy to GitHub Pages, run `npm run build` and push `dist/`.
+
+**ESLint** (`eslint.config.js`) uses flat config with `sourceType: 'script'` (all files share global scope). All ~30 vibe-editr globals are declared there so `no-undef` catches real typos. Run after adding new globals or cross-file references.
 
 ---
 

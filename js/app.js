@@ -161,6 +161,17 @@ let _hasUnsavedChanges = false; // track if chart has unsaved changes
 // ── Camera tilt mode (updated by updateCameraFromEvents) ──────────────────────
 let _tiltMode = 'zero'; // 'zero' | 'normal' | 'reverse' | 'keep'
 
+// ── Cached DOM element references ────────────────────────────────────────────
+// getElementById is cheap but not free. These elements are permanent (present
+// from initial HTML parse), so caching them avoids redundant DOM lookups in
+// hot paths like mousemove handlers and the seekbar updater.
+let _$seekFill    = null; // #game-seekbar-fill
+let _$seekThumb   = null; // #game-seekbar-thumb
+let _$seekLabel   = null; // #game-seekbar-time
+let _$chartCanvas = null; // #chart-canvas  (2D edit canvas)
+let _$audioStatus = null; // #audio-status
+let _$fileInput   = null; // #file-input    (hidden file picker)
+
 // ── Chart annotation overlay ──────────────────────────────────────────────────
 // Populated by tools (Hand Optimizer, Validity Checker) to show animated warning
 // markers in both the 2D editor and SDVX game preview.
@@ -169,6 +180,16 @@ const _chartAnnotations = [];
 const _ANN_LIFETIME = 7000; // ms visible (last 1200ms = fade-out)
 const _ANN_FADE     = 1200; // ms of fade at end
 
+/**
+ * Place a timestamped badge at a chart tick position, visible for 7 s.
+ * Rendered as blinking overlays in both the 2D editor and 3D preview.
+ * Deduplicates by (tick, source): posting the same pair resets the timer.
+ * @param {object}           opts
+ * @param {number}           opts.tick      Chart tick where the marker appears.
+ * @param {string}           opts.label     Short text shown inside the badge.
+ * @param {'warn'|'error'}   opts.severity  Controls badge colour.
+ * @param {string}           opts.source    Caller tag used for deduplication (e.g. 'validity').
+ */
 function addChartAnnotation({ tick, label, severity, source }) {
   // Deduplicate by tick+source
   const idx = _chartAnnotations.findIndex(a => a.tick === tick && a.source === source);
@@ -270,6 +291,15 @@ let _fxBitcrusherProc = null;
 let _fxRetriggerProc  = null;
 let _fxTapeStopActive = false;
 
+/**
+ * Lazily create the shared Web Audio context and build the signal chain.
+ * Safe to call multiple times — no-op after first initialisation.
+ * MUST be called from a user-gesture handler to satisfy browser autoplay policy.
+ *
+ * Signal graph (left → right):
+ *   audioSource → laserFilter → fxDryGain ────────────────────────────────┐
+ *                             → fxWetIn → [active effect] → fxWetGain → fxMixOut → musicGain → master
+ */
 function ensureAudioCtx() {
   if (!audioCtx) {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
@@ -340,7 +370,8 @@ async function loadAudioFile(file) {
   _loadingShow('Decoding audio…', 55);
   audioArrayBuffer = buf.slice(0); // preserve bytes before decodeAudioData may transfer ownership
   audioBuffer = await audioCtx.decodeAudioData(buf);
-  document.getElementById('audio-status').textContent = `Audio: ${file.name}`;
+  if (!_$audioStatus) _$audioStatus = document.getElementById('audio-status');
+  if (_$audioStatus) _$audioStatus.textContent = `Audio: ${file.name}`;
   _loadingDone();
 }
 
@@ -378,6 +409,11 @@ function applyBeatsPerLane(beats) {
 }
 
 // ── Tab management ────────────────────────────────────────────────────────────
+/**
+ * Persist the active tab's scroll/playhead position and switch to tab at index idx.
+ * Mutates the global `chart`, and syncs renderer, gameView, and velEnvEditor.
+ * @param {number} idx  0-based index into the tabs[] array.
+ */
 function switchToTab(idx) {
   // Save current position before switching
   tabs[activeTabIdx].chart      = chart;
@@ -1354,10 +1390,16 @@ function _fmtTime(sec) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
+/**
+ * Sync the seekbar UI (fill width, thumb position, time label) to a chart tick.
+ * Call whenever the playhead changes. DOM refs are cached after first call.
+ * @param {number} tick  Current chart tick (0 = chart start).
+ */
 function updateSeekbar(tick) {
-  const fill  = document.getElementById('game-seekbar-fill');
-  const thumb = document.getElementById('game-seekbar-thumb');
-  const label = document.getElementById('game-seekbar-time');
+  if (!_$seekFill)  _$seekFill  = document.getElementById('game-seekbar-fill');
+  if (!_$seekThumb) _$seekThumb = document.getElementById('game-seekbar-thumb');
+  if (!_$seekLabel) _$seekLabel = document.getElementById('game-seekbar-time');
+  const fill = _$seekFill, thumb = _$seekThumb, label = _$seekLabel;
   if (!fill || !thumb || !label) return;
 
   const total = chart ? chart.totalTicks() : 0;
@@ -2184,6 +2226,7 @@ window.addEventListener('DOMContentLoaded', () => {
   buildLaneHeader();
 
   const canvas = document.getElementById('chart-canvas');
+  _$chartCanvas = canvas;
   renderer = new Renderer(canvas);
   renderer.chart = chart;
 
@@ -2526,13 +2569,14 @@ window.addEventListener('DOMContentLoaded', () => {
   });
 
   // Open file
+  _$fileInput = document.getElementById('file-input');
   document.getElementById('btn-open-ksh').addEventListener('click', () => {
-    const fi = document.getElementById('file-input'); fi.accept = '.ksh'; fi.click();
+    _$fileInput.accept = '.ksh'; _$fileInput.click();
   });
   document.getElementById('btn-open-kson').addEventListener('click', () => {
-    const fi = document.getElementById('file-input'); fi.accept = '.kson'; fi.click();
+    _$fileInput.accept = '.kson'; _$fileInput.click();
   });
-  document.getElementById('file-input').addEventListener('change', e => {
+  _$fileInput.addEventListener('change', e => {
     const file = e.target.files[0];
     if (!file) return;
     const isPack = !!e.target.dataset.bundle || file.name.endsWith('.ksonpack');
@@ -2641,16 +2685,16 @@ window.addEventListener('DOMContentLoaded', () => {
   // Open .ksh / .kson in a NEW tab — same loader, just adds a tab first
   document.getElementById('btn-open-ksh-new-tab')?.addEventListener('click', () => {
     addTab();
-    const fi = document.getElementById('file-input'); fi.accept = '.ksh'; fi.click();
+    _$fileInput.accept = '.ksh'; _$fileInput.click();
   });
   document.getElementById('btn-open-kson-new-tab')?.addEventListener('click', () => {
     addTab();
-    const fi = document.getElementById('file-input'); fi.accept = '.kson'; fi.click();
+    _$fileInput.accept = '.kson'; _$fileInput.click();
   });
 
   // ── ksonpack bundle: open / export ─────────────────────────────────────
   document.getElementById('btn-open-ksonpack')?.addEventListener('click', () => {
-    const fi = document.getElementById('file-input'); fi.accept = '.ksonpack,.json'; fi.dataset.bundle = '1'; fi.click();
+    _$fileInput.accept = '.ksonpack,.json'; _$fileInput.dataset.bundle = '1'; _$fileInput.click();
   });
 
   document.getElementById('btn-export-ksonpack')?.addEventListener('click', () => {
@@ -2817,7 +2861,7 @@ window.addEventListener('DOMContentLoaded', () => {
     // If there's a .ksonpack in the folder, treat it like opening a ksonpack bundle
     const packFile = files.find(f => f.name.endsWith('.ksonpack') || (f.name.endsWith('.json') && f.name.toLowerCase().includes('pack')));
     if (packFile) {
-      const fi = document.getElementById('file-input');
+      const fi = _$fileInput || (_$fileInput = document.getElementById('file-input'));
       fi.accept = '.ksonpack,.json'; fi.dataset.bundle = '1';
       // Synthesise a FileList-like event to reuse the existing ksonpack handler
       const dt = new DataTransfer(); dt.items.add(packFile);
@@ -3059,8 +3103,9 @@ window.addEventListener('DOMContentLoaded', () => {
       }
       saveUndo('Calibrated audio offset');
       // Flash status
-      const st = document.getElementById('audio-status');
-      if (st) {
+      if (!_$audioStatus) _$audioStatus = document.getElementById('audio-status');
+      if (_$audioStatus) {
+        const st = _$audioStatus;
         const prev = st.textContent;
         st.textContent = `✓ Offset set to ${ms} ms`;
         setTimeout(() => { st.textContent = prev; }, 2500);
@@ -3296,7 +3341,8 @@ async function _linkAudioFile(file, decodedBuffer = null) {
     audioBuffer = await audioCtx.decodeAudioData(ab);
   }
   tabs.forEach(t => { t.audioBuffer = audioBuffer; });
-  document.getElementById('audio-status').textContent = `Audio: ${file.name}`;
+  if (!_$audioStatus) _$audioStatus = document.getElementById('audio-status');
+  if (_$audioStatus) _$audioStatus.textContent = `Audio: ${file.name}`;
   _idbAutosave();
 }
 
@@ -3339,7 +3385,8 @@ function _showImportError(filename, reason) {
 }
 
 function _flashStatus(msg) {
-  const st = document.getElementById('audio-status');
+  if (!_$audioStatus) _$audioStatus = document.getElementById('audio-status');
+  const st = _$audioStatus;
   if (!st) return;
   const prev = st.textContent;
   st.textContent = msg;
@@ -3511,6 +3558,17 @@ function setTool(t) {
 }
 
 let _renderScheduled = false;
+
+/**
+ * Redraw the 2D edit canvas and (if visible) the 3D game preview.
+ *
+ * Outside playback: coalesces rapid calls into a single requestAnimationFrame
+ * so calling render() N times synchronously only costs one draw.
+ * During playback: draws immediately because we're already inside playFrame's RAF.
+ *
+ * Also refreshes annotation overlays, multi-chart slots, pattern radar, and heatmap.
+ * For most edits, call render() once after all mutations are complete.
+ */
 function render() {
   autoDetectMeasures();
   checkLaserOverlap();
@@ -4290,7 +4348,7 @@ function openContextMenuCenter() {
   // When opened via the C key, default the menu tick to the playhead so
   // "Add BPM Change…" / "Add Time Sig…" still pre-fill sensibly.
   _ctxMenuTick = renderer?.playTick ?? 0;
-  const canvas = document.getElementById('chart-canvas');
+  const canvas = _$chartCanvas || (_$chartCanvas = document.getElementById('chart-canvas'));
   if (canvas && viewMode !== 'game') {
     const r = canvas.getBoundingClientRect();
     showCtxMenu(r.left + r.width / 2, r.top + r.height / 2);
@@ -4675,8 +4733,7 @@ function onMouseDown(e) {
           curveAtStart: hit.sec.points[hit.ptIndex].curve ?? 0.5,
         };
         if (renderer) renderer.activeBezierHandle = { sec: hit.sec, ptIndex: hit.ptIndex };
-        const canvas = document.getElementById('chart-canvas');
-        if (canvas) canvas.style.cursor = 'grabbing';
+        if (_$chartCanvas) _$chartCanvas.style.cursor = 'grabbing';
         render(); return;
       }
     }
@@ -4747,8 +4804,7 @@ function onMouseMove(e) {
         sec.points[ptIndex].curve = Math.max(0.01, Math.min(0.99, rawCurve));
       }
     }
-    const canvas = document.getElementById('chart-canvas');
-    if (canvas) canvas.style.cursor = 'grabbing';
+    if (_$chartCanvas) _$chartCanvas.style.cursor = 'grabbing';
     render();
     return;
   }
@@ -4766,8 +4822,7 @@ function onMouseMove(e) {
     if ((tool === 'laser-l' || tool === 'laser-r') && renderer) {
       const side = tool === 'laser-l' ? 0 : 1;
       const handleHit = renderer.getBezierHandleAt(e.offsetX, e.offsetY, side);
-      const canvas = document.getElementById('chart-canvas');
-      if (canvas) canvas.style.cursor = handleHit ? 'grab' : (_activeLaserSec ? 'crosshair' : '');
+      if (_$chartCanvas) _$chartCanvas.style.cursor = handleHit ? 'grab' : (_activeLaserSec ? 'crosshair' : '');
       const prev = renderer.activeBezierHandle;
       renderer.activeBezierHandle = handleHit
         ? { sec: handleHit.sec, ptIndex: handleHit.ptIndex }
@@ -4828,9 +4883,7 @@ function onMouseMove(e) {
       const fxHit = _findFxHoldAt(e.offsetX, e.offsetY);
       const prevFxHold = renderer._hoveredFxHold;
       renderer._hoveredFxHold = fxHit ? { li: fxHit.li, note: fxHit.note } : null;
-      // Update cursor
-      const canvas = document.getElementById('chart-canvas');
-      if (canvas) canvas.style.cursor = fxHit ? 'pointer' : '';
+      if (_$chartCanvas) _$chartCanvas.style.cursor = fxHit ? 'pointer' : '';
       if (prevFxHold !== renderer._hoveredFxHold) render();
     }
 
@@ -4865,8 +4918,7 @@ function onMouseUp(e) {
   if (_curveDrag) {
     _curveDrag = null;
     if (renderer) renderer.activeBezierHandle = null;
-    const canvas = document.getElementById('chart-canvas');
-    if (canvas) canvas.style.cursor = '';
+    if (_$chartCanvas) _$chartCanvas.style.cursor = '';
     saveUndo('Adjusted laser curve');
     render();
     return;
@@ -6327,6 +6379,19 @@ function renderFxChain(side) {
 const historyEntries = [];
 let historyCurrentIdx = -1; // index into historyEntries of current state
 
+/**
+ * Snapshot current chart state onto the undo stack BEFORE a mutation.
+ * Pattern: call saveUndo() first, then modify chart data, then call render().
+ *
+ * Side-effects:
+ *  - Prunes all redo entries beyond the current index (new branch).
+ *  - Trims the stack to MAX_UNDO entries (oldest dropped).
+ *  - Refreshes the History panel.
+ *  - Schedules a background autosave.
+ *
+ * @param {string|null} label  Description shown in the History panel (e.g. 'Place BT note').
+ *                             Defaults to "Edit @ M<measure>".
+ */
 function saveUndo(label = null) {
   const snap = JSON.stringify(serialize());
   const m = Math.floor((renderer?.playTick ?? 0) / TICKS_PER_MEASURE) + 1;
@@ -6828,8 +6893,9 @@ async function _idbAutosave() {
     // Mark as saved
     _hasUnsavedChanges = false;
     // Flash status bar
-    const st = document.getElementById('audio-status');
-    if (st) {
+    if (!_$audioStatus) _$audioStatus = document.getElementById('audio-status');
+    if (_$audioStatus) {
+      const st = _$audioStatus;
       const prev = st.textContent;
       st.textContent = '✔ Autosaved';
       setTimeout(() => { if (st.textContent === '✔ Autosaved') st.textContent = prev; }, 2000);
@@ -6882,7 +6948,8 @@ async function recoverAutosave() {
         audioArrayBuffer = savedAudio;
         audioBuffer = await audioCtx.decodeAudioData(savedAudio.slice(0));
         tabs.forEach(t => { t.audioBuffer = audioBuffer; });
-        document.getElementById('audio-status').textContent = `Audio: ${data.audioName} (restored)`;
+        if (!_$audioStatus) _$audioStatus = document.getElementById('audio-status');
+        if (_$audioStatus) _$audioStatus.textContent = `Audio: ${data.audioName} (restored)`;
       }
     } catch(audioErr) {
       console.warn('Could not restore autosaved audio:', audioErr);
