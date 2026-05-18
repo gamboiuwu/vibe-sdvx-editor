@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.16 · 2026</span>
+  <span class="version">v0.0.17 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,17 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.17</span>Adaptive Pattern Compression <span style="font-size:11px;color:#ffcc44;font-weight:normal;">[Experimental]</span></h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Adaptive Pattern Compression</strong> — new tool in <strong>Window → Tools Hub → Edit → Adaptive Compress</strong>. Scans the chart in configurable measure windows, calculates notes-per-beat density for each window, and identifies chip notes to remove to bring over-limit windows back under a user-set threshold.</li>
+    <li><span class="tag add">add</span><strong>Density bar chart</strong> — visual overview of all measure windows drawn inside the tool panel. Over-threshold windows appear in red; safe windows in blue. An orange overlay on each bar shows what proportion of notes would be removed.</li>
+    <li><span class="tag add">add</span><strong>Subdivision-priority removal</strong> — notes on the weakest rhythmic positions are removed first (64th → 32nd triplets → 32nd → 16th triplets → 16th → 8th triplets → 8th → quarter notes), preserving rhythmic structure while reducing density. Hold notes are never candidates for removal.</li>
+    <li><span class="tag add">add</span><strong>Two-step workflow</strong> — click <em>Analyze</em> to preview what would be removed (visualized in the bar chart and described in the status text), then click <em>Apply Compression</em> to commit. The operation is fully undoable with <kbd>Ctrl+Z</kbd>.</li>
+    <li><span class="tag add">add</span>Per-tool settings (⚙ icon) allow configuring the default threshold (notes/beat), analysis window size (1–8 measures), and which lane groups (BT, FX) are targeted.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.16</span>Velocity Envelope Editor <span style="font-size:11px;color:#ffcc44;font-weight:normal;">[Experimental]</span></h4>

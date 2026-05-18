@@ -9,8 +9,44 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.14';
+const APP_VERSION = '0.0.17';
 const CHANGELOG = [
+  {
+    version: '0.0.17',
+    title: 'Adaptive Pattern Compression [Experimental]',
+    entries: [
+      ['add', '<strong>Adaptive Pattern Compression</strong> — new tool in <strong>Window → Tools Hub → Edit → Adaptive Compress</strong>. Scans the chart in configurable measure windows, calculates notes-per-beat density for each window, and identifies chip notes to remove in order to bring over-limit windows back under a user-set threshold.'],
+      ['add', 'Density bar chart — visual overview of all measure windows drawn on a canvas inside the tool panel. Over-threshold windows appear in red; safe windows in blue. Orange overlay on each bar shows what proportion of notes would be removed.'],
+      ['add', 'Subdivision-priority removal — notes on the weakest rhythmic positions are removed first (64th notes → 32nd triplets → 32nd → 16th triplets → 16th → 8th triplets → 8th → quarter), preserving rhythmic structure while reducing density.'],
+      ['add', 'Hold notes are never removed by the compression pass — only chip notes (len=0) are candidates.'],
+      ['add', 'Two-step workflow: click <em>Analyze</em> to preview what would be removed (shown in the bar chart), then click <em>Apply Compression</em> to commit the change. The operation is pushed to the undo stack so Ctrl+Z fully reverts it.'],
+      ['add', 'Per-tool settings (gear icon ⚙) allow configuring the default threshold, window size, and which lane groups (BT/FX) are targeted.'],
+    ],
+  },
+  {
+    version: '0.0.16',
+    title: 'Velocity Envelope Editor [Experimental]',
+    entries: [
+      ['add', '<strong>Velocity Envelope Editor</strong> — Ableton-style clip-envelope canvas for chart scroll speed events. Open via <strong>Chart Velocity → Open Envelope Editor</strong> in the left sidebar or press <kbd>`</kbd>.'],
+      ['add', 'Drag-to-place nodes — left-click anywhere on the canvas to place a velocity node; drag existing nodes to reposition. Right-click a node to delete it.'],
+      ['add', 'Linear ramps — double-click any segment to toggle between <em>Step</em> (instant change) and <em>Linear</em> (smooth ramp to the next value). Linear segments display as diagonal ramp lines.'],
+      ['add', 'Snap controls — snap tick position to Free / Measure / Beat / ½-Beat / ¼-Beat, and snap speed value to Free / 0.25 / 0.5 / 1.0 increments.'],
+      ['add', 'KSON round-trip — linear segments are exported as the third array element in the KSON scroll_speed array and re-imported correctly. Step segments are exported without the third element for backward compatibility.'],
+      ['chg', 'Velocity pills in the 2D lane editor show a tilde suffix (<code>vel ~</code>) when their outgoing segment is a linear ramp, making linear transitions visually distinct.'],
+    ],
+  },
+  {
+    version: '0.0.15',
+    title: 'Multi-Interpretation Preview Modes',
+    entries: [
+      ['add', '<strong>Visual Mode</strong> selector added to the game preview side panel. Four modes switch instantly without modifying chart data.'],
+      ['add', '<em>Standard</em> — full SDVX-style rendering with gradients and glow. Default behavior, unchanged.'],
+      ['add', '<em>Simple</em> — flat solid colors, no gradients or glow. BT notes render white, FX notes orange. Best for reading dense sections at high hi-speed.'],
+      ['add', '<em>Colorblind</em> — deuteranopia and protanopia-safe palette. Right laser remapped from pink to gold (#ddaa00).'],
+      ['add', '<em>Wireframe</em> — near-transparent fills with bright outlines only. Useful for structural density analysis.'],
+      ['chg', 'Selected Visual Mode is saved by <em>Save Config</em> alongside Projection, HiSpeed, and Judge Y, and restored on next launch.'],
+    ],
+  },
   {
     version: '0.0.14',
     title: 'Audio Event Anchoring [Experimental]',
