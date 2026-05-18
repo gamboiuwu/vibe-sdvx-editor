@@ -11,7 +11,8 @@ const TOOL_REGISTRY = [
   { id: 'fx-gen',      cat: 'Edit',     label: 'FX Generator',     icon: '⚡' },
   { id: 'hold-render', cat: 'Edit',     label: 'Hold Editor',      icon: '▬' },
   { id: 'scale',       cat: 'Edit',     label: 'Scale Suggester',  icon: '♫' },
-  { id: 'pattern-lib', cat: 'Edit',     label: 'Pattern Library',  icon: '≡' },
+  { id: 'pattern-lib',        cat: 'Edit',     label: 'Pattern Library',   icon: '≡' },
+  { id: 'adaptive-compress',  cat: 'Edit',     label: 'Adaptive Compress', icon: '⊟' },
   // Analysis
   { id: 'density-heatmap',cat:'Analysis',label:'Density Heatmap',  icon: '≋'  },
   { id: 'multi-sync',  cat: 'Analysis', label: 'Multi-Chart Sync', icon: '⇄'  },
@@ -60,6 +61,13 @@ const TOOL_SETTINGS = {
   ],
   'export-validate': [
     { key:'strict', label:'Strict mode (warnings = fail)', type:'toggle', default:false },
+  ],
+  'adaptive-compress': [
+    { key:'threshold', label:'Default threshold (notes/beat)', type:'number', min:0.5, max:8, default:4 },
+    { key:'window',    label:'Default window (measures)',      type:'select',
+      opts:['1','2','4','8'], labels:['1 measure','2 measures','4 measures','8 measures'], default:'2' },
+    { key:'targetBt',  label:'Target BT lanes by default',   type:'toggle', default:true },
+    { key:'targetFx',  label:'Target FX lanes by default',   type:'toggle', default:true },
   ],
   'pattern-lib': [
     { key:'maxPatterns', label:'Max stored patterns', type:'number', min:5, max:100, default:20 },
@@ -501,7 +509,8 @@ function _renderTool(id, container) {
     case 'audio-anchor':  return _toolAudioAnchor(container);
     case 'collision':     return _toolCollision(container);
     case 'export-validate':return _toolExportValidate(container);
-    case 'visual-mode':   return _toolVisualMode(container);
+    case 'visual-mode':       return _toolVisualMode(container);
+    case 'adaptive-compress': return _toolAdaptiveCompress(container);
     default: container.textContent = 'Unknown tool: ' + id;
   }
 }
@@ -5353,6 +5362,297 @@ function _toolVisualMode(c) {
   wrap.appendChild(btnWrap);
   syncActive();
   c.appendChild(wrap);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Adaptive Pattern Compression  [Experimental]
+   Finds windows that exceed a notes-per-beat density limit and removes the
+   lowest-priority chip notes (weakest subdivisions first) to bring each
+   window back under the threshold. Hold notes are never touched.
+   ═══════════════════════════════════════════════════════════════════════════ */
+function _toolAdaptiveCompress(c) {
+  const TPBEAT = TICKS_PER_BEAT; // 48 at 4/4
+
+  // ── Header ────────────────────────────────────────────────────────────────
+  const sec = _section('Adaptive Pattern Compression');
+  c.appendChild(sec);
+
+  const descEl = _h('div', 'tool-subdesc',
+    'Finds chart windows that exceed a notes-per-beat limit and removes the lowest-priority chip notes — weakest subdivisions (64th → 32nd → 16th) first — to bring density under the threshold. Hold notes are never removed.');
+  sec.appendChild(descEl);
+
+  // ── Threshold slider ──────────────────────────────────────────────────────
+  const threshSlider = document.createElement('input');
+  threshSlider.type = 'range'; threshSlider.min = '0.5'; threshSlider.max = '8';
+  threshSlider.step = '0.5';
+  threshSlider.value = String(_getTS('adaptive-compress', 'threshold') ?? 4);
+
+  const threshDisp = _h('span', '', parseFloat(threshSlider.value).toFixed(1));
+  threshDisp.style.cssText = 'color:#00cfff;min-width:32px;text-align:right;font-family:monospace;font-size:11px';
+
+  const threshWrap = document.createElement('div');
+  threshWrap.style.cssText = 'display:flex;align-items:center;gap:6px;flex:1';
+  threshSlider.style.flex = '1';
+  threshWrap.appendChild(threshSlider);
+  threshWrap.appendChild(threshDisp);
+
+  const threshRow = _h('div', 'tool-row');
+  threshRow.appendChild(_h('label', '', 'Max notes/beat:'));
+  threshRow.appendChild(threshWrap);
+  sec.appendChild(threshRow);
+
+  // ── Window size ───────────────────────────────────────────────────────────
+  const winSel = document.createElement('select');
+  winSel.style.cssText = 'background:#12122a;color:#ccd;border:1px solid #334;padding:2px 6px;border-radius:4px;font-size:10px';
+  const defWin = String(_getTS('adaptive-compress', 'window') ?? '2');
+  [['1','1 measure'],['2','2 measures'],['4','4 measures'],['8','8 measures']].forEach(([v,lbl]) => {
+    const o = document.createElement('option'); o.value = v; o.textContent = lbl;
+    if (v === defWin) o.selected = true;
+    winSel.appendChild(o);
+  });
+  sec.appendChild(_row('Analysis window:', winSel));
+
+  // ── Lane toggles ──────────────────────────────────────────────────────────
+  const laneState = {
+    bt: _getTS('adaptive-compress', 'targetBt') !== false,
+    fx: _getTS('adaptive-compress', 'targetFx') !== false,
+  };
+  const ltRow = _h('div', 'tool-row');
+  ltRow.appendChild(_h('label', '', 'Target lanes:'));
+  const ltBtns = document.createElement('div');
+  ltBtns.style.cssText = 'display:flex;gap:5px';
+  const _mkLBtn = (key, label, color) => {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.style.cssText = `background:${color}33;color:${color};border:1px solid ${color}66;` +
+                      `padding:2px 9px;border-radius:10px;cursor:pointer;font-size:10px;transition:background .15s`;
+    b.addEventListener('click', () => {
+      laneState[key] = !laneState[key];
+      b.style.background = laneState[key] ? color + '33' : '#1a1a35';
+      _clearStage();
+    });
+    return b;
+  };
+  ltBtns.appendChild(_mkLBtn('bt', 'BT', '#8080ff'));
+  ltBtns.appendChild(_mkLBtn('fx', 'FX', '#ff8800'));
+  ltRow.appendChild(ltBtns);
+  sec.appendChild(ltRow);
+
+  // ── Density bar chart canvas ──────────────────────────────────────────────
+  const canvas = document.createElement('canvas');
+  canvas.width = 480; canvas.height = 100;
+  canvas.style.cssText = 'width:100%;display:block;border:1px solid #2a2a44;border-radius:6px;' +
+                          'background:#07070f;margin-top:6px';
+  sec.appendChild(canvas);
+
+  // ── Status text ───────────────────────────────────────────────────────────
+  const statusEl = _h('div', 'tool-result-box',
+    'Click <b>Analyze</b> to scan for over-density windows.');
+  sec.appendChild(statusEl);
+
+  // ── Action buttons ────────────────────────────────────────────────────────
+  const actRow = document.createElement('div');
+  actRow.style.cssText = 'display:flex;gap:8px;margin-top:4px';
+
+  const analyzeBtn = _btn('🔍 Analyze', 'tool-btn-action');
+  analyzeBtn.style.flex = '1';
+
+  const applyBtn = _btn('✂ Apply Compression', 'tool-btn-action');
+  applyBtn.style.cssText += ';flex:1;opacity:0.4;cursor:not-allowed;background:#2a0a0a;border-color:#773333';
+  applyBtn.disabled = true;
+
+  actRow.appendChild(analyzeBtn);
+  actRow.appendChild(applyBtn);
+  sec.appendChild(actRow);
+
+  // ── Internal state ────────────────────────────────────────────────────────
+  let _staged = null; // [{ note (obj ref), type:'bt'|'fx', lane }]
+
+  function _clearStage() {
+    _staged = null;
+    applyBtn.disabled = true;
+    applyBtn.style.opacity = '0.4';
+    applyBtn.style.cursor = 'not-allowed';
+  }
+
+  // Returns a priority score for a tick position within a measure.
+  // Lower score = removed first (weakest subdivision).
+  function _priority(tick) {
+    const t = ((tick % TICKS_PER_MEASURE) + TICKS_PER_MEASURE) % TICKS_PER_MEASURE;
+    if (t === 0)                              return 100; // measure downbeat
+    if (t % TPBEAT === 0)                     return 90;  // quarter note
+    if (t % (TPBEAT / 2)  === 0)             return 75;  // 8th
+    if (t % (TPBEAT / 3)  === 0)             return 68;  // 8th triplet
+    if (t % (TPBEAT / 4)  === 0)             return 55;  // 16th
+    if (t % (TPBEAT / 6)  === 0)             return 38;  // 16th triplet
+    if (t % (TPBEAT / 8)  === 0)             return 22;  // 32nd
+    if (t % (TPBEAT / 12) === 0)             return 12;  // 32nd triplet
+    return 5;                                             // 64th or finer
+  }
+
+  function analyze() {
+    const ch = (typeof chart !== 'undefined') ? chart : null;
+    if (!ch) { statusEl.textContent = 'No chart loaded.'; return; }
+
+    const threshold = parseFloat(threshSlider.value);
+    const windowM   = parseInt(winSel.value);
+    const wTicks    = windowM * TICKS_PER_MEASURE;
+    const wBeats    = windowM * BEATS_PER_MEASURE;
+    const totalM    = ch.totalMeasures || 64;
+    const totalW    = Math.ceil(totalM / windowM);
+
+    const staged     = [];
+    const windowData = [];
+
+    for (let w = 0; w < totalW; w++) {
+      const s = w * wTicks;
+      const e = s + wTicks;
+      const chips = [];
+      let totalNotes = 0;
+
+      if (laneState.bt) {
+        for (let l = 0; l < 4; l++) {
+          ch.bt[l].forEach(n => {
+            if (n.y < s || n.y >= e) return;
+            totalNotes++;
+            if (n.len === 0) chips.push({ note: n, type: 'bt', lane: l, tick: n.y });
+          });
+        }
+      }
+      if (laneState.fx) {
+        for (let l = 0; l < 2; l++) {
+          ch.fx[l].forEach(n => {
+            if (n.y < s || n.y >= e) return;
+            totalNotes++;
+            if (n.len === 0) chips.push({ note: n, type: 'fx', lane: l, tick: n.y });
+          });
+        }
+      }
+
+      const density  = totalNotes / wBeats;
+      let   toRemove = 0;
+
+      if (density > threshold) {
+        // Sort ascending by priority — lowest priority removed first
+        chips.sort((a, b) => _priority(a.tick) - _priority(b.tick));
+        const excess = Math.ceil(totalNotes - threshold * wBeats);
+        toRemove = Math.min(excess, chips.length);
+        for (let i = 0; i < toRemove; i++) staged.push(chips[i]);
+      }
+
+      windowData.push({ density, totalNotes, toRemove, over: density > threshold });
+    }
+
+    _drawCanvas(windowData, threshold);
+
+    const overW = windowData.filter(d => d.over).length;
+    if (overW === 0) {
+      statusEl.innerHTML =
+        `<span style="color:#44ff88">✓ All ${totalW} window${totalW>1?'s':''} are within the limit ` +
+        `(≤&nbsp;${threshold.toFixed(1)}&nbsp;n/b). No changes needed.</span>`;
+      _clearStage();
+    } else {
+      _staged = staged;
+      applyBtn.disabled = false;
+      applyBtn.style.opacity = '1';
+      applyBtn.style.cursor  = 'pointer';
+      statusEl.innerHTML =
+        `<span style="color:#ffcc44">⚠ ${overW}/${totalW} window${overW>1?'s':''} over limit — ` +
+        `<b>${staged.length}</b> chip note${staged.length!==1?'s':''} would be removed.</span><br>` +
+        `<span style="color:#556;font-size:10px">Hold notes are preserved. Weakest subdivisions removed first ` +
+        `(64th → 32nd → 16th). Orange bars show what will be removed.</span>`;
+    }
+  }
+
+  function _drawCanvas(windowData, threshold) {
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+    if (!windowData.length) return;
+
+    const maxD = Math.max(threshold * 1.6, ...windowData.map(d => d.density), 0.1);
+    const bW   = W / windowData.length;
+    const PAD  = 14; // bottom padding for labels
+
+    windowData.forEach((d, i) => {
+      const x  = i * bW;
+      const bH = Math.max(0, (d.density / maxD) * (H - PAD));
+      const y  = H - bH - 2;
+
+      ctx.fillStyle = d.over ? '#ff444488' : '#4488ff44';
+      ctx.fillRect(x + 0.5, y, Math.max(bW - 1, 1), bH);
+
+      // Highlight the portion that would be removed
+      if (d.toRemove > 0 && d.totalNotes > 0) {
+        ctx.fillStyle = '#ffaa3355';
+        ctx.fillRect(x + 0.5, y, Math.max(bW - 1, 1), bH * (d.toRemove / d.totalNotes));
+      }
+    });
+
+    // Threshold line
+    const ty = H - (threshold / maxD) * (H - PAD) - 2;
+    ctx.save();
+    ctx.strokeStyle = '#ff8080cc';
+    ctx.lineWidth   = 1.5;
+    ctx.setLineDash([5, 4]);
+    ctx.beginPath(); ctx.moveTo(0, ty); ctx.lineTo(W, ty); ctx.stroke();
+    ctx.restore();
+
+    ctx.fillStyle = '#ff8080';
+    ctx.font = '8px monospace';
+    ctx.fillText(`${parseFloat(threshSlider.value).toFixed(1)} n/b`, 3, Math.max(ty - 3, 10));
+
+    // Edge measure labels
+    ctx.fillStyle = '#445';
+    ctx.font = '8px monospace';
+    ctx.fillText('M1', 2, H - 1);
+    const lastLabel = `M${windowData.length * parseInt(winSel.value)}`;
+    ctx.fillText(lastLabel, W - lastLabel.length * 5.2, H - 1);
+  }
+
+  applyBtn.addEventListener('click', () => {
+    if (!_staged || !_staged.length) return;
+    const ch = (typeof chart !== 'undefined') ? chart : null;
+    if (!ch) return;
+
+    if (typeof saveUndo === 'function') saveUndo('Adaptive Pattern Compression');
+
+    // Group removals by lane, use object reference equality to avoid index drift
+    const btByLane = Array.from({ length: 4 }, () => []);
+    const fxByLane = Array.from({ length: 2 }, () => []);
+    for (const { note, type, lane } of _staged) {
+      if (type === 'bt') btByLane[lane].push(note);
+      else               fxByLane[lane].push(note);
+    }
+
+    for (let l = 0; l < 4; l++) {
+      for (const note of btByLane[l]) {
+        const idx = ch.bt[l].indexOf(note);
+        if (idx >= 0) ch.bt[l].splice(idx, 1);
+      }
+    }
+    for (let l = 0; l < 2; l++) {
+      for (const note of fxByLane[l]) {
+        const idx = ch.fx[l].indexOf(note);
+        if (idx >= 0) ch.fx[l].splice(idx, 1);
+      }
+    }
+
+    const n = _staged.length;
+    statusEl.innerHTML =
+      `<span style="color:#44ff88">✓ Removed ${n} chip note${n!==1?'s':''}. Press <kbd>Ctrl+Z</kbd> to undo.</span>`;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    _clearStage();
+    if (typeof render === 'function') render();
+  });
+
+  threshSlider.addEventListener('input', () => {
+    threshDisp.textContent = parseFloat(threshSlider.value).toFixed(1);
+    _clearStage();
+  });
+  winSel.addEventListener('change', _clearStage);
+  analyzeBtn.addEventListener('click', analyze);
 }
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
