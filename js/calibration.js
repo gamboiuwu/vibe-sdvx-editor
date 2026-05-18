@@ -51,6 +51,10 @@ class CalibrationWindow {
     this._bpmDetected = null;   // estimated BPM from auto-detect (awaiting confirmation)
     this._bpmDetecting = false; // true while detection is running
 
+    // Tap tempo state
+    this._tapTimes   = [];    // performance.now() timestamps of each tap
+    this._tapTimeout = null;  // timer that resets taps after 3 s of inactivity
+
     // DOM
     this._wrap       = null;
     this._canvas     = null;
@@ -278,7 +282,27 @@ class CalibrationWindow {
     bpmGridNote.style.cssText = 'margin-left:auto;font-size:10px;color:#5558a0;';
     bpmGridNote.textContent = 'BPM controls beat grid spacing';
 
-    bpmPanel.append(bpmSectionLbl, bpmLbl, bpmInput, bpmDetectBtn, bpmSuggestionLbl, bpmConfirmBtn, bpmDismissBtn, bpmGridNote);
+    // ── Tap Tempo UI ────────────────────────────────────────────────────────
+    const tapBtn = mkBtn('◉ Tap BPM [T]', 'Tap in rhythm to detect BPM (keyboard shortcut: T)', 'cal-tap-btn');
+    tapBtn.style.cssText += ';border-color:#aa88ff;color:#cc99ff;';
+
+    const tapReadout = document.createElement('span');
+    tapReadout.id = 'cal-tap-readout';
+    tapReadout.style.cssText = 'font-size:12px;color:#5558a0;white-space:nowrap;min-width:160px;font-style:italic;';
+    tapReadout.textContent = '— tap T or click —';
+
+    const tapConfirmBtn = mkBtn('✓ Apply', 'Apply tapped BPM to chart', 'cal-tap-confirm');
+    tapConfirmBtn.style.cssText += ';display:none;background:#0a2210;border-color:#39ff14;color:#39ff14;';
+
+    const tapDismissBtn = mkBtn('✕ Reset', 'Reset tap counter', 'cal-tap-dismiss');
+    tapDismissBtn.style.cssText += ';display:none;border-color:#882244;color:#ff4466;';
+
+    bpmPanel.append(
+      bpmSectionLbl, bpmLbl, bpmInput, bpmDetectBtn,
+      vsep(), tapBtn, tapReadout, tapConfirmBtn, tapDismissBtn,
+      vsep(), bpmSuggestionLbl, bpmConfirmBtn, bpmDismissBtn,
+      bpmGridNote
+    );
 
     win.append(titleBar, transport, cwrap, ctb, bpmPanel);
     overlay.appendChild(win);
@@ -352,6 +376,10 @@ class CalibrationWindow {
           b.style.color       = this._metronomeEnabled ? '#ffcc00' : '#d8d8f0';
           b.style.borderColor = this._metronomeEnabled ? '#ffcc00' : '#2a2a44';
         }
+      }
+      if (e.code === 'KeyT') {
+        e.preventDefault(); e.stopPropagation();
+        this._handleTap();
       }
     }, true);
 
@@ -437,6 +465,28 @@ class CalibrationWindow {
       if (sug) sug.style.display = 'none';
       if (cnf) cnf.style.display = 'none';
       if (dsm) dsm.style.display = 'none';
+    });
+
+    // Tap tempo wiring
+    tapBtn.addEventListener('click', () => this._handleTap());
+
+    tapConfirmBtn.addEventListener('click', () => {
+      const bpm = this._calcTapBpm();
+      if (bpm !== null) {
+        this._bpmValue = Math.round(bpm * 2) / 2;
+        const inp = document.getElementById('cal-bpm-input');
+        if (inp) inp.value = this._bpmValue.toFixed(2);
+        this._draw();
+      }
+      this._tapTimes = [];
+      if (this._tapTimeout) { clearTimeout(this._tapTimeout); this._tapTimeout = null; }
+      this._updateTapDisplay();
+    });
+
+    tapDismissBtn.addEventListener('click', () => {
+      this._tapTimes = [];
+      if (this._tapTimeout) { clearTimeout(this._tapTimeout); this._tapTimeout = null; }
+      this._updateTapDisplay();
     });
 
     this._updateLabels();
@@ -877,6 +927,58 @@ class CalibrationWindow {
     return Math.round(bpm * 2) / 2;
   }
 
+  // ── Tap Tempo ──────────────────────────────────────────────────────────────
+
+  _handleTap() {
+    const now = performance.now();
+    // Start fresh if last tap was more than 3 seconds ago
+    if (this._tapTimes.length > 0 && now - this._tapTimes[this._tapTimes.length - 1] > 3000) {
+      this._tapTimes = [];
+    }
+    this._tapTimes.push(now);
+    // Auto-reset after 3 s of silence
+    if (this._tapTimeout) clearTimeout(this._tapTimeout);
+    this._tapTimeout = setTimeout(() => {
+      this._tapTimes = [];
+      this._tapTimeout = null;
+      this._updateTapDisplay();
+    }, 3000);
+    this._updateTapDisplay();
+  }
+
+  _calcTapBpm() {
+    if (this._tapTimes.length < 2) return null;
+    let sum = 0;
+    for (let i = 1; i < this._tapTimes.length; i++) {
+      sum += this._tapTimes[i] - this._tapTimes[i - 1];
+    }
+    return 60000 / (sum / (this._tapTimes.length - 1));
+  }
+
+  _updateTapDisplay() {
+    const readout = document.getElementById('cal-tap-readout');
+    const cnf     = document.getElementById('cal-tap-confirm');
+    const dsm     = document.getElementById('cal-tap-dismiss');
+    if (!readout) return;
+    const count = this._tapTimes.length;
+    const bpm   = this._calcTapBpm();
+    if (count === 0) {
+      readout.textContent  = '— tap T or click —';
+      readout.style.color  = '#5558a0';
+      readout.style.fontStyle = 'italic';
+    } else if (count === 1) {
+      readout.textContent  = '1 tap — keep tapping…';
+      readout.style.color  = '#d8d8f0';
+      readout.style.fontStyle = '';
+    } else {
+      readout.textContent  = `${count} taps · ~${bpm.toFixed(1)} BPM`;
+      readout.style.color  = '#aaffaa';
+      readout.style.fontStyle = '';
+    }
+    if (cnf) cnf.style.display = bpm !== null ? 'inline' : 'none';
+    if (dsm) dsm.style.display = count > 0    ? 'inline' : 'none';
+  }
+
   // ── Playback ───────────────────────────────────────────────────────────────
   _togglePlay() { this._playing ? this._stop() : this._play(); }
 
@@ -1018,8 +1120,10 @@ class CalibrationWindow {
   // ── Close ──────────────────────────────────────────────────────────────────
   _close(apply) {
     this._stop();
-    if (this._rafId) { cancelAnimationFrame(this._rafId); this._rafId = null; }
-    if (this._clickTimer) { clearTimeout(this._clickTimer); this._clickTimer = null; }
+    if (this._rafId)      { cancelAnimationFrame(this._rafId); this._rafId = null; }
+    if (this._clickTimer) { clearTimeout(this._clickTimer);    this._clickTimer = null; }
+    if (this._tapTimeout) { clearTimeout(this._tapTimeout);    this._tapTimeout = null; }
+    this._tapTimes = [];
     if (this._keyHandler) {
       window.removeEventListener('keydown', this._keyHandler, true);
       this._keyHandler = null;

@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.17 · 2026</span>
+  <span class="version">v0.0.18 · 2026</span>
 </div>
 
 <div class="toc">
@@ -439,6 +439,16 @@
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
 
 <div class="update-entry">
+  <h4><span class="ver-tag">v0.0.18</span>Tap Tempo BPM Detection <span style="font-size:11px;color:#ffcc44;font-weight:normal;">[Experimental]</span></h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Tap Tempo in Calibration Mode</strong> — a new <em>◉ Tap BPM [T]</em> button in the Calibration window's BPM panel lets you tap in rhythm against the audio to detect the song's BPM. Each tap updates a live readout showing the tap count and the current average BPM estimate. Press <kbd>T</kbd> on the keyboard instead of clicking for hands-free tapping while the audio plays.</li>
+    <li><span class="tag add">add</span><strong>Tap Tempo in BPM Sync Tool</strong> — a new <em>Tap Tempo</em> section has been added to <strong>Window → Tools Hub → Edit → BPM Sync</strong>. The large tap button shows a live BPM readout and a <em>Set as Chart BPM</em> button that writes the detected value to the chart's first BPM event (with full undo support).</li>
+    <li><span class="tag add">add</span>Both interfaces require a minimum of 2 taps (1 interval) before a BPM estimate is shown. Accuracy improves with each tap as the average converges. The <em>Apply</em> button in the Calibration window updates the beat-grid overlay immediately so you can visually verify alignment.</li>
+    <li><span class="tag add">add</span><strong>Auto-reset</strong> — the tap counter clears automatically if no tap is received within 3 seconds, ready for a fresh attempt. A <em>Reset</em> button allows manual clearing at any time.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
   <h4><span class="ver-tag">v0.0.17</span>Adaptive Pattern Compression <span style="font-size:11px;color:#ffcc44;font-weight:normal;">[Experimental]</span></h4>
   <ul>
     <li><span class="tag add">add</span><strong>Adaptive Pattern Compression</strong> — new tool in <strong>Window → Tools Hub → Edit → Adaptive Compress</strong>. Scans the chart in configurable measure windows, calculates notes-per-beat density for each window, and identifies chip notes to remove to bring over-limit windows back under a user-set threshold.</li>
@@ -635,7 +645,7 @@
 </div>
 
 <div class="note-box">
-  Looking for things still on the roadmap (BPM detection inside calibration mode, strict 2D orthographic preview, professional pen-tool parity for lasers)? See <code>Upcoming Changes.rtf</code> in the project root.
+  Looking for things still on the roadmap (strict 2D orthographic preview, professional pen-tool parity for lasers)? See <code>Upcoming Changes.rtf</code> in the project root. BPM tap tempo detection has been implemented in v0.0.18.
 </div>
 </section>
 
