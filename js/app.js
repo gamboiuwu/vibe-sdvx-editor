@@ -2304,6 +2304,7 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-tmirror-all')?.addEventListener('click', () => selTemporalMirror('all'));
   document.getElementById('btn-tmirror-bt')?.addEventListener('click',  () => selTemporalMirror('bt'));
   document.getElementById('btn-tmirror-vol')?.addEventListener('click', () => selTemporalMirror('vol'));
+  document.getElementById('btn-swap-lasers')?.addEventListener('click', () => selSwapLasers());
   document.getElementById('btn-speed-half')?.addEventListener('click',   () => selAdjustSpeed(0.5));
   document.getElementById('btn-speed-double')?.addEventListener('click', () => selAdjustSpeed(2.0));
   document.getElementById('btn-sran-all')?.addEventListener('click', () => applySRan('all'));
@@ -3746,6 +3747,31 @@ function selTemporalMirror(what) {
   render();
 }
 
+// Swap VOL-L and VOL-R sections within the selection (or entire chart if no
+// active selection). Unlike Mirror VOL, positions are not flipped — only the
+// channel assignment changes so that left-knob patterns become right-knob and
+// vice versa.
+function selSwapLasers() {
+  saveUndo('Swap VOL-L ↔ VOL-R');
+
+  let lo = 0, hi = Infinity;
+  if (sel.active) {
+    [lo, hi] = selTickRange();
+  }
+  const inRange = y => y >= lo && y <= hi;
+
+  const snapL = chart.lasers[0].filter(s => inRange(s.y));
+  const snapR = chart.lasers[1].filter(s => inRange(s.y));
+
+  chart.lasers[0] = [...chart.lasers[0].filter(s => !inRange(s.y)), ...snapR];
+  chart.lasers[1] = [...chart.lasers[1].filter(s => !inRange(s.y)), ...snapL];
+  chart.lasers[0].sort((a, b) => a.y - b.y);
+  chart.lasers[1].sort((a, b) => a.y - b.y);
+
+  updateTimeSigList();
+  render();
+}
+
 function selAdjustSpeed(factor) {
   // factor > 1 = compress (2x speed = notes take half as many ticks)
   // factor < 1 = expand  (0.5x speed = notes take twice as many ticks)
@@ -4169,6 +4195,8 @@ function ensureCtxMenu() {
             <div class="ctx-item" data-act="tmirror-all">Temporal Mirror All</div>
             <div class="ctx-item" data-act="tmirror-bt">Temporal Mirror BT</div>
             <div class="ctx-item" data-act="tmirror-vol">Temporal Mirror VOL</div>
+            <div class="ctx-sep"></div>
+            <div class="ctx-item" data-act="swap-lasers">Swap VOL-L ↔ VOL-R</div>
           </div>
         </div>
       </div>
@@ -4229,6 +4257,7 @@ function ensureCtxMenu() {
     else if (act === 'tmirror-all') selTemporalMirror('all');
     else if (act === 'tmirror-bt')  selTemporalMirror('bt');
     else if (act === 'tmirror-vol') selTemporalMirror('vol');
+    else if (act === 'swap-lasers') selSwapLasers();
     else if (act === 'speed-half')   selAdjustSpeed(0.5);
     else if (act === 'speed-double') selAdjustSpeed(2.0);
     else if (act === 'rand-all') selRandom('all');
