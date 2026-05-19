@@ -4555,11 +4555,64 @@ function _toolAudioAnchor(c) {
   wrap.appendChild(placeHdr);
 
   const laneLabels = ['BT-A','BT-B','BT-C','BT-D','FX-L','FX-R'];
+
+  // Predefined patterns: each is [label, laneIndex[]]
+  // Indices: BT-A=0 BT-B=1 BT-C=2 BT-D=3 FX-L=4 FX-R=5
+  const PATTERNS = [
+    ['Alternating A/C',       [0,2]],
+    ['Alternating B/D',       [1,3]],
+    ['Stairs Up (A→D)',       [0,1,2,3]],
+    ['Stairs Down (D→A)',     [3,2,1,0]],
+    ['Zigzag Outer (A D B C)',[0,3,1,2]],
+    ['Zigzag Inner (B C A D)',[1,2,0,3]],
+    ['Hand Trill L (A B)',    [0,1]],
+    ['Hand Trill R (C D)',    [2,3]],
+    ['FX Alternate (L R)',    [4,5]],
+    ['Spread (A C B D)',      [0,2,1,3]],
+  ];
+
+  // ── Mode selector ─────────────────────────────────────────────────────────
+  const modeSel = document.createElement('select');
+  modeSel.style.cssText='background:#12122a;color:#ccd;border:1px solid #334;padding:2px 6px;border-radius:4px;font-size:10px;flex:1';
+  [['single','Single Lane'],['random','Random'],['pattern','Pattern']].forEach(([v,l])=>{
+    const o=document.createElement('option'); o.value=v; o.textContent=l; modeSel.appendChild(o);
+  });
+  wrap.appendChild(mkRow('Mode', modeSel));
+
+  // ── Single-lane row ───────────────────────────────────────────────────────
   const laneSel = document.createElement('select');
   laneSel.style.cssText='background:#12122a;color:#ccd;border:1px solid #334;padding:2px 6px;border-radius:4px;font-size:10px;flex:1';
   laneLabels.forEach((l,i)=>{ const o=document.createElement('option'); o.value=i; o.textContent=l; laneSel.appendChild(o); });
-  wrap.appendChild(mkRow('Lane', laneSel));
+  const laneRow = mkRow('Lane', laneSel);
+  wrap.appendChild(laneRow);
 
+  // ── Random-group row ──────────────────────────────────────────────────────
+  const randGrpSel = document.createElement('select');
+  randGrpSel.style.cssText='background:#12122a;color:#ccd;border:1px solid #334;padding:2px 6px;border-radius:4px;font-size:10px;flex:1';
+  [['bt','BT lanes (A–D)'],['fx','FX lanes (L–R)'],['all','All lanes']].forEach(([v,l])=>{
+    const o=document.createElement('option'); o.value=v; o.textContent=l; randGrpSel.appendChild(o);
+  });
+  const randRow = mkRow('Random from', randGrpSel);
+  randRow.style.display='none';
+  wrap.appendChild(randRow);
+
+  // ── Pattern selector row ──────────────────────────────────────────────────
+  const patSel = document.createElement('select');
+  patSel.style.cssText='background:#12122a;color:#ccd;border:1px solid #334;padding:2px 6px;border-radius:4px;font-size:10px;flex:1';
+  PATTERNS.forEach(([label],i)=>{ const o=document.createElement('option'); o.value=i; o.textContent=label; patSel.appendChild(o); });
+  const patRow = mkRow('Pattern', patSel);
+  patRow.style.display='none';
+  wrap.appendChild(patRow);
+
+  // Show/hide rows when mode changes
+  modeSel.addEventListener('change', () => {
+    const m = modeSel.value;
+    laneRow.style.display = m==='single'  ? '' : 'none';
+    randRow.style.display = m==='random'  ? '' : 'none';
+    patRow.style.display  = m==='pattern' ? '' : 'none';
+  });
+
+  // ── Region selector ───────────────────────────────────────────────────────
   const regionSel = document.createElement('select');
   regionSel.style.cssText='background:#12122a;color:#ccd;border:1px solid #334;padding:2px 6px;border-radius:4px;font-size:10px;flex:1';
   [['all','Entire chart'],['sel','Current selection']].forEach(([v,l])=>{ const o=document.createElement('option'); o.value=v; o.textContent=l; regionSel.appendChild(o); });
@@ -4573,7 +4626,8 @@ function _toolAudioAnchor(c) {
     if (!ticks?.length) { placeMsg.textContent='⚠ No transients. Detect first.'; placeMsg.style.color='#f87'; return; }
     const ch = _ch();
     if (!ch) { placeMsg.textContent='⚠ No chart loaded.'; placeMsg.style.color='#f87'; return; }
-    const laneIdx = +laneSel.value;
+
+    const mode = modeSel.value;
     const useSelection = regionSel.value === 'sel' && window.sel?.active;
     let lo = 0, hi = Infinity;
     if (useSelection) {
@@ -4581,19 +4635,58 @@ function _toolAudioAnchor(c) {
       hi = Math.max(window.sel.startTick, window.sel.endTick);
     }
 
-    if (typeof saveUndo === 'function') saveUndo('Place Notes at Transients');
-    let placed = 0;
-    for (const tick of ticks) {
-      if (tick < lo || tick > hi) continue;
-      if (laneIdx < 4) {
-        ch.addBtNote(laneIdx, tick, 0);
-      } else {
-        ch.addFxNote(laneIdx - 4, tick, 0);
-      }
-      placed++;
+    // Build the ordered list of ticks in range
+    const inRange = ticks.filter(t => t >= lo && t <= hi);
+    if (!inRange.length) {
+      placeMsg.style.color='#f87';
+      placeMsg.textContent='⚠ No transients in the selected region.';
+      return;
     }
+
+    if (typeof saveUndo === 'function') saveUndo('Place Notes at Transients');
+
+    // Helpers to add a note by lane index (0-3 = BT, 4-5 = FX)
+    const addNote = (laneIdx, tick) => {
+      if (laneIdx < 4) ch.addBtNote(laneIdx, tick, 0);
+      else             ch.addFxNote(laneIdx - 4, tick, 0);
+    };
+
+    let placed = 0;
+    let modeLabel = '';
+
+    if (mode === 'single') {
+      // ── Original behaviour ──────────────────────────────────────────────
+      const laneIdx = +laneSel.value;
+      for (const tick of inRange) { addNote(laneIdx, tick); placed++; }
+      modeLabel = laneLabels[laneIdx];
+
+    } else if (mode === 'random') {
+      // ── Random pick from group each transient ───────────────────────────
+      const grp = randGrpSel.value;
+      const pool = grp==='bt'  ? [0,1,2,3]
+                 : grp==='fx'  ? [4,5]
+                 :               [0,1,2,3,4,5];
+      for (const tick of inRange) {
+        const laneIdx = pool[Math.floor(Math.random() * pool.length)];
+        addNote(laneIdx, tick);
+        placed++;
+      }
+      modeLabel = `random ${grp.toUpperCase()}`;
+
+    } else if (mode === 'pattern') {
+      // ── Cycle through predefined pattern sequence ───────────────────────
+      const patIdx = +patSel.value;
+      const seq    = PATTERNS[patIdx][1];
+      for (let i = 0; i < inRange.length; i++) {
+        const laneIdx = seq[i % seq.length];
+        addNote(laneIdx, inRange[i]);
+        placed++;
+      }
+      modeLabel = PATTERNS[patIdx][0];
+    }
+
     placeMsg.style.color = '#8f8';
-    placeMsg.textContent = `✓ Placed ${placed} chip notes on ${laneLabels[laneIdx]}`;
+    placeMsg.textContent = `✓ Placed ${placed} notes — ${modeLabel}`;
     if (typeof render === 'function') render();
   });
 
