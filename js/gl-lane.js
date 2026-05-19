@@ -22,7 +22,12 @@ class GLLaneRenderer {
       alpha: true,
       antialias: true,
       premultipliedAlpha: false,
-      preserveDrawingBuffer: false,
+      // Must be true so drawImage() / toDataURL() can read the buffer after
+      // compositing — PowerGlitch relies on this to snapshot the lane for its
+      // displacement layers. False (the default) clears the buffer immediately
+      // after each frame is committed to the compositor, producing a blank
+      // canvas in every glitch-layer snapshot.
+      preserveDrawingBuffer: true,
     });
     if (!gl) { this.gl = null; this.ok = false; return; }
     this.gl = gl;

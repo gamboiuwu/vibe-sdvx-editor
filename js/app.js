@@ -7148,6 +7148,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // ── Glitch effect (PowerGlitch) ───────────────────────────────────────────────
 let _glitchCtrl          = null;
 let _glitchActive        = false;
+let _glitchRefreshTimer  = null; // periodic snapshot refresh interval ID
 
 function _levelToGlitchOptions(level) {
   const t = Math.max(0, Math.min(10, level)) / 10;
@@ -7198,15 +7199,43 @@ function _updateGlitchFromTick(tick) {
   _glitchAppliedLevel = level;
   if (level <= 0) {
     _glitchCtrl?.stopGlitch();
+    _glitchCtrl = null;
     _glitchActive = false;
+    if (_glitchRefreshTimer) { clearInterval(_glitchRefreshTimer); _glitchRefreshTimer = null; }
     return;
   }
-  // Reinitialize with new level options
+
+  // Helper that (re)initialises PowerGlitch against the current canvas content.
+  // Called once after a one-frame delay and then periodically so the snapshot
+  // stays in sync with the moving 2D overlay (notes/lasers).
+  const _startGlitch = () => {
+    if (_glitchAppliedLevel !== level) return;
+    if (typeof PowerGlitch === 'undefined') return;
+    _glitchCtrl?.stopGlitch();
+    _glitchCtrl = PowerGlitch.glitch(el, _levelToGlitchOptions(level));
+    _glitchCtrl.startGlitch();
+    _glitchActive = true;
+  };
+
+  // Stop any currently running instance and clear refresh timer.
   _glitchCtrl?.stopGlitch();
   _glitchCtrl = null;
-  _glitchCtrl = PowerGlitch.glitch(el, _levelToGlitchOptions(level));
-  _glitchCtrl.startGlitch();
-  _glitchActive = true;
+  _glitchActive = false;
+  if (_glitchRefreshTimer) { clearInterval(_glitchRefreshTimer); _glitchRefreshTimer = null; }
+
+  // Delay first init by one rAF so the WebGL canvas (preserveDrawingBuffer: true)
+  // has committed at least one frame before PowerGlitch snapshots it.
+  requestAnimationFrame(() => {
+    _startGlitch();
+    // Refresh the snapshot every ~250 ms while glitch is active so the
+    // displacement layers stay approximately in sync with moving chart content.
+    _glitchRefreshTimer = setInterval(() => {
+      if (_glitchAppliedLevel !== level) {
+        clearInterval(_glitchRefreshTimer); _glitchRefreshTimer = null; return;
+      }
+      _startGlitch();
+    }, 250);
+  });
 }
 
 // ── Session persistence ───────────────────────────────────────────────────────
