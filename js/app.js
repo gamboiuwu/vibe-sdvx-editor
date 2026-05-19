@@ -9,8 +9,18 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.17';
+const APP_VERSION = '0.0.18';
 const CHANGELOG = [
+  {
+    version: '0.0.18',
+    title: 'Tap Tempo BPM [Experimental]',
+    entries: [
+      ['add', '<strong>Tap Tempo</strong> — new button in the Calibration Mode BPM panel. Click <em>🥁 Tap Tempo</em> (or press <kbd>T</kbd> while calibration is open) repeatedly in time with the music to estimate BPM from tap intervals. After 2 taps the running estimate is shown live; after 4 or more taps the result is promoted to a confirmable suggestion using the same Apply / Dismiss flow as Auto-Detect.'],
+      ['add', 'Tap sequence auto-resets after 3 seconds of inactivity so a new sequence can be started without closing the window.'],
+      ['add', '<kbd>T</kbd> keyboard shortcut fires a tap and briefly flashes the button so keyboard-driven tapping gives clear visual feedback.'],
+      ['add', 'Tap Tempo integrates with the existing BPM panel — confirmed tap BPM updates the beat-grid overlay in real time and is applied to the chart\'s first BPM event when the calibration window is closed with Apply.'],
+    ],
+  },
   {
     version: '0.0.17',
     title: 'Adaptive Pattern Compression [Experimental]',

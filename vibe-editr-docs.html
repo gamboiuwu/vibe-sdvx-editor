@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.17 · 2026</span>
+  <span class="version">v0.0.18 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,16 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.18</span>Tap Tempo BPM <span style="font-size:11px;color:#ffcc44;font-weight:normal;">[Experimental]</span></h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Tap Tempo</strong> — new button in the Calibration Mode BPM panel. Click <em>🥁 Tap Tempo</em> (or press <kbd>T</kbd> while calibration is open) repeatedly in time with the music to estimate BPM from the average inter-tap interval. After 2 taps the running estimate is shown live next to the button; after 4 or more taps the result is promoted to a confirmable suggestion using the same <em>✓ Apply / ✕ Dismiss</em> flow as Auto-Detect.</li>
+    <li><span class="tag add">add</span>Tap sequence auto-resets after 3 seconds of inactivity so a fresh measurement can begin without closing or restarting the calibration window.</li>
+    <li><span class="tag add">add</span><kbd>T</kbd> keyboard shortcut fires a tap and briefly flashes the button purple, giving clear visual confirmation that the keypress was registered.</li>
+    <li><span class="tag add">add</span>Confirmed tap BPM updates the beat-grid overlay on the waveform in real time and is written to the chart's first BPM event when the calibration window is closed with <em>✓ Apply &amp; Close</em>.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.17</span>Adaptive Pattern Compression <span style="font-size:11px;color:#ffcc44;font-weight:normal;">[Experimental]</span></h4>
