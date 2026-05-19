@@ -3158,16 +3158,33 @@ async function importAudioFile(file) {
     }
 
     _showImportStage(`Encoding to OGG format… (song is ${decoded.duration.toFixed(1)}s)`, 20);
+    const coffeeEl = document.getElementById('import-coffee-msg');
+    if (coffeeEl) coffeeEl.style.display = 'block';
+
     const oggBlob = await _encodeToOgg(decoded);
 
-    _showImportStage('Finalizing and linking to project…', 95);
+    if (coffeeEl) coffeeEl.style.display = 'none';
+
+    // Auto-download the converted OGG so the user always has the file.
     const newName = file.name.replace(/\.[^.]+$/, '.ogg');
+    try {
+      const dlUrl  = URL.createObjectURL(oggBlob);
+      const dlLink = document.createElement('a');
+      dlLink.href     = dlUrl;
+      dlLink.download = newName;
+      dlLink.click();
+      setTimeout(() => URL.revokeObjectURL(dlUrl), 10000);
+    } catch (_) { /* download is best-effort */ }
+
+    _showImportStage('Finalizing and linking to project…', 95);
     const oggFile = new File([oggBlob], newName, { type: oggBlob.type });
     await _linkAudioFile(oggFile, decoded);
 
     _hideImportProgress();
-    _flashStatus(`✓ Imported & converted ${newName}`);
+    _flashStatus(`✓ Imported & converted ${newName} — check your Downloads folder`);
   } catch (err) {
+    const coffeeEl = document.getElementById('import-coffee-msg');
+    if (coffeeEl) coffeeEl.style.display = 'none';
     _hideImportProgress();
     if (err.message === 'Import cancelled') return; // user cancelled — no error modal
     _showImportError(file.name, err.message || String(err));
