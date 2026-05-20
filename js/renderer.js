@@ -1062,6 +1062,26 @@ class Renderer {
     const { ctx } = this;
     const BASE_HALF = BT_W * 0.425; // normal ribbon half-width
 
+    // ── Laser X snap grid — faint vertical guide lines when snap is active ──
+    if (this.showLaserDots && typeof laserXSnap !== 'undefined' && laserXSnap > 0) {
+      ctx.save();
+      ctx.globalAlpha = 0.25;
+      ctx.strokeStyle = '#ffcc44';
+      ctx.lineWidth   = 0.8;
+      ctx.setLineDash([3, 4]);
+      const snapV = laserXSnap;
+      for (let v = 0; v <= 1.0001; v += snapV) {
+        const xN = ox + BT_AREA_X + v * TRACK_W;          // normal lane
+        const xW = ox + RULER_W   + v * (EXTEND_W + TRACK_W + EXTEND_W); // wide lane
+        for (const xLine of [xN, xW]) {
+          ctx.beginPath(); ctx.moveTo(xLine, 0); ctx.lineTo(xLine, this.colH); ctx.stroke();
+        }
+      }
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+
     for (let side = 0; side < 2; side++) {
       const color = side === 0 ? laserColors.L  : laserColors.R;
       const glow  = side === 0 ? laserColors.Lg : laserColors.Rg;
