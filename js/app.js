@@ -436,6 +436,31 @@ function addTab() {
   _multiUpdateTabButtons();
 }
 
+// Show a confirmation modal before closing a tab.
+// Calls closeTab(idx) only if the user confirms.
+function _confirmCloseTab(idx) {
+  if (tabs.length <= 1) return; // can't close last tab — no need to ask
+  const name = tabs[idx]?.name ?? `Tab ${idx + 1}`;
+  const modal = document.getElementById('modal-close-tab-confirm');
+  const msg   = document.getElementById('close-tab-confirm-msg');
+  const btnOk = document.getElementById('close-tab-confirm-ok');
+  const btnNo = document.getElementById('close-tab-confirm-cancel');
+  if (!modal) { closeTab(idx); return; } // fallback if modal missing
+  if (msg) msg.textContent = `"${name}" will be closed. Any unsaved changes will be lost.`;
+  modal.style.display = 'flex';
+  const ok = () => { cleanup(); modal.style.display = 'none'; closeTab(idx); };
+  const no = () => { cleanup(); modal.style.display = 'none'; };
+  const onKey = e => { if (e.key === 'Escape') no(); if (e.key === 'Enter') ok(); };
+  const cleanup = () => {
+    btnOk.removeEventListener('click', ok);
+    btnNo.removeEventListener('click', no);
+    window.removeEventListener('keydown', onKey, true);
+  };
+  btnOk.addEventListener('click', ok);
+  btnNo.addEventListener('click', no);
+  window.addEventListener('keydown', onKey, true);
+}
+
 function closeTab(idx) {
   if (tabs.length <= 1) return; // can't close last tab
   // Remove from multi mask if present
@@ -480,7 +505,7 @@ function renderTabBar() {
 
     tab.querySelector('.tab-close').addEventListener('click', e => {
       e.stopPropagation();
-      closeTab(+e.currentTarget.dataset.close);
+      _confirmCloseTab(+e.currentTarget.dataset.close);
     });
     tab.querySelector('.tab-name').addEventListener('dblclick', () => renameTab(i));
     tab.addEventListener('click', e => { if (!e.target.closest('.tab-close')) switchToTab(i); });
@@ -559,7 +584,7 @@ function showTabContextMenu(idx, x, y) {
     { label: 'Rename',    action: () => renameTab(idx) },
     { label: 'Duplicate', action: () => duplicateTab(idx) },
     { sep: true },
-    { label: 'Close', action: () => closeTab(idx), danger: true },
+    { label: 'Close', action: () => _confirmCloseTab(idx), danger: true },
   ];
   for (const item of items) {
     if (item.sep) {
