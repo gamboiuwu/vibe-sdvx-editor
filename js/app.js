@@ -1,6 +1,41 @@
 'use strict';
 
-// ── Console banner ────────────────────────────────────────────────────────────
+// ── Pre-init error capture ─────────────────────────────────────────────────────
+// Runs before anything else so errors from ANY script (including imports,
+// async DOMContentLoaded handlers, unhandled rejections, and sub-modules)
+// are captured and shown on the loading screen rather than silently swallowed.
+const _initErrors = [];
+let   _initPhase  = 'pre-init';
+
+function _showInitError(msg, file, line, col, err) {
+  _initErrors.push({ msg, file, line, col, err });
+  const errBox  = document.getElementById('loading-errors');
+  const errList = document.getElementById('loading-error-list');
+  const contBtn = document.getElementById('loading-continue-btn');
+  if (errBox)  errBox.style.display = '';
+  if (errList) {
+    const src = file ? file.split('/').pop() : '';
+    const loc = src  ? (line ? `[${src}:${line}]` : `[${src}]`) : '';
+    const txt = (loc ? loc + ' ' : '') + msg;
+    errList.textContent += (errList.textContent ? '\n' : '') + txt;
+  }
+  if (contBtn && contBtn.style.display === 'none') contBtn.style.display = '';
+  // Also keep the stage label updated so the last stage is always visible
+  const stageEl = document.getElementById('loading-stage');
+  if (stageEl) stageEl.textContent = `⚠ Error during: ${_initPhase}`;
+}
+
+window.addEventListener('error', ev => {
+  _showInitError(ev.message, ev.filename, ev.lineno, ev.colno, ev.error);
+});
+window.addEventListener('unhandledrejection', ev => {
+  const msg = ev.reason instanceof Error
+    ? ev.reason.message
+    : String(ev.reason ?? 'Unknown rejection');
+  _showInitError('Unhandled Promise — ' + msg, null, null, null, ev.reason);
+});
+
+// ── Console banner ─────────────────────────────────────────────────────────────
 console.log(
   '%c vibe-editr %c vibecoded by gamboiuwu ',
   'background:#1255e8;color:#fff;font-weight:bold;font-size:13px;padding:3px 8px;border-radius:4px 0 0 4px',
@@ -2202,6 +2237,23 @@ function _loadingShow(stage, pct) {
 function _loadingDone() {
   const ov = document.getElementById('loading-overlay');
   if (!ov) return;
+  if (_initErrors.length > 0) {
+    // Keep overlay up so user can read the errors; wire up continue button
+    const stageEl  = document.getElementById('loading-stage');
+    const contBtn  = document.getElementById('loading-continue-btn');
+    const errBox   = document.getElementById('loading-errors');
+    if (stageEl) stageEl.textContent = `⚠ Initialized with ${_initErrors.length} error${_initErrors.length > 1 ? 's' : ''}`;
+    if (errBox)  errBox.style.display = '';
+    if (contBtn) {
+      contBtn.style.display = '';
+      contBtn.onclick = () => {
+        ov.style.opacity = '0';
+        ov.style.pointerEvents = 'none';
+        setTimeout(() => { if (ov) ov.style.display = 'none'; }, 420);
+      };
+    }
+    return;
+  }
   ov.style.opacity = '0';
   ov.style.pointerEvents = 'none';
   setTimeout(() => { if (ov) ov.style.display = 'none'; }, 420);
@@ -2236,9 +2288,11 @@ function _showErrorScreen(error) {
 window.addEventListener('DOMContentLoaded', () => {
   try {
 
+  _initPhase = 'editor-init';
   _loadingShow('Initializing editor…', 5);
   buildLaneHeader();
 
+  _initPhase = 'renderer-init';
   const canvas = document.getElementById('chart-canvas');
   renderer = new Renderer(canvas);
   renderer.chart = chart;
@@ -2251,6 +2305,7 @@ window.addEventListener('DOMContentLoaded', () => {
   renderer.zoom = +zs.value / 100 * 1.2;
   renderer.resize();
 
+  _initPhase = 'game-view-init';
   // Game view
   const gameCanvas = document.getElementById('game-canvas');
   if (gameCanvas) {
@@ -2359,11 +2414,13 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-sran-vol')?.addEventListener('click', () => applySRan('vol'));
   document.getElementById('btn-ripple-delete')?.addEventListener('click', selRippleDelete);
 
+  _initPhase = 'first-render';
   _loadingShow('Building renderer…', 60);
   syncMetaToChart();
   renderTabBar();
   render();
 
+  _initPhase = 'done';
   _loadingShow('Ready', 100);
   // Dismiss loading overlay after a brief frame — everything is painted
   requestAnimationFrame(() => requestAnimationFrame(_loadingDone));
