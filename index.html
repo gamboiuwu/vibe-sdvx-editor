@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>vibecoded-sdvx-clone</title>
 <link rel="stylesheet" href="style.css">
+<!-- Error capture MUST be first — catches errors from every script including pre-app.js ones -->
+<script src="js/error-capture.js"></script>
 </head>
 <body>
 
@@ -1192,7 +1194,7 @@
 
 <script src="js/logger.js"></script>
 <script src="js/effects.js"></script>
-<script src="https://unpkg.com/powerglitch@latest/dist/powerglitch.min.js"></script>
+<script src="https://unpkg.com/powerglitch@latest/dist/powerglitch.min.js" async></script>
 <script src="js/chart.js?v=2"></script>
 <script src="js/renderer.js?v=3"></script>
 <script src="js/game.js?v=6"></script>

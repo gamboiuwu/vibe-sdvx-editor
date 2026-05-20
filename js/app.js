@@ -1,12 +1,10 @@
 'use strict';
 
 // ── Pre-init error capture ─────────────────────────────────────────────────────
-// Runs before anything else so errors from ANY script (including imports,
-// async DOMContentLoaded handlers, unhandled rejections, and sub-modules)
-// are captured and shown on the loading screen rather than silently swallowed.
-const _initErrors = [];
-let   _initPhase  = 'pre-init';
-
+// _initErrors, _initPhase, and the window error/unhandledrejection listeners are
+// declared in js/error-capture.js, which loads in <head> before every other script.
+// This full version of _showInitError overrides the minimal one from error-capture.js
+// with proper DOM access once app.js has parsed.
 function _showInitError(msg, file, line, col, err) {
   _initErrors.push({ msg, file, line, col, err });
   const errBox  = document.getElementById('loading-errors');
@@ -20,20 +18,9 @@ function _showInitError(msg, file, line, col, err) {
     errList.textContent += (errList.textContent ? '\n' : '') + txt;
   }
   if (contBtn && contBtn.style.display === 'none') contBtn.style.display = '';
-  // Also keep the stage label updated so the last stage is always visible
   const stageEl = document.getElementById('loading-stage');
   if (stageEl) stageEl.textContent = `⚠ Error during: ${_initPhase}`;
 }
-
-window.addEventListener('error', ev => {
-  _showInitError(ev.message, ev.filename, ev.lineno, ev.colno, ev.error);
-});
-window.addEventListener('unhandledrejection', ev => {
-  const msg = ev.reason instanceof Error
-    ? ev.reason.message
-    : String(ev.reason ?? 'Unknown rejection');
-  _showInitError('Unhandled Promise — ' + msg, null, null, null, ev.reason);
-});
 
 // ── Console banner ─────────────────────────────────────────────────────────────
 console.log(
@@ -2259,7 +2246,6 @@ function _showErrorScreen(error) {
   if (loadingOv) loadingOv.style.display = 'none';
   if (errorScreen) {
     errorScreen.style.display = 'flex';
-    // Generate a pseudo error code from the error hash for aesthetics
     if (errorCode) {
       const str = error instanceof Error ? error.message : String(error);
       let h = 0;
@@ -2269,8 +2255,17 @@ function _showErrorScreen(error) {
     }
     if (errorMsg) {
       const errText = error instanceof Error ? error.message : String(error);
-      const stack = error instanceof Error ? (error.stack || '') : '';
-      errorMsg.textContent = errText + (stack ? '\n\n' + stack : '');
+      const stack   = error instanceof Error ? (error.stack || '') : '';
+      // Prepend any buffered early-script errors so nothing is hidden
+      const early = _initErrors.filter(e => e.msg !== errText)
+        .map(e => {
+          const src = e.file ? e.file.split('/').pop() : '';
+          const loc = src ? (e.line ? `[${src}:${e.line}] ` : `[${src}] `) : '';
+          return loc + e.msg;
+        }).join('\n');
+      errorMsg.textContent = errText
+        + (stack ? '\n\n' + stack : '')
+        + (early ? '\n\n─── Earlier errors ───\n' + early : '');
     }
   }
   console.error('Initialization error:', error);
