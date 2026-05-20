@@ -67,6 +67,9 @@ export let laserOpacity = 0.7;
 // Wide-laser mode: doubles laser ribbon width
 export let laserWideMode = false;
 
+export function setLaserOpacity(v)   { laserOpacity  = v; }
+export function setLaserWideMode(v)  { laserWideMode = v; }
+
 // ── SDVX laser color presets ──────────────────────────────────────────────────
 export const LASER_PRESETS = {
   'sdvx-default': { L:'#0088ff', Lg:'#0088ff88', Le:'#66bbff', R:'#ff1177', Rg:'#ff117788', Re:'#ff88cc' },
