@@ -20,6 +20,13 @@ const CHANGELOG = [
       ['add', 'Changing the rate mid-playback is seamless — the playhead continues from the correct chart position without jumping or drifting.'],
       ['add', 'Playback Rate is saved and restored by <em>Save Config</em> alongside Projection, HiSpeed, and Judge Y.'],
       ['fix', 'TapeStop FX effect now ramps from the active playback rate (rather than always from 1.0×), so it behaves correctly when practice rate is engaged.'],
+    title: 'Laser X Snap · Tool Consolidation',
+    entries: [
+      ['add', '<strong>Laser X-Axis Snapping</strong> — press <kbd>;</kbd> / <kbd>\'</kbd> while placing lasers to step through X-position grids (Free → 1/2 → 1/4 → 1/8 → 1/16 → 1/32 → 1/50 KSM). A yellow HUD shows the current grid near your cursor, mirroring the Y-snap behaviour of <kbd>[</kbd> / <kbd>]</kbd>.'],
+      ['add', 'X-snap applied consistently in all laser edit surfaces: the 2D pen tool, the game-preview drag, and the multi-preview drag. Freehand laser points snap to the nearest X grid position on every mousemove.'],
+      ['add', '<strong>Chart Validator</strong> — unified Integrity / Ergonomics / Export validation tool (replaces three separate overlapping validate tools). Tab-based UI groups: Integrity (structural errors + auto-fix), Ergonomics (hold collision + strain patterns), Export (pre-flight checklist). Total tool count unchanged.'],
+      ['add', '<strong>Chart Statistics</strong> tool (Analysis tab) — at-a-glance grid showing BT/FX/VOL-L/VOL-R note counts, BPM range, measure count, laser coverage percentages, and peak density.'],
+      ['add', '<strong>Laser Fixer</strong> tool (Validate tab) — scans all laser sections for structure bugs: negative <code>ry</code> values, unsorted points, duplicate ticks, out-of-range <code>v</code>, empty sections, negative <code>y</code>. One-click Auto Fix resolves all detected issues.'],
     ],
   },
   {
@@ -172,6 +179,8 @@ let chart    = tabs[0].chart;
 let renderer = null;
 let tool     = 'select';
 let snap     = 12;
+// Laser X-axis snap: 0 = free, otherwise snap v to nearest multiple
+let laserXSnap = 0;
 
 const drag = { active: false, lane: -1, laneType: '', startTick: 0, side: 0, localX: 0, laserSec: null };
 const sel  = { active: false, dragging: false, startTick: 0, endTick: 0, clipboard: null };
@@ -448,6 +457,31 @@ function addTab() {
   _multiUpdateTabButtons();
 }
 
+// Show a confirmation modal before closing a tab.
+// Calls closeTab(idx) only if the user confirms.
+function _confirmCloseTab(idx) {
+  if (tabs.length <= 1) return; // can't close last tab — no need to ask
+  const name = tabs[idx]?.name ?? `Tab ${idx + 1}`;
+  const modal = document.getElementById('modal-close-tab-confirm');
+  const msg   = document.getElementById('close-tab-confirm-msg');
+  const btnOk = document.getElementById('close-tab-confirm-ok');
+  const btnNo = document.getElementById('close-tab-confirm-cancel');
+  if (!modal) { closeTab(idx); return; } // fallback if modal missing
+  if (msg) msg.textContent = `"${name}" will be closed. Any unsaved changes will be lost.`;
+  modal.style.display = 'flex';
+  const ok = () => { cleanup(); modal.style.display = 'none'; closeTab(idx); };
+  const no = () => { cleanup(); modal.style.display = 'none'; };
+  const onKey = e => { if (e.key === 'Escape') no(); if (e.key === 'Enter') ok(); };
+  const cleanup = () => {
+    btnOk.removeEventListener('click', ok);
+    btnNo.removeEventListener('click', no);
+    window.removeEventListener('keydown', onKey, true);
+  };
+  btnOk.addEventListener('click', ok);
+  btnNo.addEventListener('click', no);
+  window.addEventListener('keydown', onKey, true);
+}
+
 function closeTab(idx) {
   if (tabs.length <= 1) return; // can't close last tab
   // Remove from multi mask if present
@@ -492,7 +526,7 @@ function renderTabBar() {
 
     tab.querySelector('.tab-close').addEventListener('click', e => {
       e.stopPropagation();
-      closeTab(+e.currentTarget.dataset.close);
+      _confirmCloseTab(+e.currentTarget.dataset.close);
     });
     tab.querySelector('.tab-name').addEventListener('dblclick', () => renameTab(i));
     tab.addEventListener('click', e => { if (!e.target.closest('.tab-close')) switchToTab(i); });
@@ -571,7 +605,7 @@ function showTabContextMenu(idx, x, y) {
     { label: 'Rename',    action: () => renameTab(idx) },
     { label: 'Duplicate', action: () => duplicateTab(idx) },
     { sep: true },
-    { label: 'Close', action: () => closeTab(idx), danger: true },
+    { label: 'Close', action: () => _confirmCloseTab(idx), danger: true },
   ];
   for (const item of items) {
     if (item.sep) {
@@ -1735,7 +1769,7 @@ function _wireMultiEditCanvas(mv) {
     }
     if (tool === 'laser-l' || tool === 'laser-r') {
       const side = tool === 'laser-l' ? 0 : 1;
-      const v    = Math.max(0, Math.min(1, norm));
+      const v    = snapLaserV(Math.max(0, Math.min(1, norm)));
       saveUndo(`VOL-${side === 0 ? 'L' : 'R'} at M${m} (Multi-Preview)`);
       targetChart.addLaserPoint(side, tick, v, false, false);
       mv._drag.active = true; mv._drag.tool = tool; mv._drag.laserSide = side;
@@ -1766,7 +1800,7 @@ function _wireMultiEditCanvas(mv) {
     if (mv._drag.active && (tool === 'laser-l' || tool === 'laser-r')) {
       const targetChart = tabs[mv.tabIdx]?.chart;
       if (targetChart) {
-        const v = Math.max(0, Math.min(1, hit.norm));
+        const v = snapLaserV(Math.max(0, Math.min(1, hit.norm)));
         targetChart.addLaserPoint(mv._drag.laserSide, hit.tick, v, false, false);
         afterEdit();
       }
@@ -2316,6 +2350,7 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-tmirror-all')?.addEventListener('click', () => selTemporalMirror('all'));
   document.getElementById('btn-tmirror-bt')?.addEventListener('click',  () => selTemporalMirror('bt'));
   document.getElementById('btn-tmirror-vol')?.addEventListener('click', () => selTemporalMirror('vol'));
+  document.getElementById('btn-swap-lasers')?.addEventListener('click', () => selSwapLasers());
   document.getElementById('btn-speed-half')?.addEventListener('click',   () => selAdjustSpeed(0.5));
   document.getElementById('btn-speed-double')?.addEventListener('click', () => selAdjustSpeed(2.0));
   document.getElementById('btn-sran-all')?.addEventListener('click', () => applySRan('all'));
@@ -3169,16 +3204,33 @@ async function importAudioFile(file) {
     }
 
     _showImportStage(`Encoding to OGG format… (song is ${decoded.duration.toFixed(1)}s)`, 20);
+    const coffeeEl = document.getElementById('import-coffee-msg');
+    if (coffeeEl) coffeeEl.style.display = 'block';
+
     const oggBlob = await _encodeToOgg(decoded);
 
-    _showImportStage('Finalizing and linking to project…', 95);
+    if (coffeeEl) coffeeEl.style.display = 'none';
+
+    // Auto-download the converted OGG so the user always has the file.
     const newName = file.name.replace(/\.[^.]+$/, '.ogg');
+    try {
+      const dlUrl  = URL.createObjectURL(oggBlob);
+      const dlLink = document.createElement('a');
+      dlLink.href     = dlUrl;
+      dlLink.download = newName;
+      dlLink.click();
+      setTimeout(() => URL.revokeObjectURL(dlUrl), 10000);
+    } catch (_) { /* download is best-effort */ }
+
+    _showImportStage('Finalizing and linking to project…', 95);
     const oggFile = new File([oggBlob], newName, { type: oggBlob.type });
     await _linkAudioFile(oggFile, decoded);
 
     _hideImportProgress();
-    _flashStatus(`✓ Imported & converted ${newName}`);
+    _flashStatus(`✓ Imported & converted ${newName} — check your Downloads folder`);
   } catch (err) {
+    const coffeeEl = document.getElementById('import-coffee-msg');
+    if (coffeeEl) coffeeEl.style.display = 'none';
     _hideImportProgress();
     if (err.message === 'Import cancelled') return; // user cancelled — no error modal
     _showImportError(file.name, err.message || String(err));
@@ -3530,6 +3582,7 @@ function setTool(t) {
   if (camSub) camSub.classList.toggle('visible', t === 'cam-event');
   // Update context palette (dock.js)
   if (typeof updateContextPalette === 'function') updateContextPalette(t);
+  syncLaserXSnapUI();
 }
 
 let _renderScheduled = false;
@@ -3755,6 +3808,31 @@ function selTemporalMirror(what) {
       chart.lasers[s].sort((a, b) => a.y - b.y);
     }
   }
+  render();
+}
+
+// Swap VOL-L and VOL-R sections within the selection (or entire chart if no
+// active selection). Unlike Mirror VOL, positions are not flipped — only the
+// channel assignment changes so that left-knob patterns become right-knob and
+// vice versa.
+function selSwapLasers() {
+  saveUndo('Swap VOL-L ↔ VOL-R');
+
+  let lo = 0, hi = Infinity;
+  if (sel.active) {
+    [lo, hi] = selTickRange();
+  }
+  const inRange = y => y >= lo && y <= hi;
+
+  const snapL = chart.lasers[0].filter(s => inRange(s.y));
+  const snapR = chart.lasers[1].filter(s => inRange(s.y));
+
+  chart.lasers[0] = [...chart.lasers[0].filter(s => !inRange(s.y)), ...snapR];
+  chart.lasers[1] = [...chart.lasers[1].filter(s => !inRange(s.y)), ...snapL];
+  chart.lasers[0].sort((a, b) => a.y - b.y);
+  chart.lasers[1].sort((a, b) => a.y - b.y);
+
+  updateTimeSigList();
   render();
 }
 
@@ -4181,6 +4259,8 @@ function ensureCtxMenu() {
             <div class="ctx-item" data-act="tmirror-all">Temporal Mirror All</div>
             <div class="ctx-item" data-act="tmirror-bt">Temporal Mirror BT</div>
             <div class="ctx-item" data-act="tmirror-vol">Temporal Mirror VOL</div>
+            <div class="ctx-sep"></div>
+            <div class="ctx-item" data-act="swap-lasers">Swap VOL-L ↔ VOL-R</div>
           </div>
         </div>
       </div>
@@ -4241,6 +4321,7 @@ function ensureCtxMenu() {
     else if (act === 'tmirror-all') selTemporalMirror('all');
     else if (act === 'tmirror-bt')  selTemporalMirror('bt');
     else if (act === 'tmirror-vol') selTemporalMirror('vol');
+    else if (act === 'swap-lasers') selSwapLasers();
     else if (act === 'speed-half')   selAdjustSpeed(0.5);
     else if (act === 'speed-double') selAdjustSpeed(2.0);
     else if (act === 'rand-all') selRandom('all');
@@ -4704,7 +4785,7 @@ function onMouseDown(e) {
     }
 
     // ── Pen tool: place one point at a time (Illustrator-style) ───────────
-    const v = renderer.localXToLaserPos(localX, wide);
+    const v = snapLaserV(renderer.localXToLaserPos(localX, wide));
 
     if (_activeLaserSec && _activeLaserSec.side === side) {
       // Extend the active section with a new point
@@ -5232,6 +5313,70 @@ const SNAP_ENTRIES = [
 const SNAP_VALUES = SNAP_ENTRIES.map(e => e.v);
 const SNAP_LABELS = Object.fromEntries(SNAP_ENTRIES.map(e => [e.v, e.l]));
 
+// Laser X-axis snap grid — coarse to fine order ([ = coarser, ] = finer analog)
+// ; = coarser (fewer snaps), ' = finer (more snaps)
+const LASER_X_SNAP_ENTRIES = [
+  { v: 0,        l: 'Free'       },
+  { v: 0.5,      l: '1/2'        },
+  { v: 0.25,     l: '1/4'        },
+  { v: 0.125,    l: '1/8'        },
+  { v: 0.0625,   l: '1/16'       },
+  { v: 0.03125,  l: '1/32'       },
+  { v: 0.02,     l: '1/50 (KSM)' },
+];
+const LASER_X_SNAP_VALUES = LASER_X_SNAP_ENTRIES.map(e => e.v);
+const LASER_X_SNAP_LABELS = Object.fromEntries(LASER_X_SNAP_ENTRIES.map(e => [e.v, e.l]));
+
+function snapLaserV(v) {
+  if (laserXSnap <= 0) return v;
+  return Math.max(0, Math.min(1, Math.round(v / laserXSnap) * laserXSnap));
+}
+
+let _laserXSnapDisplayTimeout = null;
+function showLaserXSnapDisplay(oldSnap, newSnap, direction) {
+  const display = document.getElementById('laser-xsnap-display');
+  const curr    = document.getElementById('laser-xsnap-curr');
+  const prev    = document.getElementById('laser-xsnap-prev');
+  const next    = document.getElementById('laser-xsnap-next');
+  if (!display || !curr || !prev || !next) return;
+
+  const oldLabel = LASER_X_SNAP_LABELS[oldSnap];
+  const newLabel = LASER_X_SNAP_LABELS[newSnap];
+  const EASE = 'cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+  const T = '0.18s';
+  const ANIM = `top ${T} ${EASE}, opacity ${T} ${EASE}`;
+
+  [prev, curr, next].forEach(el => {
+    el.style.transition = 'none'; el.style.opacity = '0'; el.style.top = '0px';
+  });
+
+  if (direction === 'up') {
+    prev.textContent = oldLabel; curr.textContent = newLabel; next.textContent = '';
+    prev.style.top = '0px'; prev.style.opacity = '1';
+    curr.style.top = '22px'; curr.style.opacity = '0';
+    requestAnimationFrame(() => {
+      prev.style.transition = ANIM; curr.style.transition = ANIM;
+      prev.style.top = '-22px'; prev.style.opacity = '0';
+      curr.style.top = '0px'; curr.style.opacity = '1';
+    });
+  } else {
+    next.textContent = oldLabel; curr.textContent = newLabel;
+    next.style.top = '0px'; next.style.opacity = '1';
+    curr.style.top = '-22px'; curr.style.opacity = '0';
+    requestAnimationFrame(() => {
+      next.style.transition = ANIM; curr.style.transition = ANIM;
+      next.style.top = '22px'; next.style.opacity = '0';
+      curr.style.top = '0px'; curr.style.opacity = '1';
+    });
+  }
+
+  display.style.left = `${_lastMouseX + 18}px`;
+  display.style.top  = `${_lastMouseY - 16}px`;
+  display.style.display = 'block';
+  clearTimeout(_laserXSnapDisplayTimeout);
+  _laserXSnapDisplayTimeout = setTimeout(() => { display.style.display = 'none'; }, 1400);
+}
+
 function onKeyDown(e) {
   if (['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName)) return;
   const ctrl = e.ctrlKey || e.metaKey;
@@ -5370,6 +5515,27 @@ function onKeyDown(e) {
           snap = SNAP_VALUES[i - 1];
           syncSnapUI();
           showSnapDisplay(oldSnap, snap, 'down');
+        } }
+      break;
+
+    case ';':
+      // Laser X snap — coarser (fewer grid divisions)
+      { const i = LASER_X_SNAP_VALUES.findIndex(v => Math.abs(v - laserXSnap) < 0.0001);
+        if (i > 0) {
+          const old = laserXSnap;
+          laserXSnap = LASER_X_SNAP_VALUES[i - 1];
+          showLaserXSnapDisplay(old, laserXSnap, 'down');
+          syncLaserXSnapUI();
+        } }
+      break;
+    case "'":
+      // Laser X snap — finer (more grid divisions)
+      { const i = LASER_X_SNAP_VALUES.findIndex(v => Math.abs(v - laserXSnap) < 0.0001);
+        if (i < LASER_X_SNAP_VALUES.length - 1) {
+          const old = laserXSnap;
+          laserXSnap = LASER_X_SNAP_VALUES[i + 1];
+          showLaserXSnapDisplay(old, laserXSnap, 'up');
+          syncLaserXSnapUI();
         } }
       break;
 
@@ -5588,6 +5754,17 @@ function syncSnapUI() {
   document.getElementById('status-tool').textContent = `Tool: ${tool}  Snap: ${entry?.l ?? snap}`;
   // Update context palette snap display (dock.js)
   if (typeof updateSnapDisplay === 'function') updateSnapDisplay(entry?.l ?? String(snap));
+  syncLaserXSnapUI();
+}
+
+function syncLaserXSnapUI() {
+  const el = document.getElementById('status-laser-xsnap');
+  if (!el) return;
+  const isLaserTool = tool === 'laser-l' || tool === 'laser-r';
+  const entry = LASER_X_SNAP_ENTRIES.find(e => Math.abs(e.v - laserXSnap) < 0.0001);
+  const label = entry?.l ?? 'Free';
+  el.textContent = `X: ${label}`;
+  el.style.display = isLaserTool ? '' : 'none';
 }
 
 function adjustZoom(delta) {
@@ -7037,7 +7214,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (tool === 'laser-l' || tool === 'laser-r') {
       const side = tool === 'laser-l' ? 0 : 1;
-      const v    = Math.max(0, Math.min(1, norm));
+      const v    = snapLaserV(Math.max(0, Math.min(1, norm)));
       saveUndo(`VOL-${side === 0 ? 'L' : 'R'} at M${m} (Preview)`);
       chart.addLaserPoint(side, tick, v, false, false);
       _geDrag.active = true; _geDrag.tool = tool; _geDrag.laserSide = side;
@@ -7072,7 +7249,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Extend laser while dragging
     if (_geDrag.active && (tool === 'laser-l' || tool === 'laser-r')) {
-      const v = Math.max(0, Math.min(1, hit.norm));
+      const v = snapLaserV(Math.max(0, Math.min(1, hit.norm)));
       chart.addLaserPoint(_geDrag.laserSide, hit.tick, v, false, false);
       render();
     }
@@ -7131,6 +7308,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // ── Glitch effect (PowerGlitch) ───────────────────────────────────────────────
 let _glitchCtrl          = null;
 let _glitchActive        = false;
+let _glitchRefreshTimer  = null; // periodic snapshot refresh interval ID
 
 function _levelToGlitchOptions(level) {
   const t = Math.max(0, Math.min(10, level)) / 10;
@@ -7181,15 +7359,43 @@ function _updateGlitchFromTick(tick) {
   _glitchAppliedLevel = level;
   if (level <= 0) {
     _glitchCtrl?.stopGlitch();
+    _glitchCtrl = null;
     _glitchActive = false;
+    if (_glitchRefreshTimer) { clearInterval(_glitchRefreshTimer); _glitchRefreshTimer = null; }
     return;
   }
-  // Reinitialize with new level options
+
+  // Helper that (re)initialises PowerGlitch against the current canvas content.
+  // Called once after a one-frame delay and then periodically so the snapshot
+  // stays in sync with the moving 2D overlay (notes/lasers).
+  const _startGlitch = () => {
+    if (_glitchAppliedLevel !== level) return;
+    if (typeof PowerGlitch === 'undefined') return;
+    _glitchCtrl?.stopGlitch();
+    _glitchCtrl = PowerGlitch.glitch(el, _levelToGlitchOptions(level));
+    _glitchCtrl.startGlitch();
+    _glitchActive = true;
+  };
+
+  // Stop any currently running instance and clear refresh timer.
   _glitchCtrl?.stopGlitch();
   _glitchCtrl = null;
-  _glitchCtrl = PowerGlitch.glitch(el, _levelToGlitchOptions(level));
-  _glitchCtrl.startGlitch();
-  _glitchActive = true;
+  _glitchActive = false;
+  if (_glitchRefreshTimer) { clearInterval(_glitchRefreshTimer); _glitchRefreshTimer = null; }
+
+  // Delay first init by one rAF so the WebGL canvas (preserveDrawingBuffer: true)
+  // has committed at least one frame before PowerGlitch snapshots it.
+  requestAnimationFrame(() => {
+    _startGlitch();
+    // Refresh the snapshot every ~250 ms while glitch is active so the
+    // displacement layers stay approximately in sync with moving chart content.
+    _glitchRefreshTimer = setInterval(() => {
+      if (_glitchAppliedLevel !== level) {
+        clearInterval(_glitchRefreshTimer); _glitchRefreshTimer = null; return;
+      }
+      _startGlitch();
+    }, 250);
+  });
 }
 
 // ── Session persistence ───────────────────────────────────────────────────────

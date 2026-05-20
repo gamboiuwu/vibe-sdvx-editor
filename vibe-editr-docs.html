@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.18 · 2026</span>
+  <span class="version">v0.0.19 · 2026</span>
 </div>
 
 <div class="toc">
@@ -446,6 +446,13 @@
     <li><span class="tag add">add</span>Changing the rate during playback is seamless — the playhead position is rebased on every rate change so the chart does not jump or drift.</li>
     <li><span class="tag add">add</span>Playback Rate is saved and restored by <em>Save Config</em> alongside Projection, HiSpeed, BT Width, and Judge Y.</li>
     <li><span class="tag fix">fix</span>TapeStop FX effect now ramps the pitch-down from the active playback rate rather than always starting from 1.0×, so the effect sounds correct when a non-1.0 practice rate is engaged.</li>
+  <h4><span class="ver-tag">v0.0.19</span>Laser X Snap &amp; Tool Consolidation</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Laser X-Axis Snapping</strong> — press <kbd>;</kbd> to select a coarser X grid and <kbd>'</kbd> to select a finer one while a laser tool is active. Available grids: Free, 1/2, 1/4, 1/8, 1/16, 1/32, 1/50 (KSM native). A yellow animated HUD near the cursor shows the new grid name; the status bar also shows <em>X: [grid]</em> whenever a laser tool is selected. Snap is applied in all laser edit surfaces (2D pen, game-preview drag, multi-preview drag).</li>
+    <li><span class="tag add">add</span>X-snap grid lines are drawn as faint yellow dashed verticals across the laser extension areas whenever the snap is active and a laser tool is selected, giving precise visual feedback about snap positions.</li>
+    <li><span class="tag add">add</span><strong>Chart Validator</strong> (Tools Hub → Validate) — unified tab-based tool replacing the three separate Validity Checker, Collision Detect, and Export Validator tools. Tab 1 <em>Integrity</em>: structural rule checks with one-click Auto Fix. Tab 2 <em>Ergonomics</em>: hold collision and physical-strain pattern detection. Tab 3 <em>Export</em>: pre-flight checklist with pass/warn/fail icons. Total tool count unchanged.</li>
+    <li><span class="tag add">add</span><strong>Chart Statistics</strong> (Tools Hub → Analysis) — grid of at-a-glance stats: BT note count, FX note count, VOL-L/R point counts, BPM range, measure count, laser coverage %, and peak per-measure density. Full breakdown of chips vs. holds per lane.</li>
+    <li><span class="tag add">add</span><strong>Laser Fixer</strong> (Tools Hub → Validate) — scans all laser sections for structural defects: negative <code>ry</code> values, unsorted control points, duplicate tick entries, <code>v</code> out of [0,1], negative section start, and single-point sections. Reports each defect with click-to-navigate. One-click <em>Fix All Issues</em> resolves every detected problem in a single undo step.</li>
   </ul>
 </div>
 
