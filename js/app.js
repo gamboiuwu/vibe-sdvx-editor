@@ -1,5 +1,5 @@
 import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS } from './chart.js';
-import { Renderer, C, laserColors, laserOpacity, laserWideMode, LASER_PRESETS, applyLaserPreset, setLaserColorCustom, buildLaneHeader } from './renderer.js';
+import { Renderer, C, laserColors, laserOpacity, laserWideMode, LASER_PRESETS, applyLaserPreset, setLaserColorCustom, buildLaneHeader, setLaserOpacity, setLaserWideMode } from './renderer.js';
 import { GameView } from './game.js';
 import { exportKsh, importKsh, downloadText } from './ksh.js';
 import { exportKson, importKson, exportKsonPack, importKsonPack } from './kson.js';
@@ -7516,12 +7516,12 @@ function _restoreSession() {
     if (s.playTick && renderer)  renderer.playTick  = s.playTick;
     if (s.viewMode) setTimeout(() => setViewMode(s.viewMode), 0);
     if (typeof s.laserOpacity === 'number') {
-      laserOpacity = s.laserOpacity;
+      setLaserOpacity(s.laserOpacity);
       const sl = document.getElementById('pref-laser-opacity');
       if (sl) sl.value = Math.round(s.laserOpacity * 100);
     }
     if (typeof s.laserWideMode === 'boolean') {
-      laserWideMode = s.laserWideMode;
+      setLaserWideMode(s.laserWideMode);
       const cb = document.getElementById('laser-wide');
       if (cb) cb.checked = s.laserWideMode;
     }
@@ -7566,7 +7566,7 @@ window.addEventListener('DOMContentLoaded', () => {
   if (opSl) {
     opSl.value = Math.round(laserOpacity * 100);
     opSl.addEventListener('input', () => {
-      laserOpacity = +opSl.value / 100;
+      setLaserOpacity(+opSl.value / 100);
       const lbl = document.getElementById('pref-laser-opacity-label');
       if (lbl) lbl.textContent = opSl.value + '%';
       render();
@@ -7575,7 +7575,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
   // Wide laser checkboxes — Settings menu + View menu stay in sync
   const _syncWideCheckboxes = (checked) => {
-    laserWideMode = checked;
+    setLaserWideMode(checked);
     const cbA = document.getElementById('laser-wide');
     const cbB = document.getElementById('laser-wide-view');
     if (cbA) cbA.checked = checked;
