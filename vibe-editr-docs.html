@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.19 · 2026</span>
+  <span class="version">v0.0.20 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,18 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.20</span>Chart Section Labels</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Chart Section Labels</strong> — named ranges (Intro, Verse, Chorus, Bridge, Outro…) that appear as colored bands on the left ruler of the 2D editor. Each section has a start tick, end tick, label, and color. Useful for navigating long-form charts and collaborative charting workflows.</li>
+    <li><span class="tag add">add</span><strong>Section Navigator panel</strong> — open via <strong>Window → Chart Sections…</strong>. Lists all sections sorted by position. Click any row to instantly seek the playhead to that section's start tick.</li>
+    <li><span class="tag add">add</span><strong>Selection-aware Add</strong> — the <em>+ Add</em> button uses the active selection range as the section boundary. Without a selection, it defaults to a 4-measure section starting at the current playhead.</li>
+    <li><span class="tag add">add</span>Click the color swatch in the panel to cycle through a 7-color palette (red, amber, green, blue, violet, cyan, orange). Edit the section name directly inline in the panel.</li>
+    <li><span class="tag add">add</span>Section data is persisted as <code>_sections</code> in the KSON custom extension field and survives full export/import round-trips.</li>
+    <li><span class="tag fix">fix</span>CHANGELOG array syntax error where the v0.0.19 second entry (Laser X Snap) was missing its enclosing object braces, causing a <code>SyntaxError: Unexpected token ':'</code> at startup — fixed.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.19</span>Practice Playback Rate <span style="font-size:11px;color:#ffcc44;font-weight:normal;">[Experimental]</span></h4>

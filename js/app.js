@@ -44,8 +44,20 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.19';
+const APP_VERSION = '0.0.20';
 const CHANGELOG = [
+  {
+    version: '0.0.20',
+    title: 'Chart Section Labels',
+    entries: [
+      ['add', '<strong>Chart Section Labels</strong> — named ranges (Intro, Verse, Chorus, Bridge, Outro…) drawn as colored bands on the 2D ruler. Each section has a start tick, end tick, name, and color.'],
+      ['add', '<strong>Section Navigator panel</strong> — open via <strong>Window → Chart Sections…</strong>. Lists all sections in order; click any row to jump the playhead to that section\'s start.'],
+      ['add', '<strong>Selection-aware Add</strong> — the <em>+ Add</em> button uses the current selection range as the section start/end. With no selection active, it creates a 4-measure section starting at the playhead.'],
+      ['add', 'Click a color swatch in the panel to cycle through a preset palette (red, amber, green, blue, violet, cyan, orange). Edit the section name inline.'],
+      ['add', 'Section data is saved as <code>_sections</code> in the KSON custom extension field and survives full export/import round-trips.'],
+      ['fix', 'CHANGELOG array syntax error (v0.0.19 second entry was missing its enclosing object braces) — fixed so the What\'s New popup displays all entries correctly.'],
+    ],
+  },
   {
     version: '0.0.19',
     title: 'Practice Playback Rate [Experimental]',
@@ -55,6 +67,10 @@ const CHANGELOG = [
       ['add', 'Changing the rate mid-playback is seamless — the playhead continues from the correct chart position without jumping or drifting.'],
       ['add', 'Playback Rate is saved and restored by <em>Save Config</em> alongside Projection, HiSpeed, and Judge Y.'],
       ['fix', 'TapeStop FX effect now ramps from the active playback rate (rather than always from 1.0×), so it behaves correctly when practice rate is engaged.'],
+    ],
+  },
+  {
+    version: '0.0.19',
     title: 'Laser X Snap · Tool Consolidation',
     entries: [
       ['add', '<strong>Laser X-Axis Snapping</strong> — press <kbd>;</kbd> / <kbd>\'</kbd> while placing lasers to step through X-position grids (Free → 1/2 → 1/4 → 1/8 → 1/16 → 1/32 → 1/50 KSM). A yellow HUD shows the current grid near your cursor, mirroring the Y-snap behaviour of <kbd>[</kbd> / <kbd>]</kbd>.'],
@@ -8697,6 +8713,145 @@ const Bookmarks = (function() {
   }, true); // capture phase so we run before any other handler
 
   return { addAtPlayhead, toggle, refresh };
+})();
+
+// ──────────────────────────────────────────────────────────────────────────────
+// v0.0.20: Chart Section Labels
+// Named ranges (Intro, Verse, Chorus…) overlaid on the 2D ruler.
+// ──────────────────────────────────────────────────────────────────────────────
+const ChartSections = (function() {
+  const PALETTE = ['#ff4466','#ffaa00','#44dd88','#4488ff','#dd44ff','#00ccff','#ff8800'];
+  const panel  = document.getElementById('sections-panel');
+  const list   = document.getElementById('sec-list');
+  const btnAdd = document.getElementById('sec-add');
+  const btnClose = document.getElementById('sec-close');
+  const btnOpen  = document.getElementById('btn-sections-panel');
+
+  function getSections() { return (chart?.sections ?? []); }
+
+  function tickToLabel(tick) {
+    const m = Math.floor(tick / TICKS_PER_MEASURE) + 1;
+    const b = Math.floor((tick % TICKS_PER_MEASURE) / TICKS_PER_BEAT) + 1;
+    return `m${m}:b${b}`;
+  }
+
+  function nextColor() {
+    const used = getSections().map(s => s.color);
+    for (const c of PALETTE) if (!used.includes(c)) return c;
+    return PALETTE[getSections().length % PALETTE.length];
+  }
+
+  function save() {
+    if (chart && renderer) renderer.draw();
+    // Sections are persisted in KSON export; nothing extra needed for localStorage
+  }
+
+  function refresh() {
+    if (!list) return;
+    const secs = [...getSections()].sort((a, b) => a.y - b.y);
+    if (!secs.length) {
+      list.innerHTML = `<div class="bm-empty">No sections yet. Use <em>+ Add</em> to mark a region.</div>`;
+      return;
+    }
+    list.innerHTML = secs.map((s, i) =>
+      `<div class="sec-item" data-i="${i}">
+        <span class="sec-swatch" data-i="${i}" style="background:${s.color}"></span>
+        <span class="sec-range">${tickToLabel(s.y)}</span>
+        <input class="sec-label bm-label" value="${(s.label || '').replace(/"/g,'&quot;')}" placeholder="Section name">
+        <button class="bm-del sec-del" data-i="${i}" title="Remove">✕</button>
+      </div>`
+    ).join('');
+
+    list.querySelectorAll('.sec-item').forEach(el => {
+      const i = +el.dataset.i;
+      const sec = secs[i];
+
+      // Click row → seek
+      el.addEventListener('click', ev => {
+        if (ev.target.classList.contains('bm-del') ||
+            ev.target.classList.contains('sec-label') ||
+            ev.target.classList.contains('sec-swatch')) return;
+        if (typeof _seekTo === 'function') _seekTo(sec.y);
+      });
+
+      // Edit label
+      el.querySelector('.sec-label').addEventListener('change', ev => {
+        sec.label = ev.target.value;
+        save();
+      });
+
+      // Cycle color
+      el.querySelector('.sec-swatch').addEventListener('click', ev => {
+        ev.stopPropagation();
+        const idx = PALETTE.indexOf(sec.color);
+        sec.color = PALETTE[(idx + 1) % PALETTE.length];
+        ev.target.style.background = sec.color;
+        save();
+      });
+
+      // Delete
+      el.querySelector('.sec-del').addEventListener('click', ev => {
+        ev.stopPropagation();
+        const arr = chart.sections;
+        const real = arr.findIndex(s2 => s2.y === sec.y && s2.label === sec.label);
+        if (real >= 0) arr.splice(real, 1);
+        save(); refresh();
+      });
+    });
+  }
+
+  function addFromSelection() {
+    if (!chart || !renderer) {
+      alert('No chart loaded.');
+      return;
+    }
+    let startTick, endTick;
+    if (sel.active) {
+      startTick = Math.min(sel.startTick, sel.endTick);
+      endTick   = Math.max(sel.startTick, sel.endTick);
+    } else {
+      startTick = renderer.playTick | 0;
+      endTick   = startTick + TICKS_PER_MEASURE * 4; // default 4 measures
+    }
+    if (endTick <= startTick) endTick = startTick + TICKS_PER_MEASURE;
+    if (!Array.isArray(chart.sections)) chart.sections = [];
+    chart.sections.push({ y: startTick, endY: endTick, label: 'Section', color: nextColor() });
+    chart.sections.sort((a, b) => a.y - b.y);
+    if (panel && panel.style.display === 'none') panel.style.display = 'flex';
+    save(); refresh();
+  }
+
+  function toggle() {
+    if (!panel) return;
+    if (panel.style.display === 'none') { refresh(); panel.style.display = 'flex'; }
+    else panel.style.display = 'none';
+  }
+
+  btnAdd?.addEventListener('click', addFromSelection);
+  btnClose?.addEventListener('click', () => panel && (panel.style.display = 'none'));
+  btnOpen?.addEventListener('click', toggle);
+
+  // Drag-to-move header
+  const header = panel?.querySelector('.fp-header');
+  if (header) {
+    let dragging = false, ox = 0, oy = 0;
+    header.addEventListener('mousedown', e => {
+      if (e.target.tagName === 'BUTTON') return;
+      dragging = true;
+      const r = panel.getBoundingClientRect();
+      ox = e.clientX - r.left; oy = e.clientY - r.top;
+      e.preventDefault();
+    });
+    window.addEventListener('mousemove', e => {
+      if (!dragging) return;
+      panel.style.left  = (e.clientX - ox) + 'px';
+      panel.style.top   = (e.clientY - oy) + 'px';
+      panel.style.right = 'auto';
+    });
+    window.addEventListener('mouseup', () => dragging = false);
+  }
+
+  return { addFromSelection, toggle, refresh };
 })();
 
 // ──────────────────────────────────────────────────────────────────────────────

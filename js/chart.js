@@ -73,6 +73,10 @@ class ChartData {
     // level 0 = no glitch, 1-10 = increasing intensity.
     // Sampled at playback time to drive PowerGlitch dynamically.
     this.glitchEvents = [{ y: 0, level: 0 }];
+
+    // Chart Section Labels. Each: { y: startTick, endY: endTick, label: string, color: string }
+    // Stored as _sections in KSON custom extension field.
+    this.sections = [];
   }
 
   // Returns the effective scroll speed multiplier at tick y, supporting

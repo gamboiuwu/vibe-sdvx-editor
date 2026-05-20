@@ -210,6 +210,7 @@
         <button class="menu-item" id="btn-chart-stats">&#128202; Chart Statistics…</button>
         <button class="menu-item" id="btn-heatmap-window">&#127777; Intensity Heatmap…</button>
         <button class="menu-item" id="btn-bookmarks-panel">&#128278; Bookmarks  <kbd>Ctrl+B</kbd></button>
+        <button class="menu-item" id="btn-sections-panel">&#127370; Chart Sections…</button>
         <div class="menu-sep"></div>
         <button class="menu-item" id="btn-whats-new">&#10024; What's New…</button>
         <button class="menu-item" id="btn-diagnostics">&#9881; System Diagnostics…</button>
@@ -1321,6 +1322,23 @@
   </div>
   <div id="bm-list" class="bm-list">
     <div class="bm-empty">No bookmarks yet — press <kbd>Ctrl+B</kbd> at any playhead position to add one.</div>
+  </div>
+</div>
+
+<!-- Chart Sections floating panel ──────────────────────────────── -->
+<div id="sections-panel" class="floating-panel" style="display:none;top:150px;right:320px">
+  <div class="fp-header">
+    <span class="fp-title">&#127370; Chart Sections</span>
+    <div class="fp-actions">
+      <button id="sec-add" title="Add section at playhead (or from selection)">+ Add</button>
+      <button id="sec-close" title="Close">✕</button>
+    </div>
+  </div>
+  <div style="padding:6px 10px 4px;font-size:10px;color:#6668a0;border-bottom:1px solid #2a2a44">
+    Click row to seek · click swatch to change color · select a region first for precise range
+  </div>
+  <div id="sec-list" class="bm-list">
+    <div class="bm-empty">No sections yet. Use <em>+ Add</em> to mark a region.</div>
   </div>
 </div>
 

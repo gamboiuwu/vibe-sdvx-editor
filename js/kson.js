@@ -121,6 +121,9 @@ function exportKson(chart) {
       }),
     },
     _glitchEvents: (chart.glitchEvents || []).map(ev => [ev.y, ev.level]),
+    _sections: (chart.sections && chart.sections.length)
+      ? chart.sections.map(s => [s.y, s.endY, s.label || '', s.color || '#4488ff'])
+      : undefined,
     note: {
       bt: chart.bt.map(lane =>
         lane.map(n => [Math.round(n.y * KSH_TO_KSON), Math.round((n.len || 0) * KSH_TO_KSON)])
@@ -250,6 +253,17 @@ function importKson(text) {
       chart.glitchEvents.unshift({ y: 0, level: 0 });
       chart.glitchEvents.sort((a, b) => a.y - b.y);
     }
+  }
+
+  // Section labels (custom field)
+  if (Array.isArray(data._sections) && data._sections.length) {
+    chart.sections = data._sections.map(s => ({
+      y:     s[0] ?? 0,
+      endY:  s[1] ?? 0,
+      label: s[2] ?? '',
+      color: s[3] ?? '#4488ff',
+    })).filter(s => s.endY > s.y);
+    chart.sections.sort((a, b) => a.y - b.y);
   }
 
   // ── Notes: BT / FX ──────────────────────────────────────────────────────
