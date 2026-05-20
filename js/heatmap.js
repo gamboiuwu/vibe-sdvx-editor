@@ -1,4 +1,4 @@
-import { chart, renderer } from './app.js';
+import { chart, renderer, render, updateSeekbar } from './app.js';
 import { TICKS_PER_MEASURE, TICKS_PER_BEAT } from './chart.js';
 
 // ── Emotional Intensity Heatmap — full-chart density visualization ─────────────
@@ -339,8 +339,8 @@ function _buildHeatmapWindow() {
     const totalMeas = Math.max(1, ch.totalMeasures || 64);
     const tick = Math.max(0, Math.min(Math.round(rel * totalMeas * 192), (totalMeas - 1) * 192));
     rend.playTick = tick;
-    if (typeof render === 'function') render();
-    if (typeof updateSeekbar === 'function') updateSeekbar(tick);
+    render();
+    updateSeekbar(tick);
     _drawHeatmap();
   });
 
