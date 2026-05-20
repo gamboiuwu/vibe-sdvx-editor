@@ -1,4 +1,5 @@
 import { TICKS_PER_MEASURE } from './chart.js';
+import { render, saveUndo } from './app.js';
 
 // ─── Envelope Control ─────────────────────────────────────────────────────────
 // Floating MDI window with two sections:
@@ -251,7 +252,7 @@ export class VelocityEnvelopeEditor {
 
     this._win.querySelector('#velenv-glitch-reset')?.addEventListener('click', () => {
       if (!this._chart) return;
-      if (typeof saveUndo === 'function') saveUndo('Reset glitch envelope to 0');
+      saveUndo('Reset glitch envelope to 0');
       this._chart.glitchEvents = [{ y: 0, level: 0 }];
       this._gSel = null;
       this._notifyGlitchChange();
@@ -356,7 +357,7 @@ export class VelocityEnvelopeEditor {
 
   _onGMouseUp(e) {
     if (this._gDrag) {
-      if (typeof saveUndo === 'function') saveUndo('Adjusted glitch envelope node');
+      saveUndo('Adjusted glitch envelope node');
       this._gDrag = null;
     }
     this._gDirty = true;
@@ -367,7 +368,7 @@ export class VelocityEnvelopeEditor {
     const idx = this._gHitNode(cx * devicePixelRatio, cy * devicePixelRatio);
     if (idx < 0 || !this._chart) return;
     if ((this._chart.glitchEvents || [])[idx]?.y === 0) return;
-    if (typeof saveUndo === 'function') saveUndo('Deleted glitch envelope node');
+    saveUndo('Deleted glitch envelope node');
     this._chart.glitchEvents.splice(idx, 1);
     this._gSel = null;
     this._notifyGlitchChange();
@@ -398,7 +399,7 @@ export class VelocityEnvelopeEditor {
     let level = Math.round(this._gYToLevel(cy) * 2) / 2;
     level = Math.max(0, Math.min(10, level));
     tick  = Math.max(0, tick);
-    if (typeof saveUndo === 'function') saveUndo('Added glitch envelope node');
+    saveUndo('Added glitch envelope node');
     this._chart.addGlitchEvent(tick, level);
     const evs = this._chart.glitchEvents || [];
     this._gSel = evs.findIndex(e => e.y === tick);
@@ -407,7 +408,7 @@ export class VelocityEnvelopeEditor {
 
   _notifyGlitchChange(doUndo = false) {
     if (typeof updateGlitchEventList === 'function') updateGlitchEventList();
-    if (typeof render === 'function') render();
+    render();
     this._gDirty = true;
   }
 
@@ -546,7 +547,7 @@ export class VelocityEnvelopeEditor {
     this._win.querySelector('#velenv-close').addEventListener('click', () => this.hide());
     this._win.querySelector('#velenv-reset').addEventListener('click', () => {
       if (!this._chart) return;
-      if (typeof saveUndo === 'function') saveUndo('Reset velocity envelope to 1×');
+      saveUndo('Reset velocity envelope to 1×');
       this._chart.scrollSpeedEvents = [{ y: 0, speed: 1.0, interp: 'step' }];
       this._sel = null;
       this._notifyChange();
@@ -728,7 +729,7 @@ export class VelocityEnvelopeEditor {
 
   _onMouseUp(e) {
     if (this._drag) {
-      if (typeof saveUndo === 'function') saveUndo('Adjusted velocity envelope node');
+      saveUndo('Adjusted velocity envelope node');
       this._drag = null;
     }
     this.invalidate();
@@ -739,7 +740,7 @@ export class VelocityEnvelopeEditor {
     const idx = this._hitNode(cx * devicePixelRatio, cy * devicePixelRatio);
     if (idx < 0 || !this._chart) return;
     if (this._chart.scrollSpeedEvents[idx].y === 0) return;
-    if (typeof saveUndo === 'function') saveUndo('Deleted velocity envelope node');
+    saveUndo('Deleted velocity envelope node');
     this._chart.scrollSpeedEvents.splice(idx, 1);
     this._sel = null;
     this._notifyChange();
@@ -757,7 +758,7 @@ export class VelocityEnvelopeEditor {
     if (segIdx < 0) return;
     const cur  = evs[segIdx].interp ?? 'step';
     const next = cur === 'step' ? 'linear' : 'step';
-    if (typeof saveUndo === 'function') saveUndo(`Velocity segment → ${next}`);
+    saveUndo(`Velocity segment → ${next}`);
     this._chart.setScrollSpeedInterp(evs[segIdx].y, next);
     this._notifyChange();
   }
@@ -768,7 +769,7 @@ export class VelocityEnvelopeEditor {
     let speed = this._snapSpeed(this._yToSpeed(cy));
     speed = Math.max(this._minSpeed, Math.min(this._maxSpeed, speed));
     tick  = Math.max(0, tick);
-    if (typeof saveUndo === 'function') saveUndo('Added velocity envelope node');
+    saveUndo('Added velocity envelope node');
     this._chart.addScrollSpeedEvent(tick, speed, 'step');
     const evs = this._chart.scrollSpeedEvents;
     this._sel = evs.findIndex(e => e.y === tick);
@@ -777,7 +778,7 @@ export class VelocityEnvelopeEditor {
 
   _notifyChange(doUndo = false) {
     if (typeof updateScrollSpeedEventList === 'function') updateScrollSpeedEventList();
-    if (typeof render === 'function') render();
+    render();
     this.invalidate();
   }
 

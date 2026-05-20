@@ -1,3 +1,4 @@
+import { TICKS_PER_BEAT, BEATS_PER_MEASURE } from './chart.js';
 
 // ── CalibrationWindow ─────────────────────────────────────────────────────────
 // Floating calibration editor: load audio, set Beat 1.0 marker, output offset.
@@ -1076,8 +1077,8 @@ export class CalibrationWindow {
     const acNow     = this._acCtx.currentTime;
     const audioNow  = this._startOff + (acNow - this._startAcTime);
 
-    const BEATS = typeof BEATS_PER_MEASURE !== 'undefined' ? BEATS_PER_MEASURE : 4;
-    const TPBEAT = typeof TICKS_PER_BEAT   !== 'undefined' ? TICKS_PER_BEAT    : 48;
+    const BEATS = BEATS_PER_MEASURE;
+    const TPBEAT = TICKS_PER_BEAT;
     const MAX_ITER = 512; // guard against infinite loop if BPM is 0
 
     let iter = 0;

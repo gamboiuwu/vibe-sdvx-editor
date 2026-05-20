@@ -1,4 +1,4 @@
-import { TICKS_PER_BEAT, TICKS_PER_MEASURE, ChartData } from './chart.js';
+import { TICKS_PER_BEAT, TICKS_PER_MEASURE, ChartData, LASER_SLAM_TICKS } from './chart.js';
 import { EFFECT_DEFS } from './effects.js';
 
 // KSON uses 240 ticks per beat (960 per 4/4 measure)
