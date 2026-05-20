@@ -20,6 +20,7 @@ const TOOL_REGISTRY = [
   { id: 'hand-opt',    cat: 'Analysis', label: 'Hand Optimizer',   icon: '◈'  },
   { id: 'symmetry',    cat: 'Analysis', label: 'Symmetry Check',   icon: '⚖'  },
   { id: 'timing-window',cat:'Analysis', label: 'Timing Windows',   icon: '⏱'  },
+  { id: 'chart-stats', cat: 'Analysis', label: 'Chart Statistics', icon: '📊'  },
   // Preview
   { id: 'visual-mode', cat: 'Preview',  label: 'Visual Mode',      icon: '◑'  },
   // Audio
@@ -30,9 +31,8 @@ const TOOL_REGISTRY = [
   // Metadata
   { id: 'jacket-meta', cat: 'Metadata', label: 'Jacket Meta',      icon: '▣'  },
   // Validate
-  { id: 'validity',    cat: 'Validate', label: 'Validity Checker', icon: '✓'  },
-  { id: 'collision',   cat: 'Validate', label: 'Collision Detect', icon: '✗'  },
-  { id: 'export-validate',cat:'Validate',label:'Export Validator', icon: '▶'  },
+  { id: 'chart-validator', cat: 'Validate', label: 'Chart Validator', icon: '✓'  },
+  { id: 'laser-fixer',     cat: 'Validate', label: 'Laser Fixer',     icon: '⤢'  },
 ];
 
 // ── Per-tool settings schema ──────────────────────────────────────────────────
@@ -53,14 +53,12 @@ const TOOL_SETTINGS = {
     { key:'window', label:'Window size (measures)', type:'number', min:1, max:8, default:1 },
     { key:'color',  label:'High-density color',     type:'color',  default:'#ff3300' },
   ],
-  'validity': [
+  'chart-validator': [
     { key:'checkOverlaps', label:'Check BT note overlaps',  type:'toggle', default:true },
     { key:'checkFX',       label:'Check FX note overlaps',  type:'toggle', default:true },
     { key:'checkLasers',   label:'Check laser sections',    type:'toggle', default:true },
     { key:'checkMeta',     label:'Check metadata',          type:'toggle', default:true },
-  ],
-  'export-validate': [
-    { key:'strict', label:'Strict mode (warnings = fail)', type:'toggle', default:false },
+    { key:'strict',        label:'Strict mode (warnings = fail)', type:'toggle', default:false },
   ],
   'adaptive-compress': [
     { key:'threshold', label:'Default threshold (notes/beat)', type:'number', min:0.5, max:8, default:4 },
@@ -490,7 +488,9 @@ function _getBpm() {
 function _renderTool(id, container) {
   switch (id) {
     case 'bpm-sync':      return _toolBpmSync(container);
-    case 'validity':      return _toolValidity(container);
+    case 'chart-validator': return _toolChartValidator(container);
+    case 'chart-stats':   return _toolChartStats(container);
+    case 'laser-fixer':   return _toolLaserFixer(container);
     case 'laser-smooth':  return _toolLaserSmooth(container);
     case 'density-heatmap': return _toolDensityHeatmap(container);
     case 'multi-sync':    return _toolMultiSync(container);
@@ -507,8 +507,8 @@ function _renderTool(id, container) {
     case 'pattern-lib':   return _toolPatternLib(container);
     case 'waveform-align':return _toolWaveformAlign(container);
     case 'audio-anchor':  return _toolAudioAnchor(container);
-    case 'collision':     return _toolCollision(container);
-    case 'export-validate':return _toolExportValidate(container);
+    case 'collision':      return _toolChartValidator(container); // redirected
+    case 'export-validate':return _toolChartValidator(container); // redirected
     case 'visual-mode':       return _toolVisualMode(container);
     case 'adaptive-compress': return _toolAdaptiveCompress(container);
     default: container.textContent = 'Unknown tool: ' + id;
@@ -5213,6 +5213,509 @@ function _toolWaveformAlign(c) {
   if (initialBuf) {
     requestAnimationFrame(() => decodeBtn.click());
   }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   21. Chart Validator — unified Integrity + Ergonomics + Export Preflight
+   ═══════════════════════════════════════════════════════════════════════════ */
+function _toolChartValidator(c) {
+  // Tab bar
+  const TAB_DEFS = [
+    { id: 'integrity',   label: '✓ Integrity'   },
+    { id: 'ergonomics',  label: '◈ Ergonomics'  },
+    { id: 'export',      label: '▶ Export'       },
+  ];
+  let activeTab = 'integrity';
+
+  const tabBar = _h('div', '');
+  tabBar.style.cssText = 'display:flex;gap:4px;margin-bottom:8px;border-bottom:1px solid #1e1e40;padding-bottom:6px;';
+
+  const panels = {};
+
+  TAB_DEFS.forEach(t => {
+    const btn = document.createElement('button');
+    btn.textContent = t.label;
+    btn.style.cssText = 'flex:1;background:#07071a;border:1px solid #1e1e40;border-radius:4px;color:#8888bb;padding:4px 6px;font-size:10px;cursor:pointer;transition:color 0.15s,border-color 0.15s';
+    btn.addEventListener('click', () => {
+      activeTab = t.id;
+      updateTabs();
+    });
+    tabBar.appendChild(btn);
+    panels[t.id] = { btn };
+  });
+
+  function updateTabs() {
+    TAB_DEFS.forEach(t => {
+      const on = t.id === activeTab;
+      panels[t.id].btn.style.borderColor = on ? '#5566ee' : '#1e1e40';
+      panels[t.id].btn.style.color       = on ? '#aabbff' : '#8888bb';
+      panels[t.id].btn.style.background  = on ? '#0d0d2a' : '#07071a';
+      panels[t.id].panelEl.style.display = on ? '' : 'none';
+    });
+  }
+
+  c.appendChild(tabBar);
+
+  // ── Integrity tab (was _toolValidity) ─────────────────────────────────────
+  {
+    const panel = _h('div', '');
+    const runBtn   = _btn('Run Checks');
+    const fixBtn   = _btn('Auto Fix');
+    fixBtn.style.cssText = 'margin-left:6px;background:#1a3a1a;border-color:#3a7a3a;color:#88ff88';
+    const results = _h('div', 'tool-result-box');
+    results.style.maxHeight = '240px'; results.style.overflowY = 'auto';
+    const btnRow = _h('div', '');
+    btnRow.style.cssText = 'display:flex;gap:6px;margin-bottom:4px';
+    btnRow.appendChild(runBtn); btnRow.appendChild(fixBtn);
+    panel.appendChild(btnRow); panel.appendChild(results);
+
+    runBtn.addEventListener('click', () => {
+      results.innerHTML = '';
+      if (!(typeof chart !== "undefined" && chart)) { results.innerHTML = '<div class="tool-result-item tool-result-err">No chart loaded</div>'; return; }
+      const issues = [];
+
+      for (let i = 0; i < 4; i++) {
+        const arr = chart.bt[i];
+        for (let j = 0; j < arr.length - 1; j++) {
+          const n = arr[j], nx = arr[j+1];
+          if (n.y + Math.max(n.len, 1) > nx.y)
+            issues.push({ type:'err', msg:`BT-${['A','B','C','D'][i]} overlap at ${_tickToMB(n.y)}`, measure: Math.floor(n.y/TICKS_PER_MEASURE), tick:n.y });
+        }
+      }
+      for (let i = 0; i < 2; i++) {
+        const arr = chart.fx[i];
+        for (let j = 0; j < arr.length - 1; j++) {
+          const n = arr[j], nx = arr[j+1];
+          if (n.y + Math.max(n.len, 1) > nx.y)
+            issues.push({ type:'err', msg:`FX-${['L','R'][i]} overlap at ${_tickToMB(n.y)}`, measure: Math.floor(n.y/TICKS_PER_MEASURE), tick:n.y });
+        }
+      }
+      for (let s = 0; s < 2; s++) {
+        chart.lasers[s].forEach((sec2, si) => {
+          if (sec2.points.length < 2)
+            issues.push({ type:'err', msg:`VOL-${['L','R'][s]} section ${si} has <2 points`, measure: Math.floor(sec2.y/TICKS_PER_MEASURE) });
+          sec2.points.forEach((p, pi) => {
+            if (p.v < 0 || p.v > 1)
+              issues.push({ type:'err', msg:`VOL-${['L','R'][s]} sec ${si} pt ${pi} v=${p.v.toFixed(3)} OOB`, measure: Math.floor(sec2.y/TICKS_PER_MEASURE) });
+          });
+        });
+        const secs = (chart.lasers[s]||[]).slice().sort((a,b)=>a.y-b.y);
+        for (let i = 0; i < secs.length-1; i++) {
+          const A=secs[i], lp=A.points[A.points.length-1], aEnd=A.y+(lp?.ry??0), B=secs[i+1];
+          if (B.y < aEnd) issues.push({ type:'err', msg:`⛔ VOL-${['L','R'][s]} sections overlap (${A.y}–${aEnd} vs ${B.y})`, measure:Math.floor(A.y/TICKS_PER_MEASURE) });
+        }
+        (chart.lasers[s]||[]).forEach((sec2,si) => {
+          const lp=sec2.points[sec2.points.length-1], dur=lp?.ry??0;
+          if (dur===0) issues.push({ type:'err', msg:`⛔ VOL-${['L','R'][s]} section ${si} zero-duration`, measure:Math.floor(sec2.y/TICKS_PER_MEASURE), tick:sec2.y });
+        });
+      }
+      const chipMap = new Map();
+      const addChip = (t,side) => { if (!chipMap.has(t)) chipMap.set(t,{l:0,r:0}); chipMap.get(t)[side===0?'l':'r']++; };
+      for (let i=0;i<4;i++) chart.bt[i].forEach(n=>{if(n.len===0)addChip(n.y,i<2?0:1);});
+      for (let i=0;i<2;i++) chart.fx[i].forEach(n=>{if(n.len===0)addChip(n.y,i);});
+      chipMap.forEach((counts,tick) => {
+        if (counts.l>3) issues.push({ type:'err', msg:`⛔ Left hand ${counts.l} chips at ${_tickToMB(tick)} (max 3)`, measure:Math.floor(tick/TICKS_PER_MEASURE), tick });
+        if (counts.r>3) issues.push({ type:'err', msg:`⛔ Right hand ${counts.r} chips at ${_tickToMB(tick)} (max 3)`, measure:Math.floor(tick/TICKS_PER_MEASURE), tick });
+      });
+      for (let s=0;s<2;s++) {
+        (chart.lasers[s]||[]).forEach(sec2=>{
+          for (let pi=0;pi<sec2.points.length-1;pi++) {
+            const p0=sec2.points[pi],p1=sec2.points[pi+1],dt=p1.ry-p0.ry,dv=Math.abs(p1.v-p0.v);
+            if (dt<=6&&dv>=0.25) {
+              const slamTick=sec2.y+p0.ry;
+              const sideBtn=s===0?[chart.bt[0],chart.bt[1],chart.fx[0]]:[chart.bt[2],chart.bt[3],chart.fx[1]];
+              if (sideBtn.some(arr=>arr.some(n=>n.len===0&&Math.abs(n.y-slamTick)<=6)))
+                issues.push({ type:'warn', msg:`⚠ VOL-${['L','R'][s]} slam at ${_tickToMB(slamTick)} + same-hand chip`, measure:Math.floor(slamTick/TICKS_PER_MEASURE), tick:slamTick });
+            }
+          }
+        });
+      }
+      if (!chart.meta.title) issues.push({ type:'warn', msg:'No title set', measure:null });
+      if (!chart.bpmEvents.some(e=>e.y===0)) issues.push({ type:'warn', msg:'No BPM event at tick 0', measure:0 });
+
+      if (issues.length===0) { results.innerHTML='<div class="tool-result-item tool-result-ok">✓ No issues — chart is clean</div>'; return; }
+      issues.sort((a,b)=>a.type===b.type?0:a.type==='err'?-1:1);
+      if (typeof addChartAnnotation==='function') {
+        issues.filter(i=>i.measure!=null).slice(0,10).forEach(issue=>{
+          addChartAnnotation({ tick:issue.measure*TICKS_PER_MEASURE, label:issue.msg.replace(/^[⛔⚠]\s*/,'').slice(0,35), severity:issue.type==='err'?'error':'warn', source:'chart-validator' });
+        });
+        if (typeof render==='function') render();
+      }
+      const errCount=issues.filter(i=>i.type==='err').length, warnCount=issues.filter(i=>i.type==='warn').length;
+      const sumRow=_h('div','tool-result-item','');
+      sumRow.style.cssText='background:#1a0808;border-color:#882233;color:#ff8888;font-weight:700;margin-bottom:6px';
+      sumRow.textContent=`${errCount>0?`⛔ ${errCount} error${errCount>1?'s':''}`:''}`+`${errCount>0&&warnCount>0?' · ':''}`+`${warnCount>0?`⚠ ${warnCount} warning${warnCount>1?'s':''}`:''}`;
+      results.appendChild(sumRow);
+      issues.forEach(issue=>{
+        const cls=issue.type==='err'?'tool-result-err':'tool-result-warn';
+        const row=_h('div',`tool-result-item ${cls}`);
+        row.textContent=issue.msg;
+        if (issue.measure!=null) {
+          row.style.cursor='pointer';
+          const nav=document.createElement('span'); nav.style.cssText='float:right;opacity:0.45;font-size:10px;margin-left:6px'; nav.textContent='→';
+          row.appendChild(nav);
+          row.addEventListener('click',()=>{
+            const t=issue.tick!=null?issue.tick:issue.measure*TICKS_PER_MEASURE;
+            if (window.renderer&&renderer.playTick!==undefined) {
+              renderer.playTick=Math.max(0,t);
+              const colLen=(renderer.measPerCol??1)*TICKS_PER_MEASURE, col=Math.floor(t/colLen);
+              if (col<renderer.scrollCol||col>=renderer.scrollCol+(renderer.numCols??1)) renderer.scrollCol=Math.max(0,col-Math.floor((renderer.numCols??1)/2));
+              if (window.gameView){gameView.playTick=renderer.playTick;if(typeof gameView.draw==='function')gameView.draw();}
+              if (typeof updateSeekbar==='function') updateSeekbar(renderer.playTick);
+              if (typeof render==='function') render();
+            }
+          });
+        }
+        results.appendChild(row);
+      });
+    });
+
+    fixBtn.addEventListener('click',()=>{
+      results.innerHTML='';
+      if (!(typeof chart!=='undefined'&&chart)){ results.innerHTML='<div class="tool-result-item tool-result-err">No chart loaded</div>'; return; }
+      if (typeof saveUndo==='function') saveUndo('Auto Fix');
+      let fixed=0;
+      for (let i=0;i<4;i++) {
+        chart.bt[i].sort((a,b)=>a.y-b.y);
+        for (let j=0;j<chart.bt[i].length-1;j++) {
+          const n=chart.bt[i][j],nx=chart.bt[i][j+1];
+          if (n.y+Math.max(n.len,1)>nx.y){ n.len=Math.max(0,nx.y-1-n.y); fixed++; }
+        }
+      }
+      for (let i=0;i<2;i++) {
+        chart.fx[i].sort((a,b)=>a.y-b.y);
+        for (let j=0;j<chart.fx[i].length-1;j++) {
+          const n=chart.fx[i][j],nx=chart.fx[i][j+1];
+          if (n.y+Math.max(n.len,1)>nx.y){ n.len=Math.max(0,nx.y-1-n.y); fixed++; }
+        }
+      }
+      for (let s=0;s<2;s++) {
+        const before=chart.lasers[s].length;
+        chart.lasers[s]=chart.lasers[s].filter(sec2=>sec2.points.length>=2);
+        fixed+=before-chart.lasers[s].length;
+        chart.lasers[s].forEach(sec2=>sec2.points.forEach(p=>{ if(p.v<0||p.v>1){p.v=Math.max(0,Math.min(1,p.v));fixed++;} }));
+        const b2=chart.lasers[s].length;
+        chart.lasers[s]=chart.lasers[s].filter(sec2=>(sec2.points[sec2.points.length-1]?.ry??0)>0);
+        fixed+=b2-chart.lasers[s].length;
+        chart.lasers[s].sort((a,b)=>a.y-b.y);
+        for (let i=0;i<chart.lasers[s].length-1;i++) {
+          const A=chart.lasers[s][i],lp=A.points[A.points.length-1],aEnd=A.y+(lp?.ry??0),B=chart.lasers[s][i+1];
+          if (B.y<aEnd&&lp){ lp.ry=Math.max(0,B.y-A.y-1); fixed++; }
+        }
+        chart.lasers[s]=chart.lasers[s].filter(sec2=>(sec2.points[sec2.points.length-1]?.ry??0)>0);
+      }
+      if (typeof render==='function') render();
+      results.innerHTML=fixed>0?`<div class="tool-result-item tool-result-ok">Auto Fix applied ${fixed} correction${fixed!==1?'s':''}.</div>`:`<div class="tool-result-item tool-result-ok">No fixable issues found.</div>`;
+    });
+
+    panels['integrity'].panelEl = panel;
+    c.appendChild(panel);
+  }
+
+  // ── Ergonomics tab (was _toolCollision) ───────────────────────────────────
+  {
+    const panel = _h('div', '');
+    const runBtn = _btn('Detect Ergonomic Issues');
+    const results = _h('div', 'tool-result-box');
+    results.style.maxHeight = '240px'; results.style.overflowY = 'auto';
+
+    runBtn.addEventListener('click', () => {
+      results.innerHTML = '';
+      if (!(typeof chart !== "undefined" && chart)) return;
+      const issues = [];
+      const RESOLUTION = 6;
+      const totalTicks = (chart.totalMeasures || 64) * TICKS_PER_MEASURE;
+
+      for (let t = 0; t < totalTicks; t += RESOLUTION) {
+        const activeBt = [false,false,false,false];
+        const activeFx = [false,false];
+        for (let i=0;i<4;i++) activeBt[i]=chart.bt[i].some(n=>n.len>0&&t>=n.y&&t<n.y+n.len);
+        for (let i=0;i<2;i++) activeFx[i]=chart.fx[i].some(n=>n.len>0&&t>=n.y&&t<n.y+n.len);
+        const simBt=activeBt.filter(Boolean).length, simFx=activeFx.filter(Boolean).length;
+        const total=simBt+simFx, m=Math.floor(t/TICKS_PER_MEASURE), beat=Math.floor((t%TICKS_PER_MEASURE)/TICKS_PER_BEAT)+1;
+        if (total>=5) issues.push({ type:'err', msg:`5+ simultaneous holds at M${m+1} B${beat} (impossible)`, measure:m });
+        else if (activeBt[0]&&activeBt[3]&&simBt>=2) issues.push({ type:'warn', msg:`BT-A+D extreme stretch at M${m+1} B${beat}`, measure:m });
+        else if (activeFx[0]&&activeBt[0]&&activeBt[1]) issues.push({ type:'warn', msg:`FX-L + BT-A + BT-B (3-finger strain) at M${m+1} B${beat}`, measure:m });
+      }
+
+      const deduped = [];
+      issues.forEach(iss => {
+        const last=deduped[deduped.length-1];
+        if (last&&last.msg===iss.msg&&Math.abs(iss.measure-last.measure)<2) return;
+        deduped.push(iss);
+      });
+
+      if (deduped.length===0) { results.innerHTML='<div class="tool-result-item tool-result-ok">✓ No ergonomic issues detected</div>'; return; }
+      deduped.forEach(iss => {
+        const row=_h('div',`tool-result-item tool-result-${iss.type==='err'?'err':'warn'}`);
+        row.textContent=iss.msg; row.style.cursor='pointer';
+        row.addEventListener('click',()=>_goToMeasure(iss.measure));
+        results.appendChild(row);
+      });
+      results.insertBefore(_h('div','tool-result-item',`Found ${deduped.length} issue(s):`),results.firstChild);
+    });
+
+    panel.appendChild(runBtn); panel.appendChild(results);
+    panels['ergonomics'].panelEl = panel;
+    c.appendChild(panel);
+  }
+
+  // ── Export tab (was _toolExportValidate) ──────────────────────────────────
+  {
+    const panel = _h('div', '');
+    const runBtn = _btn('Run Pre-flight Checks');
+    const results = _h('div', 'tool-result-box');
+    const summary = _h('div', 'tool-export-summary');
+
+    runBtn.addEventListener('click', () => {
+      results.innerHTML=''; summary.innerHTML='';
+      if (!(typeof chart!=="undefined"&&chart)){ results.innerHTML='<div class="tool-result-item tool-result-err">No chart loaded</div>'; return; }
+      const checks=[], ch=chart;
+      function chk(label,pass,warn,detail) { checks.push({ label, type:pass?'ok':warn?'warn':'err', icon:pass?'✓':warn?'⚠':'✗', detail }); }
+
+      const totalNotes=_noteCount();
+      const hasLaserBad=ch.lasers.some(side=>side.some(s=>s.points.length<2));
+      const hasVBad=ch.lasers.some(side=>side.some(s=>s.points.some(p=>p.v<0||p.v>1)));
+      const hasShortNotes=[0,1,2,3].some(i=>ch.bt[i].some(n=>n.len>0&&n.len<3))||[0,1].some(i=>ch.fx[i].some(n=>n.len>0&&n.len<3));
+      let btOverlap=false;
+      for (let i=0;i<4;i++){const arr=ch.bt[i];for(let j=0;j<arr.length-1;j++){if(arr[j].y+Math.max(arr[j].len,1)>arr[j+1].y){btOverlap=true;break;}}}
+      let fxOverlap=false;
+      for (let i=0;i<2;i++){const arr=ch.fx[i];for(let j=0;j<arr.length-1;j++){if(arr[j].y+Math.max(arr[j].len,1)>arr[j+1].y){fxOverlap=true;break;}}}
+
+      chk('Title not empty',            !!ch.meta.title,                      false,  ch.meta.title||'(empty)');
+      chk('Artist not empty',           !!ch.meta.artist,                     false,  ch.meta.artist||'(empty)');
+      chk('BPM event at tick 0',        ch.bpmEvents.some(e=>e.y===0),        false,  `${ch.bpmEvents.length} BPM event(s)`);
+      chk('At least 10 notes',          totalNotes>=10,                       totalNotes>=1&&totalNotes<10, `${totalNotes} notes`);
+      chk('No overlapping BT notes',    !btOverlap,                           false,  btOverlap?'Overlaps found':'OK');
+      chk('No overlapping FX notes',    !fxOverlap,                           false,  fxOverlap?'Overlaps found':'OK');
+      chk('Laser sections ≥2 points',   !hasLaserBad,                         false,  hasLaserBad?'Bad sections found':'OK');
+      chk('Laser v values in [0,1]',    !hasVBad,                             false,  hasVBad?'Out-of-range values':'OK');
+      chk('Level is 1–20',              ch.meta.level>=1&&ch.meta.level<=20,  false,  `Level: ${ch.meta.level}`);
+      chk('totalMeasures > 0',          ch.totalMeasures>0,                   false,  `${ch.totalMeasures} measures`);
+      chk('Audio file specified',        !!ch.meta.music,                     true,   ch.meta.music||'(none)');
+      chk('No impossibly short notes',   !hasShortNotes,                      false,  hasShortNotes?'Notes < 3 ticks found':'OK');
+
+      checks.forEach(chk2=>{
+        const row=_h('div',`tool-result-item tool-result-${chk2.type}`);
+        row.innerHTML=`<span>${chk2.icon}</span> <b>${chk2.label}</b> — <span style="color:#8888aa;font-size:10px">${chk2.detail}</span>`;
+        results.appendChild(row);
+      });
+      const errCount=checks.filter(c2=>c2.type==='err').length, warnCount=checks.filter(c2=>c2.type==='warn').length;
+      let status, cls;
+      if (errCount>0)       { status=`✗ ERRORS (${errCount} error${errCount>1?'s':''}, ${warnCount} warning${warnCount!==1?'s':''})`; cls='tool-result-err'; }
+      else if (warnCount>0) { status=`⚠ WARNINGS (${warnCount} warning${warnCount!==1?'s':''})`; cls='tool-result-warn'; }
+      else                  { status='✓ READY TO EXPORT'; cls='tool-result-ok'; }
+      summary.className=`tool-export-summary tool-result-item ${cls}`;
+      summary.textContent=status;
+    });
+
+    panel.appendChild(runBtn); panel.appendChild(summary); panel.appendChild(results);
+    panels['export'].panelEl = panel;
+    c.appendChild(panel);
+  }
+
+  updateTabs();
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   22. Chart Statistics — note counts, density, laser coverage
+   ═══════════════════════════════════════════════════════════════════════════ */
+function _toolChartStats(c) {
+  const sec = _section('Chart Statistics');
+  c.appendChild(sec);
+
+  const results = _h('div', '');
+  results.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px';
+
+  const fullResults = _h('div', 'tool-result-box');
+  fullResults.style.cssText = 'margin-top:8px;max-height:220px;overflow-y:auto';
+
+  const runBtn = _btn('Compute Stats');
+  sec.appendChild(runBtn);
+  sec.appendChild(results);
+  sec.appendChild(fullResults);
+
+  function stat(label, value, color) {
+    const box = document.createElement('div');
+    box.style.cssText = `background:#0a0a1e;border:1px solid #1e1e40;border-radius:4px;padding:6px 8px;text-align:center`;
+    box.innerHTML = `<div style="font-size:9px;color:#5558a0;margin-bottom:2px">${label}</div><div style="font-size:16px;font-weight:700;color:${color||'#aabbff'}">${value}</div>`;
+    return box;
+  }
+
+  runBtn.addEventListener('click', () => {
+    results.innerHTML = ''; fullResults.innerHTML = '';
+    if (!(typeof chart !== "undefined" && chart)) { fullResults.innerHTML = '<div class="tool-result-item tool-result-err">No chart loaded</div>'; return; }
+
+    const ch = chart;
+    const totalMeas = ch.totalMeasures || 1;
+    const totalTicks = totalMeas * TICKS_PER_MEASURE;
+
+    // Note counts
+    const btTotal    = [0,1,2,3].reduce((s,i)=>s+ch.bt[i].length, 0);
+    const fxTotal    = [0,1].reduce((s,i)=>s+ch.fx[i].length, 0);
+    const btChips    = [0,1,2,3].reduce((s,i)=>s+ch.bt[i].filter(n=>n.len===0).length, 0);
+    const btHolds    = btTotal - btChips;
+    const fxChips    = [0,1].reduce((s,i)=>s+ch.fx[i].filter(n=>n.len===0).length, 0);
+    const fxHolds    = fxTotal - fxChips;
+    const laserSecsL = ch.lasers[0].length, laserSecsR = ch.lasers[1].length;
+    const laserPtsL  = ch.lasers[0].reduce((s,sec2)=>s+sec2.points.length, 0);
+    const laserPtsR  = ch.lasers[1].reduce((s,sec2)=>s+sec2.points.length, 0);
+
+    // Laser coverage: % of total ticks covered by an active laser section
+    const calcCoverage = (secs) => {
+      let covered = 0;
+      secs.forEach(sec2 => {
+        const lp = sec2.points[sec2.points.length-1];
+        covered += Math.max(0, lp?.ry ?? 0);
+      });
+      return totalTicks > 0 ? Math.min(100, (covered / totalTicks * 100)).toFixed(1) : '0.0';
+    };
+    const coverL = calcCoverage(ch.lasers[0]);
+    const coverR = calcCoverage(ch.lasers[1]);
+
+    // BPM range
+    const bpms = ch.bpmEvents.map(e => e.bpm);
+    const bpmMin = bpms.length ? Math.min(...bpms).toFixed(1) : '—';
+    const bpmMax = bpms.length ? Math.max(...bpms).toFixed(1) : '—';
+    const bpmStr = bpmMin === bpmMax ? bpmMin : `${bpmMin}–${bpmMax}`;
+
+    // Peak density: notes per measure (max over any single measure)
+    const allNoteTicks = [];
+    for (let i=0;i<4;i++) ch.bt[i].forEach(n=>allNoteTicks.push(n.y));
+    for (let i=0;i<2;i++) ch.fx[i].forEach(n=>allNoteTicks.push(n.y));
+    let peakDensity = 0;
+    for (let m=0;m<totalMeas;m++) {
+      const mStart=m*TICKS_PER_MEASURE, mEnd=mStart+TICKS_PER_MEASURE;
+      const cnt=allNoteTicks.filter(t=>t>=mStart&&t<mEnd).length;
+      if (cnt>peakDensity) peakDensity=cnt;
+    }
+
+    results.appendChild(stat('BT Notes', btTotal, '#e0e0ff'));
+    results.appendChild(stat('FX Notes', fxTotal, '#ffd700'));
+    results.appendChild(stat('VOL-L pts', laserPtsL, '#0088ff'));
+    results.appendChild(stat('VOL-R pts', laserPtsR, '#ff1177'));
+    results.appendChild(stat('BPM', bpmStr, '#ffdd44'));
+    results.appendChild(stat('Measures', totalMeas, '#aabbff'));
+
+    const lines = [
+      `BT chips: ${btChips}  holds: ${btHolds}`,
+      `FX chips: ${fxChips}  holds: ${fxHolds}`,
+      `VOL-L: ${laserSecsL} section(s)  pts: ${laserPtsL}  coverage: ${coverL}%`,
+      `VOL-R: ${laserSecsR} section(s)  pts: ${laserPtsR}  coverage: ${coverR}%`,
+      `Peak density: ${peakDensity} notes/measure`,
+      `Total note events: ${allNoteTicks.length}`,
+    ];
+    lines.forEach(l => {
+      const row = _h('div', 'tool-result-item', l);
+      fullResults.appendChild(row);
+    });
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   23. Laser Fixer — detect and correct laser position drift / structure issues
+   ═══════════════════════════════════════════════════════════════════════════ */
+function _toolLaserFixer(c) {
+  const sec = _section('Laser Fixer');
+  c.appendChild(sec);
+
+  const desc = _h('div','','Detect and fix laser section structural issues: out-of-range values, negative ry offsets, unsorted points, and empty sections.');
+  desc.style.cssText = 'font-size:9px;color:#556;line-height:1.5;margin-bottom:6px';
+  sec.appendChild(desc);
+
+  const runBtn = _btn('Scan Lasers');
+  const fixBtn = _btn('Fix All Issues');
+  fixBtn.style.cssText = 'margin-left:6px;background:#1a3a1a;border-color:#3a7a3a;color:#88ff88';
+
+  const results = _h('div', 'tool-result-box');
+  results.style.maxHeight = '220px'; results.style.overflowY = 'auto';
+
+  const btnRow = _h('div','');
+  btnRow.style.cssText = 'display:flex;gap:6px;margin-bottom:6px';
+  btnRow.appendChild(runBtn); btnRow.appendChild(fixBtn);
+  sec.appendChild(btnRow); sec.appendChild(results);
+
+  function scanLasers(ch) {
+    const issues = [];
+    for (let s = 0; s < 2; s++) {
+      const side = ['VOL-L','VOL-R'][s];
+      ch.lasers[s].forEach((sec2, si) => {
+        // Check points are sorted by ry
+        const pts = sec2.points;
+        for (let pi = 0; pi < pts.length; pi++) {
+          if (pts[pi].ry < 0) issues.push({ side:s, sec:sec2, si, pi, type:'negative-ry', msg:`${side} sec ${si} pt ${pi}: negative ry=${pts[pi].ry}` });
+        }
+        for (let pi = 0; pi < pts.length - 1; pi++) {
+          if (pts[pi].ry > pts[pi+1].ry) issues.push({ side:s, sec:sec2, si, pi, type:'unsorted', msg:`${side} sec ${si}: pts not sorted at ${pi}→${pi+1}` });
+          if (pts[pi].ry === pts[pi+1].ry && pi < pts.length - 2) issues.push({ side:s, sec:sec2, si, pi, type:'duplicate-ry', msg:`${side} sec ${si}: duplicate ry=${pts[pi].ry} at ${pi}` });
+        }
+        // v out of range
+        pts.forEach((p, pi) => {
+          if (p.v < 0 || p.v > 1) issues.push({ side:s, sec:sec2, si, pi, type:'v-oob', msg:`${side} sec ${si} pt ${pi}: v=${p.v.toFixed(4)} outside [0,1]` });
+        });
+        // sec.y negative
+        if (sec2.y < 0) issues.push({ side:s, sec:sec2, si, pi:null, type:'negative-y', msg:`${side} sec ${si}: negative y=${sec2.y}` });
+        // empty / single-point
+        if (pts.length < 2) issues.push({ side:s, sec:sec2, si, pi:null, type:'short', msg:`${side} sec ${si}: only ${pts.length} point(s)` });
+      });
+    }
+    return issues;
+  }
+
+  runBtn.addEventListener('click', () => {
+    results.innerHTML = '';
+    if (!(typeof chart !== "undefined" && chart)) { results.innerHTML = '<div class="tool-result-item tool-result-err">No chart loaded</div>'; return; }
+    const issues = scanLasers(chart);
+    if (issues.length === 0) { results.innerHTML = '<div class="tool-result-item tool-result-ok">✓ No laser structure issues found</div>'; return; }
+    results.appendChild(_h('div','tool-result-item',`Found ${issues.length} issue(s):`));
+    issues.forEach(iss => {
+      const row = _h('div', `tool-result-item tool-result-${iss.type==='v-oob'||iss.type==='negative-y'||iss.type==='negative-ry'?'err':'warn'}`);
+      row.textContent = iss.msg;
+      if (iss.sec) {
+        row.style.cursor = 'pointer';
+        row.addEventListener('click', () => _goToMeasure(Math.floor(iss.sec.y / TICKS_PER_MEASURE)));
+      }
+      results.appendChild(row);
+    });
+  });
+
+  fixBtn.addEventListener('click', () => {
+    results.innerHTML = '';
+    if (!(typeof chart !== "undefined" && chart)) { results.innerHTML = '<div class="tool-result-item tool-result-err">No chart loaded</div>'; return; }
+    if (typeof saveUndo === 'function') saveUndo('Laser Fixer');
+    let fixed = 0;
+    for (let s = 0; s < 2; s++) {
+      // Clamp v to [0,1]
+      chart.lasers[s].forEach(sec2 => sec2.points.forEach(p => {
+        if (p.v < 0 || p.v > 1) { p.v = Math.max(0, Math.min(1, p.v)); fixed++; }
+      }));
+      // Clamp negative ry to 0
+      chart.lasers[s].forEach(sec2 => sec2.points.forEach(p => {
+        if (p.ry < 0) { p.ry = 0; fixed++; }
+      }));
+      // Sort points by ry
+      chart.lasers[s].forEach(sec2 => {
+        const before = JSON.stringify(sec2.points.map(p=>p.ry));
+        sec2.points.sort((a,b) => a.ry - b.ry);
+        if (JSON.stringify(sec2.points.map(p=>p.ry)) !== before) fixed++;
+      });
+      // Remove duplicate ry entries (keep first)
+      chart.lasers[s].forEach(sec2 => {
+        const seen = new Set();
+        const before = sec2.points.length;
+        sec2.points = sec2.points.filter(p => { if (seen.has(p.ry)) return false; seen.add(p.ry); return true; });
+        fixed += before - sec2.points.length;
+      });
+      // Remove sections with <2 points or negative y
+      const before = chart.lasers[s].length;
+      chart.lasers[s] = chart.lasers[s].filter(sec2 => sec2.points.length >= 2 && sec2.y >= 0);
+      fixed += before - chart.lasers[s].length;
+      // Sort sections by y
+      chart.lasers[s].sort((a,b) => a.y - b.y);
+    }
+    if (typeof render === 'function') render();
+    results.innerHTML = `<div class="tool-result-item tool-result-ok">Fixed ${fixed} issue${fixed!==1?'s':''}. Re-scan to verify.</div>`;
+  });
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

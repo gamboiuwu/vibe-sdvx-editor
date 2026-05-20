@@ -9,8 +9,19 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.18';
+const APP_VERSION = '0.0.19';
 const CHANGELOG = [
+  {
+    version: '0.0.19',
+    title: 'Laser X Snap · Tool Consolidation',
+    entries: [
+      ['add', '<strong>Laser X-Axis Snapping</strong> — press <kbd>;</kbd> / <kbd>\'</kbd> while placing lasers to step through X-position grids (Free → 1/2 → 1/4 → 1/8 → 1/16 → 1/32 → 1/50 KSM). A yellow HUD shows the current grid near your cursor, mirroring the Y-snap behaviour of <kbd>[</kbd> / <kbd>]</kbd>.'],
+      ['add', 'X-snap applied consistently in all laser edit surfaces: the 2D pen tool, the game-preview drag, and the multi-preview drag. Freehand laser points snap to the nearest X grid position on every mousemove.'],
+      ['add', '<strong>Chart Validator</strong> — unified Integrity / Ergonomics / Export validation tool (replaces three separate overlapping validate tools). Tab-based UI groups: Integrity (structural errors + auto-fix), Ergonomics (hold collision + strain patterns), Export (pre-flight checklist). Total tool count unchanged.'],
+      ['add', '<strong>Chart Statistics</strong> tool (Analysis tab) — at-a-glance grid showing BT/FX/VOL-L/VOL-R note counts, BPM range, measure count, laser coverage percentages, and peak density.'],
+      ['add', '<strong>Laser Fixer</strong> tool (Validate tab) — scans all laser sections for structure bugs: negative <code>ry</code> values, unsorted points, duplicate ticks, out-of-range <code>v</code>, empty sections, negative <code>y</code>. One-click Auto Fix resolves all detected issues.'],
+    ],
+  },
   {
     version: '0.0.18',
     title: 'Tap Tempo BPM [Experimental]',
@@ -161,6 +172,8 @@ let chart    = tabs[0].chart;
 let renderer = null;
 let tool     = 'select';
 let snap     = 12;
+// Laser X-axis snap: 0 = free, otherwise snap v to nearest multiple
+let laserXSnap = 0;
 
 const drag = { active: false, lane: -1, laneType: '', startTick: 0, side: 0, localX: 0, laserSec: null };
 const sel  = { active: false, dragging: false, startTick: 0, endTick: 0, clipboard: null };
@@ -1748,7 +1761,7 @@ function _wireMultiEditCanvas(mv) {
     }
     if (tool === 'laser-l' || tool === 'laser-r') {
       const side = tool === 'laser-l' ? 0 : 1;
-      const v    = Math.max(0, Math.min(1, norm));
+      const v    = snapLaserV(Math.max(0, Math.min(1, norm)));
       saveUndo(`VOL-${side === 0 ? 'L' : 'R'} at M${m} (Multi-Preview)`);
       targetChart.addLaserPoint(side, tick, v, false, false);
       mv._drag.active = true; mv._drag.tool = tool; mv._drag.laserSide = side;
@@ -1779,7 +1792,7 @@ function _wireMultiEditCanvas(mv) {
     if (mv._drag.active && (tool === 'laser-l' || tool === 'laser-r')) {
       const targetChart = tabs[mv.tabIdx]?.chart;
       if (targetChart) {
-        const v = Math.max(0, Math.min(1, hit.norm));
+        const v = snapLaserV(Math.max(0, Math.min(1, hit.norm)));
         targetChart.addLaserPoint(mv._drag.laserSide, hit.tick, v, false, false);
         afterEdit();
       }
@@ -3561,6 +3574,7 @@ function setTool(t) {
   if (camSub) camSub.classList.toggle('visible', t === 'cam-event');
   // Update context palette (dock.js)
   if (typeof updateContextPalette === 'function') updateContextPalette(t);
+  syncLaserXSnapUI();
 }
 
 let _renderScheduled = false;
@@ -4763,7 +4777,7 @@ function onMouseDown(e) {
     }
 
     // ── Pen tool: place one point at a time (Illustrator-style) ───────────
-    const v = renderer.localXToLaserPos(localX, wide);
+    const v = snapLaserV(renderer.localXToLaserPos(localX, wide));
 
     if (_activeLaserSec && _activeLaserSec.side === side) {
       // Extend the active section with a new point
@@ -5291,6 +5305,70 @@ const SNAP_ENTRIES = [
 const SNAP_VALUES = SNAP_ENTRIES.map(e => e.v);
 const SNAP_LABELS = Object.fromEntries(SNAP_ENTRIES.map(e => [e.v, e.l]));
 
+// Laser X-axis snap grid — coarse to fine order ([ = coarser, ] = finer analog)
+// ; = coarser (fewer snaps), ' = finer (more snaps)
+const LASER_X_SNAP_ENTRIES = [
+  { v: 0,        l: 'Free'       },
+  { v: 0.5,      l: '1/2'        },
+  { v: 0.25,     l: '1/4'        },
+  { v: 0.125,    l: '1/8'        },
+  { v: 0.0625,   l: '1/16'       },
+  { v: 0.03125,  l: '1/32'       },
+  { v: 0.02,     l: '1/50 (KSM)' },
+];
+const LASER_X_SNAP_VALUES = LASER_X_SNAP_ENTRIES.map(e => e.v);
+const LASER_X_SNAP_LABELS = Object.fromEntries(LASER_X_SNAP_ENTRIES.map(e => [e.v, e.l]));
+
+function snapLaserV(v) {
+  if (laserXSnap <= 0) return v;
+  return Math.max(0, Math.min(1, Math.round(v / laserXSnap) * laserXSnap));
+}
+
+let _laserXSnapDisplayTimeout = null;
+function showLaserXSnapDisplay(oldSnap, newSnap, direction) {
+  const display = document.getElementById('laser-xsnap-display');
+  const curr    = document.getElementById('laser-xsnap-curr');
+  const prev    = document.getElementById('laser-xsnap-prev');
+  const next    = document.getElementById('laser-xsnap-next');
+  if (!display || !curr || !prev || !next) return;
+
+  const oldLabel = LASER_X_SNAP_LABELS[oldSnap];
+  const newLabel = LASER_X_SNAP_LABELS[newSnap];
+  const EASE = 'cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+  const T = '0.18s';
+  const ANIM = `top ${T} ${EASE}, opacity ${T} ${EASE}`;
+
+  [prev, curr, next].forEach(el => {
+    el.style.transition = 'none'; el.style.opacity = '0'; el.style.top = '0px';
+  });
+
+  if (direction === 'up') {
+    prev.textContent = oldLabel; curr.textContent = newLabel; next.textContent = '';
+    prev.style.top = '0px'; prev.style.opacity = '1';
+    curr.style.top = '22px'; curr.style.opacity = '0';
+    requestAnimationFrame(() => {
+      prev.style.transition = ANIM; curr.style.transition = ANIM;
+      prev.style.top = '-22px'; prev.style.opacity = '0';
+      curr.style.top = '0px'; curr.style.opacity = '1';
+    });
+  } else {
+    next.textContent = oldLabel; curr.textContent = newLabel;
+    next.style.top = '0px'; next.style.opacity = '1';
+    curr.style.top = '-22px'; curr.style.opacity = '0';
+    requestAnimationFrame(() => {
+      next.style.transition = ANIM; curr.style.transition = ANIM;
+      next.style.top = '22px'; next.style.opacity = '0';
+      curr.style.top = '0px'; curr.style.opacity = '1';
+    });
+  }
+
+  display.style.left = `${_lastMouseX + 18}px`;
+  display.style.top  = `${_lastMouseY - 16}px`;
+  display.style.display = 'block';
+  clearTimeout(_laserXSnapDisplayTimeout);
+  _laserXSnapDisplayTimeout = setTimeout(() => { display.style.display = 'none'; }, 1400);
+}
+
 function onKeyDown(e) {
   if (['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName)) return;
   const ctrl = e.ctrlKey || e.metaKey;
@@ -5429,6 +5507,27 @@ function onKeyDown(e) {
           snap = SNAP_VALUES[i - 1];
           syncSnapUI();
           showSnapDisplay(oldSnap, snap, 'down');
+        } }
+      break;
+
+    case ';':
+      // Laser X snap — coarser (fewer grid divisions)
+      { const i = LASER_X_SNAP_VALUES.findIndex(v => Math.abs(v - laserXSnap) < 0.0001);
+        if (i > 0) {
+          const old = laserXSnap;
+          laserXSnap = LASER_X_SNAP_VALUES[i - 1];
+          showLaserXSnapDisplay(old, laserXSnap, 'down');
+          syncLaserXSnapUI();
+        } }
+      break;
+    case "'":
+      // Laser X snap — finer (more grid divisions)
+      { const i = LASER_X_SNAP_VALUES.findIndex(v => Math.abs(v - laserXSnap) < 0.0001);
+        if (i < LASER_X_SNAP_VALUES.length - 1) {
+          const old = laserXSnap;
+          laserXSnap = LASER_X_SNAP_VALUES[i + 1];
+          showLaserXSnapDisplay(old, laserXSnap, 'up');
+          syncLaserXSnapUI();
         } }
       break;
 
@@ -5647,6 +5746,17 @@ function syncSnapUI() {
   document.getElementById('status-tool').textContent = `Tool: ${tool}  Snap: ${entry?.l ?? snap}`;
   // Update context palette snap display (dock.js)
   if (typeof updateSnapDisplay === 'function') updateSnapDisplay(entry?.l ?? String(snap));
+  syncLaserXSnapUI();
+}
+
+function syncLaserXSnapUI() {
+  const el = document.getElementById('status-laser-xsnap');
+  if (!el) return;
+  const isLaserTool = tool === 'laser-l' || tool === 'laser-r';
+  const entry = LASER_X_SNAP_ENTRIES.find(e => Math.abs(e.v - laserXSnap) < 0.0001);
+  const label = entry?.l ?? 'Free';
+  el.textContent = `X: ${label}`;
+  el.style.display = isLaserTool ? '' : 'none';
 }
 
 function adjustZoom(delta) {
@@ -7096,7 +7206,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (tool === 'laser-l' || tool === 'laser-r') {
       const side = tool === 'laser-l' ? 0 : 1;
-      const v    = Math.max(0, Math.min(1, norm));
+      const v    = snapLaserV(Math.max(0, Math.min(1, norm)));
       saveUndo(`VOL-${side === 0 ? 'L' : 'R'} at M${m} (Preview)`);
       chart.addLaserPoint(side, tick, v, false, false);
       _geDrag.active = true; _geDrag.tool = tool; _geDrag.laserSide = side;
@@ -7131,7 +7241,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Extend laser while dragging
     if (_geDrag.active && (tool === 'laser-l' || tool === 'laser-r')) {
-      const v = Math.max(0, Math.min(1, hit.norm));
+      const v = snapLaserV(Math.max(0, Math.min(1, hit.norm)));
       chart.addLaserPoint(_geDrag.laserSide, hit.tick, v, false, false);
       render();
     }

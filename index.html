@@ -391,6 +391,7 @@
       <span id="status-measure">Measure: 1</span>
       <span id="status-beat">Beat: 1</span>
       <span id="status-tool">Tool: Select</span>
+      <span id="status-laser-xsnap" style="display:none;color:#ffcc44" title="Laser X snap (;/') ">X: Free</span>
       <span id="status-sel" style="color:#00cfff"></span>
       <span class="status-hint">Press <kbd>C</kbd> for context menu</span>
     </div>
@@ -1452,6 +1453,15 @@
     <div id="snap-display-prev" style="position:absolute;top:0;left:0;width:100%;opacity:0;transition:none">1/4</div>
     <div id="snap-display-curr" style="position:absolute;top:0;left:0;width:100%;opacity:1;transition:none">1/4</div>
     <div id="snap-display-next" style="position:absolute;top:0;left:0;width:100%;opacity:0;transition:none">1/4</div>
+  </div>
+</div>
+<!-- Laser X-axis snap display (animated) -->
+<div id="laser-xsnap-display" style="position:fixed;z-index:10001;pointer-events:none;display:none;font-family:monospace;font-size:14px;font-weight:bold;color:#ffcc44;text-shadow:0 0 8px #ff8800;padding:6px 12px;border:1.5px solid #ff8800;border-radius:4px;background:#000000dd;white-space:nowrap;">
+  <div style="font-size:9px;opacity:0.7;margin-bottom:2px;letter-spacing:1px">LASER X</div>
+  <div style="height:20px;overflow:hidden;position:relative;min-width:8ch">
+    <div id="laser-xsnap-prev" style="position:absolute;top:0;left:0;width:100%;opacity:0;transition:none">Free</div>
+    <div id="laser-xsnap-curr" style="position:absolute;top:0;left:0;width:100%;opacity:1;transition:none">Free</div>
+    <div id="laser-xsnap-next" style="position:absolute;top:0;left:0;width:100%;opacity:0;transition:none">Free</div>
   </div>
 </div>
 
