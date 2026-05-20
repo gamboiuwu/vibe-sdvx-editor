@@ -1079,6 +1079,27 @@
     <div id="loading-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#1255e8,#e000b8);transition:width .25s ease;border-radius:3px"></div>
   </div>
   <div id="loading-pct" style="font-size:11px;color:#3336a0">0%</div>
+  <!-- Error log — shown if any JS errors are caught before/during init -->
+  <div id="loading-errors" style="
+    display:none;
+    max-width:560px;width:90%;
+    background:#1a0a0a;border:1px solid #7a2020;border-radius:6px;
+    padding:10px 14px;margin-top:8px;
+  ">
+    <div style="font-size:11px;font-weight:700;color:#e04040;letter-spacing:.06em;margin-bottom:6px">
+      ⚠ INITIALIZATION ERRORS
+    </div>
+    <pre id="loading-error-list" style="
+      margin:0;font-size:10px;color:#d07070;
+      font-family:monospace;white-space:pre-wrap;word-break:break-all;
+      max-height:200px;overflow-y:auto;
+    "></pre>
+    <button id="loading-continue-btn" style="
+      display:none;margin-top:10px;
+      background:#2a1010;border:1px solid #7a2020;color:#e04040;
+      padding:5px 14px;border-radius:4px;cursor:pointer;font-size:11px;
+    ">Continue anyway →</button>
+  </div>
 </div>
 
 <!-- Error screen — eAMUSEMENT style -->
