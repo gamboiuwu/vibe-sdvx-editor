@@ -1,5 +1,5 @@
 import { effectToKsh } from './effects.js';
-import { TICKS_PER_BEAT, TICKS_PER_MEASURE, ChartData, LASER_CHARS, laserCharToPos, laserPosToChar, LANE } from './chart.js';
+import { TICKS_PER_BEAT, TICKS_PER_MEASURE, ChartData, LASER_CHARS, laserCharToPos, laserPosToChar, LANE, LASER_SLAM_TICKS } from './chart.js';
 
 // ── KSH EXPORT ──────────────────────────────────────────────────────────────
 
