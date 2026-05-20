@@ -439,6 +439,13 @@
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
 
 <div class="update-entry">
+  <h4><span class="ver-tag">v0.0.19</span>Practice Playback Rate <span style="font-size:11px;color:#ffcc44;font-weight:normal;">[Experimental]</span></h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Playback Rate</strong> slider added to the Game Preview side panel (above HiSpeed). Drag to any speed between 0.25× and 2.0× — both audio and chart tick advancement scale together so note timing remains accurate at any rate. Ideal for studying dense or fast chart sections at reduced speed.</li>
+    <li><span class="tag add">add</span>Rate label turns <span style="color:#ffcc44">amber</span> whenever the rate differs from 1.0×, providing a persistent visual reminder that practice mode is active.</li>
+    <li><span class="tag add">add</span>Changing the rate during playback is seamless — the playhead position is rebased on every rate change so the chart does not jump or drift.</li>
+    <li><span class="tag add">add</span>Playback Rate is saved and restored by <em>Save Config</em> alongside Projection, HiSpeed, BT Width, and Judge Y.</li>
+    <li><span class="tag fix">fix</span>TapeStop FX effect now ramps the pitch-down from the active playback rate rather than always starting from 1.0×, so the effect sounds correct when a non-1.0 practice rate is engaged.</li>
   <h4><span class="ver-tag">v0.0.19</span>Laser X Snap &amp; Tool Consolidation</h4>
   <ul>
     <li><span class="tag add">add</span><strong>Laser X-Axis Snapping</strong> — press <kbd>;</kbd> to select a coarser X grid and <kbd>'</kbd> to select a finer one while a laser tool is active. Available grids: Free, 1/2, 1/4, 1/8, 1/16, 1/32, 1/50 (KSM native). A yellow animated HUD near the cursor shows the new grid name; the status bar also shows <em>X: [grid]</em> whenever a laser tool is selected. Snap is applied in all laser edit surfaces (2D pen, game-preview drag, multi-preview drag).</li>

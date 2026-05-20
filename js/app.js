@@ -13,6 +13,13 @@ const APP_VERSION = '0.0.19';
 const CHANGELOG = [
   {
     version: '0.0.19',
+    title: 'Practice Playback Rate [Experimental]',
+    entries: [
+      ['add', '<strong>Playback Rate</strong> control added to the Game Preview side panel. A slider (0.25×–2.0×) adjusts audio and chart playback speed simultaneously in real time — slow down to analyse dense sections or speed up for challenge practice.'],
+      ['add', 'Rate label turns <span style="color:#ffcc44">amber</span> whenever the rate is not 1.0×, providing a clear indicator that practice mode is active.'],
+      ['add', 'Changing the rate mid-playback is seamless — the playhead continues from the correct chart position without jumping or drifting.'],
+      ['add', 'Playback Rate is saved and restored by <em>Save Config</em> alongside Projection, HiSpeed, and Judge Y.'],
+      ['fix', 'TapeStop FX effect now ramps from the active playback rate (rather than always from 1.0×), so it behaves correctly when practice rate is engaged.'],
     title: 'Laser X Snap · Tool Consolidation',
     entries: [
       ['add', '<strong>Laser X-Axis Snapping</strong> — press <kbd>;</kbd> / <kbd>\'</kbd> while placing lasers to step through X-position grids (Free → 1/2 → 1/4 → 1/8 → 1/16 → 1/32 → 1/50 KSM). A yellow HUD shows the current grid near your cursor, mirroring the Y-snap behaviour of <kbd>[</kbd> / <kbd>]</kbd>.'],
@@ -262,6 +269,7 @@ let audioArrayBuffer = null; // raw bytes preserved before decodeAudioData (for 
 let audioSource      = null;
 let audioStartAcTime = 0;
 let audioStartChartSec = 0;
+let playbackRate = 1.0;  // practice playback rate (1.0 = normal)
 let laserFilterNode  = null;
 let masterGainNode   = null;
 let slamBuffer       = null;
@@ -738,7 +746,7 @@ function startPlay(stopAtTick = -1) {
     if (audioSource) { try { audioSource.stop(); } catch(e) {} }
     audioSource = audioCtx.createBufferSource();
     audioSource.buffer = audioBuffer;
-    audioSource.playbackRate.value = 1.0;
+    audioSource.playbackRate.value = playbackRate;
     audioSource.connect(laserFilterNode || audioCtx.destination);
 
     // Add user-calibrated global audio delay (System Preferences > Audio)
@@ -799,14 +807,14 @@ function playFrame(now) {
   // Video delay: shift the *visual* tick by N ms relative to audio (positive = visuals appear later)
   const videoOffsetSec = (prefs.videoDelay ?? 0) / 1000;
   if (audioBuffer && audioCtx) {
-    const acElapsed = audioCtx.currentTime - audioStartAcTime;
+    const acElapsed = (audioCtx.currentTime - audioStartAcTime) * playbackRate;
     const audioChartSec = audioStartChartSec + acElapsed - videoOffsetSec;
     // Use stop-aware conversion so the visual chart freezes during stop events
     currentTick = computeVisualTickWithStops(audioChartSec);
   } else {
     // Note: chartSpeed (hispeed) is purely visual — it must NOT affect playback timing.
     // Real-time BPM-aware advancement; no chartSpeed divisor here.
-    const elapsed = (now - playStartPerf) / 1000;
+    const elapsed = (now - playStartPerf) / 1000 * playbackRate;
     currentTick = playStartTickV;
     let remSec = elapsed, prevTick2 = playStartTickV;
     for (const ev of chart.bpmEvents) {
@@ -1297,7 +1305,7 @@ function updateFxEffects(tick) {
       const dur = 1.5 * (1 - Math.min(0.99, (params.speed ?? 50) / 100)) + 0.05;
       if (audioSource) {
         audioSource.playbackRate.cancelScheduledValues(nowAC);
-        audioSource.playbackRate.setValueAtTime(1.0, nowAC);
+        audioSource.playbackRate.setValueAtTime(playbackRate, nowAC);
         audioSource.playbackRate.exponentialRampToValueAtTime(0.01, nowAC + dur);
       }
     }
@@ -1309,7 +1317,7 @@ function updateFxEffects(tick) {
     if (_fxEffectType === 'tapestop' || _fxTapeStopActive) {
       if (audioSource) {
         audioSource.playbackRate.cancelScheduledValues(nowAC);
-        audioSource.playbackRate.setTargetAtTime(1.0, nowAC, 0.05);
+        audioSource.playbackRate.setTargetAtTime(playbackRate, nowAC, 0.05);
       }
       _fxTapeStopActive = false;
     }
@@ -7608,6 +7616,29 @@ function _initProjectionControls() {
     });
   }
 
+  // Playback Rate slider — adjusts audio and chart tick advancement speed simultaneously
+  const rateSl  = document.getElementById('pvc-rate');
+  const rateLbl = document.getElementById('pvc-rate-label');
+  rateSl?.addEventListener('input', () => {
+    const newRate = +rateSl.value;
+    // Rebase audio start position so playhead doesn't jump when rate changes mid-play
+    if (playing && audioCtx) {
+      const elapsed = audioCtx.currentTime - audioStartAcTime;
+      audioStartChartSec += elapsed * playbackRate;  // commit elapsed with old rate
+      audioStartAcTime = audioCtx.currentTime;
+    }
+    playbackRate = newRate;
+    if (rateLbl) {
+      rateLbl.textContent = newRate.toFixed(2) + '×';
+      rateLbl.style.color = Math.abs(newRate - 1.0) > 0.001 ? '#ffcc44' : '';
+    }
+    // Apply immediately to the currently playing audio source
+    if (playing && audioSource && audioCtx) {
+      audioSource.playbackRate.cancelScheduledValues(audioCtx.currentTime);
+      audioSource.playbackRate.setTargetAtTime(playbackRate, audioCtx.currentTime, 0.04);
+    }
+  });
+
   // Judge Y slider
   const jySl  = document.getElementById('pvc-judge-y');
   const jyLbl = document.getElementById('pvc-judge-y-label');
@@ -7675,6 +7706,9 @@ function _initProjectionControls() {
     if (jyEl) prefs.judgeYFrac = +jyEl.value;
     // Visual interpretation mode (managed by Tools Hub → Visual Mode)
     if (gameView) prefs.interpMode = gameView.interpMode;
+    // Playback Rate
+    const rateEl = document.getElementById('pvc-rate');
+    if (rateEl) prefs.playbackRate = +rateEl.value;
     // Persist
     try { localStorage.setItem('vibe-editr-prefs', JSON.stringify(prefs)); } catch(_) {}
     // Show "Saved!" flash
@@ -7713,6 +7747,16 @@ function _initProjectionControls() {
     const lb = document.getElementById('pvc-judge-y-label');
     if (el) { el.value = prefs.judgeYFrac; if (gameView) gameView.judgeYFrac = prefs.judgeYFrac; }
     if (lb) lb.textContent = Math.round(prefs.judgeYFrac * 100) + '%';
+  }
+  if (prefs.playbackRate != null) {
+    const el = document.getElementById('pvc-rate');
+    const lb = document.getElementById('pvc-rate-label');
+    playbackRate = prefs.playbackRate;
+    if (el) el.value = prefs.playbackRate;
+    if (lb) {
+      lb.textContent = prefs.playbackRate.toFixed(2) + '×';
+      lb.style.color = Math.abs(prefs.playbackRate - 1.0) > 0.001 ? '#ffcc44' : '';
+    }
   }
 
   // Set default projection to SDVX on load (only if no saved proj mode)
