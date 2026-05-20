@@ -1,4 +1,3 @@
-'use strict';
 
 // ── Phase 1 WebGL2 lane renderer ────────────────────────────────────────────
 // Renders ONLY the lane runway: background gradient, BT/FX + VOL trapezoid
@@ -15,7 +14,7 @@
 // On Phase 2 (notes) and Phase 3 (lasers) we'll add more shader programs
 // next to the one here without touching this module's API.
 
-class GLLaneRenderer {
+export class GLLaneRenderer {
   constructor(canvas) {
     this.canvas = canvas;
     const gl = canvas.getContext('webgl2', {

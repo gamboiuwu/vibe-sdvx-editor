@@ -1,4 +1,4 @@
-'use strict';
+
 /* ═══════════════════════════════════════════════════════════════════════════
    vibe-editr  ·  DockManager  v2
    Photoshop / Clip Studio Paint–style dockable workspace.
@@ -48,7 +48,7 @@ let   _dkReady    = false;// true after dockInit runs
  * @param {string}  icon           Emoji icon
  * @param {string}  defaultRegion  'left'|'right'|'bottom'|'float'
  */
-function dockRegister(id, el, label, icon, defaultRegion, opts = {}) {
+export function dockRegister(id, el, label, icon, defaultRegion, opts = {}) {
   _dkPanels[id] = {
     id, el, label, icon,
     region: null,
@@ -69,7 +69,7 @@ function dockRegister(id, el, label, icon, defaultRegion, opts = {}) {
  * Apply layout after all panels have been registered.
  * Restores saved state from localStorage, or uses each panel's defaultRegion.
  */
-function dockApplyLayout() {
+export function dockApplyLayout() {
   if (!_dkReady) { console.warn('[dock] dockApplyLayout called before dockInit'); return; }
   let saved = null;
   try { saved = JSON.parse(localStorage.getItem(DOCK_KEY) || 'null'); } catch {}
@@ -115,13 +115,13 @@ function dockApplyLayout() {
 }
 
 /** Float a panel (detach from region, show as free window). */
-function dockFloat(id) { _dkFloatPanel(id); _dkSave(); }
+export function dockFloat(id) { _dkFloatPanel(id); _dkSave(); }
 
 /** Dock a panel into a region. */
-function dockTo(id, regionId) { _dkDockPanel(id, regionId); _dkSave(); }
+export function dockTo(id, regionId) { _dkDockPanel(id, regionId); _dkSave(); }
 
 /** Toggle panel: if floating → show/hide; if docked → undock+float; if hidden → float. */
-function dockToggle(id) {
+export function dockToggle(id) {
   const rec = _dkPanels[id];
   if (!rec) return;
 
@@ -144,7 +144,7 @@ function dockToggle(id) {
    INIT
    ───────────────────────────────────────────────────────────────────────── */
 
-function dockInit() {
+export function dockInit() {
   _dkBuildWorkspace();
   _dkBuildRegions();
   _dkBuildContextPalette();

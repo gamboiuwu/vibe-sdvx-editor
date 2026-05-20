@@ -1,8 +1,7 @@
-'use strict';
 
 // All KSH/KSON effect types with display names and parameter schemas.
 // min/max/step/default are for UI sliders/inputs.
-const EFFECT_DEFS = {
+export const EFFECT_DEFS = {
   retrigger: {
     label: 'Retrigger',
     kshName: 'Retrigger',
@@ -104,7 +103,7 @@ const EFFECT_DEFS = {
 };
 
 // Build a default parameter set for an effect type
-function makeEffectInstance(type) {
+export function makeEffectInstance(type) {
   const def = EFFECT_DEFS[type];
   if (!def) return null;
   const params = {};
@@ -113,7 +112,7 @@ function makeEffectInstance(type) {
 }
 
 // KSH fx-l/fx-r string representation
-function effectToKsh(inst) {
+export function effectToKsh(inst) {
   const def = EFFECT_DEFS[inst.type];
   if (!def) return '';
   const p = inst.params;

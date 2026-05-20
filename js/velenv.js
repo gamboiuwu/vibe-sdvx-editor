@@ -1,4 +1,4 @@
-'use strict';
+import { TICKS_PER_MEASURE } from './chart.js';
 
 // ─── Envelope Control ─────────────────────────────────────────────────────────
 // Floating MDI window with two sections:
@@ -6,7 +6,7 @@
 //  2. Glitch Effect — PowerGlitch intensity control per chart
 // ─────────────────────────────────────────────────────────────────────────────
 
-class VelocityEnvelopeEditor {
+export class VelocityEnvelopeEditor {
   constructor() {
     this._win       = null;
     this._canvas    = null;
@@ -922,22 +922,22 @@ class VelocityEnvelopeEditor {
 
 // ── Singleton ─────────────────────────────────────────────────────────────────
 
-let velEnvEditor = null;
+export let velEnvEditor = null;
 
-function getVelEnvEditor() {
+export function getVelEnvEditor() {
   if (!velEnvEditor) {
     velEnvEditor = new VelocityEnvelopeEditor();
   }
   return velEnvEditor;
 }
 
-function openVelEnvEditor() {
+export function openVelEnvEditor() {
   const ed = getVelEnvEditor();
   if (typeof chart !== 'undefined' && chart) ed.setChart(chart);
   ed.show();
 }
 
-function toggleVelEnvEditor() {
+export function toggleVelEnvEditor() {
   const ed = getVelEnvEditor();
   if (ed.isVisible()) { ed.hide(); return; }
   openVelEnvEditor();

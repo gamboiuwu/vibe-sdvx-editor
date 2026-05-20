@@ -1,4 +1,5 @@
-'use strict';
+import { chart, renderer } from './app.js';
+import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE } from './chart.js';
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Pattern Radar — SDVX-style 6-axis chart analysis window  (v2)
@@ -554,7 +555,7 @@ function _stopRdrLoop() {
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
-function openRadarWindow() {
+export function openRadarWindow() {
   if (!_rdrWin) _rdrWin = _buildRadarWindow();
   _rdrWin.style.display = 'block';
   _rdrVisible = true;
@@ -563,7 +564,7 @@ function openRadarWindow() {
   _startRdrLoop();
 }
 
-function closeRadarWindow() {
+export function closeRadarWindow() {
   if (_rdrWin) _rdrWin.style.display = 'none';
   _rdrVisible = false;
   _stopRdrLoop();
@@ -574,7 +575,7 @@ function closeRadarWindow() {
  * Called by render() / playFrame() whenever cursor or chart changes.
  * Updates _rdrTargetScores so the lerp loop smoothly animates toward them.
  */
-function updateRadar() {
+export function updateRadar() {
   if (!_rdrWin || !_rdrVisible) return;
   try {
     const ch   = (typeof chart    !== 'undefined') ? chart    : null;

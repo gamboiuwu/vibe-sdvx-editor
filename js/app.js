@@ -1,4 +1,19 @@
-'use strict';
+import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS } from './chart.js';
+import { Renderer, C, laserColors, laserOpacity, laserWideMode, LASER_PRESETS, applyLaserPreset, setLaserColorCustom, buildLaneHeader } from './renderer.js';
+import { GameView } from './game.js';
+import { exportKsh, importKsh, downloadText } from './ksh.js';
+import { exportKson, importKson, exportKsonPack, importKsonPack } from './kson.js';
+import { EFFECT_DEFS, makeEffectInstance } from './effects.js';
+import { calibrationWindow } from './calibration.js';
+import { t, applyLocalization } from './i18n.js';
+import { velEnvEditor, openVelEnvEditor, toggleVelEnvEditor } from './velenv.js';
+import { dockInit, dockRegister, dockApplyLayout, dockToggle } from './dock.js';
+import { openToolsWindow } from './tools.js';
+import { openHeatmapWindow, updateHeatmap } from './heatmap.js';
+import { updateRadar, openRadarWindow } from './radar.js';
+import { openHandSimWindow } from './handsim.js';
+import { openGameplayPanel, closeGameplayPanel, toggleGameplayPanel } from './gameplay.js';
+import { logger } from './logger.js';
 
 // ── Pre-init error capture ─────────────────────────────────────────────────────
 // Runs before anything else so errors from ANY script (including imports,
@@ -226,15 +241,15 @@ const tabs = [{ name: 'Chart 1', chart: new ChartData(), audioBuffer: null, hisp
 let activeTabIdx = 0;
 
 // ── State ─────────────────────────────────────────────────────────────────────
-let chart    = tabs[0].chart;
-let renderer = null;
+export let chart    = tabs[0].chart;
+export let renderer = null;
 let tool     = 'select';
 let snap     = 12;
 // Laser X-axis snap: 0 = free, otherwise snap v to nearest multiple
 let laserXSnap = 0;
 
 const drag = { active: false, lane: -1, laneType: '', startTick: 0, side: 0, localX: 0, laserSec: null };
-const sel  = { active: false, dragging: false, startTick: 0, endTick: 0, clipboard: null };
+export const sel  = { active: false, dragging: false, startTick: 0, endTick: 0, clipboard: null };
 const undoStack = [], redoStack = [];
 let MAX_UNDO = 100; // adjustable via preferences
 let _hasUnsavedChanges = false; // track if chart has unsaved changes
@@ -250,7 +265,7 @@ const _chartAnnotations = [];
 const _ANN_LIFETIME = 7000; // ms visible (last 1200ms = fade-out)
 const _ANN_FADE     = 1200; // ms of fade at end
 
-function addChartAnnotation({ tick, label, severity, source }) {
+export function addChartAnnotation({ tick, label, severity, source }) {
   // Deduplicate by tick+source
   const idx = _chartAnnotations.findIndex(a => a.tick === tick && a.source === source);
   if (idx >= 0) _chartAnnotations.splice(idx, 1);
@@ -427,7 +442,7 @@ async function loadAudioFile(file) {
 }
 
 // ── Playback ──────────────────────────────────────────────────────────────────
-let playing        = false;
+export let playing        = false;
 let playStartPerf  = 0;
 let playStartTickV = 0;
 let chartSpeed     = 1.0;  // hispeed: visual scroll density only
@@ -435,7 +450,7 @@ let prevPlayTick   = 0;
 
 // ── View mode ─────────────────────────────────────────────────────────────────
 let viewMode = 'split'; // start with 3D lane visible by default
-let gameView = null;
+export let gameView = null;
 const settings = { tickSound: false };
 
 // Apply a new beats-per-lane value and update all related UI.
@@ -1409,7 +1424,7 @@ function _teardownFxEffect() {
   _fxTapeStopActive = false;
 }
 
-function getLaserPosAt(side, tick) {
+export function getLaserPosAt(side, tick) {
   for (const sec of chart.lasers[side]) {
     if (tick < sec.y) continue;
     const pts = sec.points;
@@ -1461,7 +1476,7 @@ function _fmtTime(sec) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
-function updateSeekbar(tick) {
+export function updateSeekbar(tick) {
   const fill  = document.getElementById('game-seekbar-fill');
   const thumb = document.getElementById('game-seekbar-thumb');
   const label = document.getElementById('game-seekbar-time');
@@ -1485,7 +1500,7 @@ function _seekbarTickFromEvent(e) {
   return Math.round(pct * (chart ? chart.totalTicks() : 0));
 }
 
-function _seekTo(tick) {
+export function _seekTo(tick) {
   if (!chart) return;
   renderer.playTick = Math.max(0, Math.min(tick, chart.totalTicks()));
   if (gameView) gameView.playTick = renderer.playTick;
@@ -3659,7 +3674,7 @@ function setTool(t) {
 }
 
 let _renderScheduled = false;
-function render() {
+export function render() {
   autoDetectMeasures();
   checkLaserOverlap();
   if (playing) {
@@ -6599,7 +6614,7 @@ function renderFxChain(side) {
 const historyEntries = [];
 let historyCurrentIdx = -1; // index into historyEntries of current state
 
-function saveUndo(label = null) {
+export function saveUndo(label = null) {
   const snap = JSON.stringify(serialize());
   const m = Math.floor((renderer?.playTick ?? 0) / TICKS_PER_MEASURE) + 1;
   const entry = { label: label ?? `Edit @ M${m}`, snap };

@@ -1,8 +1,9 @@
-'use strict';
+import { TICKS_PER_BEAT, TICKS_PER_MEASURE, ChartData } from './chart.js';
+import { EFFECT_DEFS } from './effects.js';
 
 // KSON uses 240 ticks per beat (960 per 4/4 measure)
-const KSON_TPB = 240;
-const KSH_TO_KSON = KSON_TPB / TICKS_PER_BEAT; // 5x
+export const KSON_TPB = 240;
+export const KSH_TO_KSON = KSON_TPB / TICKS_PER_BEAT; // 5x
 
 // ── Export ──────────────────────────────────────────────────────────────────
 //
@@ -26,7 +27,7 @@ const KSH_TO_KSON = KSON_TPB / TICKS_PER_BEAT; // 5x
 // GraphValue form [v_in, v_out]. exportKson merges the pair; importKson
 // splits it back.
 
-function exportKson(chart) {
+export function exportKson(chart) {
   const m = chart.meta;
 
   const DIFF_TABLE = ['light', 'challenge', 'extended', 'infinite'];
@@ -180,7 +181,7 @@ function exportKson(chart) {
 // object form ({y, v}, {ry, v, slam, a, b}, etc.) so older vibe-editr exports
 // still load.
 
-function importKson(text) {
+export function importKson(text) {
   const data  = JSON.parse(text);
   const chart = new ChartData();
 
@@ -458,7 +459,7 @@ function importKson(text) {
 // reading `charts[i]` and serialising that subtree back out as KSON.
 // ─────────────────────────────────────────────────────────────────────────────
 
-function exportKsonPack(charts, packMeta = {}, tabNames = []) {
+export function exportKsonPack(charts, packMeta = {}, tabNames = []) {
   // Reuse exportKson then re-parse so each chart sits as a JS object inside
   // the bundle. Slightly wasteful but keeps a single export code path.
   const entries = charts
@@ -484,7 +485,7 @@ function exportKsonPack(charts, packMeta = {}, tabNames = []) {
   return JSON.stringify(pack, null, 2);
 }
 
-function importKsonPack(text) {
+export function importKsonPack(text) {
   const data = JSON.parse(text);
   if (data.format !== 'ksonpack' || !Array.isArray(data.charts)) {
     throw new Error('Not a ksonpack file (missing format:"ksonpack" or charts[]).');

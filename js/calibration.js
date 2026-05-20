@@ -1,11 +1,10 @@
-'use strict';
 
 // ── CalibrationWindow ─────────────────────────────────────────────────────────
 // Floating calibration editor: load audio, set Beat 1.0 marker, output offset.
 // Usage:
 //   calibrationWindow.open(audioBuffer, chart, (markerSec) => { /* apply */ });
 
-class CalibrationWindow {
+export class CalibrationWindow {
   constructor() {
     this._audioBuffer  = null;
     this._chart        = null;
@@ -1134,4 +1133,4 @@ class CalibrationWindow {
 }
 
 // Global singleton — one calibration session at a time
-const calibrationWindow = new CalibrationWindow();
+export const calibrationWindow = new CalibrationWindow();

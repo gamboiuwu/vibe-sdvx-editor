@@ -1196,14 +1196,8 @@
   </div>
 </div>
 
-<script src="js/logger.js"></script>
-<script src="js/effects.js"></script>
 <script src="https://unpkg.com/powerglitch@latest/dist/powerglitch.min.js"></script>
-<script src="js/chart.js?v=2"></script>
-<script src="js/renderer.js?v=3"></script>
-<script src="js/game.js?v=6"></script>
-<script src="js/velenv.js?v=1"></script>
-<script src="js/ksh.js?v=3"></script>
+<script type="module" src="js/main.js"></script>
 <!-- Laser interpolation context menu -->
 <div id="laser-interp-menu" style="display:none;position:fixed;z-index:3000">
   <div class="lim-item" data-type="linear">
@@ -1480,17 +1474,7 @@
   </div>
 </div>
 
-<script src="js/kson.js?v=3"></script>
-<script src="js/calibration.js"></script>
-<script src="js/i18n.js"></script>
-<script src="js/gl-lane.js?v=4"></script>
-<script src="js/app.js?v=18"></script>
-<script src="js/dock.js?v=5"></script>
-<script src="js/tools.js?v=4"></script>
-<script src="js/heatmap.js?v=1"></script>
-<script src="js/radar.js?v=1"></script>
-<script src="js/handsim.js?v=1"></script>
-<script src="js/gameplay.js?v=3"></script>
+<!-- All JS now loaded via js/main.js (ES module entry point) -->
 <!-- Snap display (animated) -->
 <div id="snap-display" style="position:fixed;z-index:10001;pointer-events:none;display:none;font-family:monospace;font-size:16px;font-weight:bold;color:#88ccff;text-shadow:0 0 8px #0088ff;padding:8px 14px;border:1.5px solid #0088ff;border-radius:4px;background:#000000dd;white-space:nowrap;">
   <div id="snap-display-text" style="height:20px;overflow:hidden;position:relative;min-width:5ch">

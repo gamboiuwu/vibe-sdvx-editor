@@ -1,4 +1,6 @@
-'use strict';
+import { chart, renderer, gameView, render, saveUndo, updateSeekbar, addChartAnnotation, _seekTo, sel } from './app.js';
+import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE } from './chart.js';
+import { updateRadar } from './radar.js';
 /* ═══════════════════════════════════════════════════════════════════════════
    vibe-editr  ·  Tools Hub  ·  20 tools — floating MDI window
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -107,7 +109,7 @@ let _winEl = null;
 let _activeToolId = null;
 
 // ── Public API ────────────────────────────────────────────────────────────────
-function openToolsWindow() {
+export function openToolsWindow() {
   if (!_winEl) return;
   _winEl.style.display = 'flex';
   _winEl.classList.remove('tw-collapsed');
@@ -129,7 +131,7 @@ function _buildWelcomeGrid() {
   });
 }
 
-function initTools() {
+export function initTools() {
   _winEl = _buildWindow();
   document.body.appendChild(_winEl);
   // Build sidebar and welcome grid NOW — elements are in the live DOM
@@ -486,7 +488,7 @@ function _tickToMB(tick) {
 
 /** Navigate both the edit renderer and the game/preview view to a measure. */
 function _goToMeasure(m) {
-  if (!(window.renderer && renderer.playTick !== undefined)) return;
+  if (!(renderer && renderer.playTick !== undefined)) return;
   const targetTick = Math.max(0, m * TICKS_PER_MEASURE);
   renderer.playTick = targetTick;
 
@@ -500,7 +502,7 @@ function _goToMeasure(m) {
   }
 
   // Sync the game/preview view too so it jumps in real-time
-  if (window.gameView) {
+  if (gameView) {
     gameView.playTick = targetTick;
     if (typeof gameView.draw === 'function') gameView.draw();
   }
@@ -927,14 +929,14 @@ function _toolValidity(c) {
         row.addEventListener('click', () => {
           // Navigate using exact tick if available, else measure start
           const t = issue.tick != null ? issue.tick : issue.measure * TICKS_PER_MEASURE;
-          if (window.renderer && renderer.playTick !== undefined) {
+          if (renderer && renderer.playTick !== undefined) {
             renderer.playTick = Math.max(0, t);
             const colLen = (renderer.measPerCol ?? 1) * TICKS_PER_MEASURE;
             const col    = Math.floor(t / colLen);
             if (col < renderer.scrollCol || col >= renderer.scrollCol + (renderer.numCols ?? 1)) {
               renderer.scrollCol = Math.max(0, col - Math.floor((renderer.numCols ?? 1) / 2));
             }
-            if (window.gameView) { gameView.playTick = renderer.playTick; if (typeof gameView.draw==='function') gameView.draw(); }
+            if (gameView) { gameView.playTick = renderer.playTick; if (typeof gameView.draw==='function') gameView.draw(); }
             if (typeof updateSeekbar === 'function') updateSeekbar(renderer.playTick);
             if (typeof updateRadar   === 'function') updateRadar();
             if (typeof render        === 'function') render();
@@ -3519,7 +3521,7 @@ function _toolScale(c) {
     const lbl = document.createElement('span'); lbl.textContent = ' ' + name;
     btn.appendChild(lbl);
     btn.addEventListener('click', () => {
-      if (!(typeof chart !== "undefined" && chart) || !window.renderer) return;
+      if (!(typeof chart !== "undefined" && chart) || !renderer) return;
       if (typeof saveUndo === 'function') saveUndo('Insert Pattern: ' + name);
       const startTick = renderer.playTick || 0;
       grid.forEach((row, ri) => {
@@ -4380,7 +4382,7 @@ function _toolPatternLib(c) {
   }
 
   function _insertPattern(pat) {
-    if (!(typeof chart !== "undefined" && chart) || !window.renderer) return;
+    if (!(typeof chart !== "undefined" && chart) || !renderer) return;
     if (typeof saveUndo === 'function') saveUndo('Insert Pattern: ' + pat.name);
     const startTick = renderer.playTick || 0;
     if (pat.btNotes) {
@@ -4404,7 +4406,7 @@ function _toolPatternLib(c) {
     const name = prompt('Pattern name:');
     if (!name) return;
     // Capture from selection or full chart if no selection
-    const hasSel = window.sel && sel.active;
+    const hasSel = sel && sel.active;
     const startT = hasSel ? Math.min(sel.startTick, sel.endTick) : 0;
     const endT   = hasSel ? Math.max(sel.startTick, sel.endTick) : chart.totalMeasures * TICKS_PER_MEASURE;
     const spanTicks = endT - startT;
@@ -4661,11 +4663,11 @@ function _toolAudioAnchor(c) {
     if (!ch) { placeMsg.textContent='⚠ No chart loaded.'; placeMsg.style.color='#f87'; return; }
 
     const mode = modeSel.value;
-    const useSelection = regionSel.value === 'sel' && window.sel?.active;
+    const useSelection = regionSel.value === 'sel' && sel?.active;
     let lo = 0, hi = Infinity;
     if (useSelection) {
-      lo = Math.min(window.sel.startTick, window.sel.endTick);
-      hi = Math.max(window.sel.startTick, window.sel.endTick);
+      lo = Math.min(sel.startTick, sel.endTick);
+      hi = Math.max(sel.startTick, sel.endTick);
     }
 
     // Build the ordered list of ticks in range
@@ -4753,8 +4755,8 @@ function _toolAudioAnchor(c) {
       const secStr = secs?.[i]!=null ? secs[i].toFixed(3)+'s' : '';
       row.innerHTML=`<span style="color:#ffaa55;min-width:28px">T${i+1}</span><span style="min-width:60px">M${m} B${b}</span><span style="color:#778">${secStr}</span>`;
       row.addEventListener('click', () => {
-        if (window.renderer) {
-          window.renderer.playTick = tick;
+        if (renderer) {
+          renderer.playTick = tick;
           if (typeof updateSeekbar === 'function') updateSeekbar(tick);
           if (typeof render === 'function') render();
         }
@@ -5389,11 +5391,11 @@ function _toolChartValidator(c) {
           row.appendChild(nav);
           row.addEventListener('click',()=>{
             const t=issue.tick!=null?issue.tick:issue.measure*TICKS_PER_MEASURE;
-            if (window.renderer&&renderer.playTick!==undefined) {
+            if (renderer&&renderer.playTick!==undefined) {
               renderer.playTick=Math.max(0,t);
               const colLen=(renderer.measPerCol??1)*TICKS_PER_MEASURE, col=Math.floor(t/colLen);
               if (col<renderer.scrollCol||col>=renderer.scrollCol+(renderer.numCols??1)) renderer.scrollCol=Math.max(0,col-Math.floor((renderer.numCols??1)/2));
-              if (window.gameView){gameView.playTick=renderer.playTick;if(typeof gameView.draw==='function')gameView.draw();}
+              if (gameView){gameView.playTick=renderer.playTick;if(typeof gameView.draw==='function')gameView.draw();}
               if (typeof updateSeekbar==='function') updateSeekbar(renderer.playTick);
               if (typeof render==='function') render();
             }
