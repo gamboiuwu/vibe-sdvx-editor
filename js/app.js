@@ -1,4 +1,4 @@
-import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS } from './chart.js';
+import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS } from './chart.js';
 import { Renderer, C, laserColors, laserOpacity, laserWideMode, LASER_PRESETS, applyLaserPreset, setLaserColorCustom, buildLaneHeader, setLaserOpacity, setLaserWideMode } from './renderer.js';
 import { GameView } from './game.js';
 import { exportKsh, importKsh, downloadText } from './ksh.js';
@@ -6997,7 +6997,7 @@ function applyPreferences() {
   }
 
   // Slam threshold (1–16 ticks)
-  LASER_SLAM_TICKS = prefs.slamThreshold ?? 6;
+  setLaserSlamTicks(prefs.slamThreshold ?? 6);
 
   // Tick sound enabled gate (used by detectFxHits/detectBtHits via settings.tickSound)
   settings.tickSound = !!prefs.tickEnabled;
