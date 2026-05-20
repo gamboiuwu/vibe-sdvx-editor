@@ -606,6 +606,30 @@ class Renderer {
       ctx.fillStyle = '#bb44ff';
       ctx.fillText(`${ev.num}/${ev.den}`, ox + 2, y - 2 - 9); // offset up from BPM row
     }
+
+    // Section label bands in ruler
+    for (const sec of (this.chart?.sections ?? [])) {
+      if (sec.endY <= startY || sec.y >= endY) continue;
+      const yBot = this._pyAt(Math.max(sec.y,    startY), startY); // section start → lower pixel
+      const yTop = this._pyAt(Math.min(sec.endY, endY),   startY); // section end   → higher pixel
+      const bh   = yBot - yTop;
+      if (bh < 1) continue;
+      const col = sec.color || '#4488ff';
+      // Transparent fill
+      ctx.fillStyle = col + '28';
+      ctx.fillRect(ox, yTop, RULER_W - 1, bh);
+      // Solid left accent bar
+      ctx.fillStyle = col;
+      ctx.fillRect(ox, yTop, 3, bh);
+      // Section label (at section start, capped at 4 chars for narrow ruler)
+      if (bh >= 14) {
+        ctx.font      = '7px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillStyle = col;
+        ctx.fillText((sec.label || '').substring(0, 5), ox + 4, yBot - 3);
+        ctx.textAlign = 'right'; // restore
+      }
+    }
   }
 
   _drawColEventOverlay(ox, startY, endY) {

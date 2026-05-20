@@ -3029,6 +3029,34 @@ kbd {
 }
 .bm-item .bm-del:hover { color: #ff6080; }
 
+/* ── Chart Sections panel ─────────────────────────────────────────────── */
+.sec-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.sec-item:hover { background: #2a2a44; }
+.sec-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  cursor: pointer;
+  border: 1px solid #ffffff30;
+  transition: transform .1s;
+}
+.sec-swatch:hover { transform: scale(1.25); }
+.sec-range {
+  font-family: monospace;
+  color: var(--accent);
+  min-width: 68px;
+  font-size: 11px;
+}
+
 /* ── What's New modal ─────────────────────────────────────────────────── */
 #modal-whats-new #wn-header {
   position: relative;

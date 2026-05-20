@@ -9,6 +9,8 @@
 \f0\fs24 \cf0 \expnd0\expndtw0\kerning0
 [v0.0.19 SHIPPED] Practice Playback Rate: Slider in the Game Preview side panel (0.25\'d72.0\'d7) that slows or accelerates both audio and chart tick advancement together. Rate label turns amber when not at 1.0\'d7. TapeStop FX fixed to ramp from the active rate instead of hardcoded 1.0. Saved via Save Config.\
 \
+[v0.0.20 SHIPPED] Chart Section Labels: Named ranges (Intro, Verse, Chorus, Bridge, Outro) overlaid as colored bands on the 2D ruler. Section Navigator panel lists all sections with click-to-seek. Selection-aware Add button uses the active selection range or defaults to 4 measures at playhead. Color swatch cycles through 7-color palette. Stored as _sections KSON custom field. Also fixed CHANGELOG syntax error from v0.0.19 that caused a SyntaxError at startup.\
+\
 Point 1 (BPM Calibration Panel)\
 \pard\pardeftab720\sa240\partightenfactor0
 Calibration Mode should include a dedicated BPM analysis and BPM entry section that works alongside waveform-based timing alignment. Right now calibration focuses only on offset and start point alignment, but BPM is equally important because it defines how musical time is structured once the chart is synced.\
@@ -22,6 +24,7 @@ This BPM calibration layer must integrate directly with the existing KSON timing
 Status: PARTIALLY DONE (v0.0.18 added Tap Tempo and Auto-Detect; Spacebar-triggered detection mode not yet implemented)\
 \pard\pardeftab720\sa240\partightenfactor0
 \
+
 Point 2 (Orthographic Mode Overhaul)\
 \pard\pardeftab720\sa240\partightenfactor0
 \cf0 \outl0\strokewidth0 \strokec2 The orthographic preview mode must behave like a strict 2D projection of the Sound Voltex lane system, not a pseudo-3D or perspective-influenced rendering. Right now the issue is that elements such as BT buttons, FX lanes, and lasers are not correctly constrained to a flat plane, causing them to visually \'93stick out\'94 or appear incorrectly layered. In true SDVX orthographic view, everything exists on a single 2D gameplay plane where depth is not visually simulated. The lane itself must move strictly in a linear downward direction with uniform speed mapping, exactly matching beat progression. There must be no perspective convergence, no vanishing point distortion, and no simulated depth stretching. Official SDVX gameplay still uses perspective in gameplay mode, but orthographic/editor style views in tools and references behave as flat timing representations for clarity and accuracy.\
@@ -29,13 +32,20 @@ The BT buttons must be fully embedded into the lane plane. They are not floating
 Lasers (VOL-L and VOL-R) must also be fully flattened into the same 2D orthographic plane during edit and orthographic preview mode. They must not appear as segmented 3D ribbons or floating curves. Instead, they must be rendered as continuous smoothed spline paths with no visible control points, no anchor dots, and no intermediate construction geometry during playback or non-edit states. The system must explicitly hide all pen tool handles, anchor nodes, and intermediate control points unless the laser is actively selected in edit mode. This mirrors professional vector editing behavior.\
 Status: NOT YET STARTED\
 \
-Point 3 (New Recommended: Chart Section Label System)\
+
+Point 3 (Chart Section Label System)\
 \pard\pardeftab720\sa240\partightenfactor0
-\cf0 \outl0\strokewidth0 \strokec2 The editor should support named chart sections (e.g. "Intro", "Verse A", "Chorus", "Bridge", "Outro") that appear as colored region markers directly on the 2D edit canvas. Section labels are distinct from bookmarks: bookmarks are single tick positions, while sections define a named range with a start and end tick. Sections should be visible as colored horizontal bands on the left ruler area of the 2D editor, and their names should be listed in a Section Navigator panel that allows one-click jump to any section start. Sections should be stored in KSON meta (custom extension field), survive round-trips through export/import, and be selectable as targets for paste-relative operations (e.g. paste at Chorus start). This feature would significantly improve navigation for long-form charts and collaborative charting workflows.\
+\cf0 \outl0\strokewidth0 \strokec2 Status: SHIPPED in v0.0.20. Named chart sections with start/end ticks, labels, and colors are overlaid on the 2D ruler. Section Navigator panel (Window menu) for one-click seek. Stored in KSON as _sections custom extension field.\
 \
+
 Point 4 (New Recommended: Per-Section FX Automation Lane)\
 \pard\pardeftab720\sa240\partightenfactor0
 \cf0 \outl0\strokewidth0 \strokec2 The FX chain currently supports adding effects to FX-L and FX-R lanes, but the effect parameters (retrigger length, gate frequency, flanger rate, etc.) cannot be automated over time. The editor should add an automation lane view similar to how REAPER or Ableton handle automation: each FX effect parameter gets a thin lane below the main chart lane, with a drawn curve or step sequence representing the parameter value over time. Users should be able to draw, drag, and edit automation breakpoints directly on the chart canvas. The automation data would be stored in KSON as part of the audio.fx.ch arrays or as a new nested automation key. This matches the system description\'92s requirement for "REAPER FX style automation or effect lanes".\
+\
+
+Point 5 (New Recommended: Section-Relative Paste Operations)\
+\pard\pardeftab720\sa240\partightenfactor0
+\cf0 \outl0\strokewidth0 \strokec2 Now that Chart Sections exist (v0.0.20), the copy/paste system should be extended to support section-relative paste targets. When a user copies a selection, the paste menu should offer \'93Paste at Section Start\'94 with a submenu listing all named sections. This allows copying a pattern once and pasting it at \'93Chorus 1\'94, \'93Chorus 2\'94, etc., without manually seeking to each position. This is particularly useful for long-form charts where the same rhythmic pattern appears in multiple named sections.\
 \pard\pardeftab720\sa240\partightenfactor0
 \cf0 \outl0\strokewidth0 \
 }
