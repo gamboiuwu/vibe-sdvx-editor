@@ -5,6 +5,7 @@ export const BEATS_PER_MEASURE = 4;
 export const TICKS_PER_BEAT    = TICKS_PER_MEASURE / BEATS_PER_MEASURE; // 48
 // Sketch spec: "any laser ≤ 1/16 point is a SLAM" — 1/16 = 192/16 = 12 ticks
 export let LASER_SLAM_TICKS = 12; // mutable — adjusted by Gameplay preferences
+export function setLaserSlamTicks(v) { LASER_SLAM_TICKS = v; }
 
 // Lane indices
 export const LANE = { LASER_L: 0, BT_A: 1, BT_B: 2, FX_L: 3, FX_R: 4, BT_C: 5, BT_D: 6, LASER_R: 7 };
