@@ -1,4 +1,6 @@
-'use strict';
+import { chart, renderer, gameView, render, saveUndo, updateSeekbar, addChartAnnotation, _seekTo, sel } from './app.js';
+import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE } from './chart.js';
+import { updateRadar } from './radar.js';
 /* ═══════════════════════════════════════════════════════════════════════════
    vibe-editr  ·  Tools Hub  ·  20 tools — floating MDI window
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -107,7 +109,7 @@ let _winEl = null;
 let _activeToolId = null;
 
 // ── Public API ────────────────────────────────────────────────────────────────
-function openToolsWindow() {
+export function openToolsWindow() {
   if (!_winEl) return;
   _winEl.style.display = 'flex';
   _winEl.classList.remove('tw-collapsed');
@@ -116,11 +118,25 @@ function openToolsWindow() {
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────────
-function initTools() {
+function _buildWelcomeGrid() {
+  const grid = document.getElementById('tw-welcome-grid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  TOOL_REGISTRY.forEach(tool => {
+    const card = _h('div', 'tw-welcome-card');
+    card.title = `${tool.cat} · ${tool.label}`;
+    card.innerHTML = `<span class="wc-icon">${tool.icon}</span><span class="wc-name">${tool.label}</span><span class="wc-cat">${tool.cat}</span>`;
+    card.addEventListener('click', () => _activateTool(tool.id));
+    grid.appendChild(card);
+  });
+}
+
+export function initTools() {
   _winEl = _buildWindow();
   document.body.appendChild(_winEl);
-  // Build sidebar NOW — element is in the live DOM so getElementById works
+  // Build sidebar and welcome grid NOW — elements are in the live DOM
   _buildSidebar();
+  _buildWelcomeGrid();
   // Restore position/size — but reject fullscreen/maximized states
   const st = _loadWinState();
   if (st) {
@@ -163,8 +179,8 @@ function _buildWindow() {
       </nav>
       <div class="tw-main" id="tw-main">
         <div class="tw-welcome" id="tw-welcome">
-          <div style="font-size:16px;font-weight:700;color:#d8d8f0;margin-bottom:6px">Tools Hub</div>
-          <div style="font-size:12px;color:#5558a0">Select a tool from the sidebar to get started.<br>Pin your favourites with ★ for quick access.</div>
+          <div class="tw-welcome-header">Tools Hub &mdash; ${TOOL_REGISTRY.length} tools &middot; Click to open &middot; &#9733; to pin</div>
+          <div class="tw-welcome-grid" id="tw-welcome-grid"></div>
         </div>
         <div class="tw-tool-view" id="tw-tool-view" style="display:none">
           <div class="tw-tool-topbar" id="tw-tool-topbar"></div>
@@ -421,6 +437,23 @@ function _section(title) {
   return s;
 }
 
+function _statGrid(cells) {
+  const grid = _h('div', 'tool-stat-grid');
+  cells.forEach(({ label, value, color }) => {
+    const cell = _h('div', 'tool-stat-cell');
+    const v = _h('div', 'tsv', String(value));
+    if (color) v.style.color = color;
+    const l = _h('div', 'tsl', label.toUpperCase());
+    cell.appendChild(v); cell.appendChild(l);
+    grid.appendChild(cell);
+  });
+  return grid;
+}
+
+function _badge(text, type) {
+  return _h('span', `tool-badge tool-badge-${type || 'info'}`, String(text));
+}
+
 // Creates a top-level tool description banner using the i18n key
 function _toolDesc(key) {
   const txt = (typeof t === 'function') ? t(key) : key;
@@ -455,7 +488,7 @@ function _tickToMB(tick) {
 
 /** Navigate both the edit renderer and the game/preview view to a measure. */
 function _goToMeasure(m) {
-  if (!(window.renderer && renderer.playTick !== undefined)) return;
+  if (!(renderer && renderer.playTick !== undefined)) return;
   const targetTick = Math.max(0, m * TICKS_PER_MEASURE);
   renderer.playTick = targetTick;
 
@@ -469,7 +502,7 @@ function _goToMeasure(m) {
   }
 
   // Sync the game/preview view too so it jumps in real-time
-  if (window.gameView) {
+  if (gameView) {
     gameView.playTick = targetTick;
     if (typeof gameView.draw === 'function') gameView.draw();
   }
@@ -550,11 +583,13 @@ function _toolBpmSync(c) {
     const msNote = msBeat / sd.div;
     const ticksNote = TICKS_PER_BEAT / sd.div;
     const nps = 1000 / msNote;
-    out.innerHTML = `
-      <div class="tool-result-item">ms/beat: <b>${msBeat.toFixed(2)}</b></div>
-      <div class="tool-result-item">ms/note: <b>${msNote.toFixed(2)}</b></div>
-      <div class="tool-result-item">ticks/note: <b>${ticksNote.toFixed(2)}</b></div>
-      <div class="tool-result-item">NPS: <b>${nps.toFixed(2)}</b></div>`;
+    out.innerHTML = '';
+    out.appendChild(_statGrid([
+      { label: 'ms / beat',    value: msBeat.toFixed(2)    },
+      { label: 'ms / note',    value: msNote.toFixed(2)    },
+      { label: 'ticks / note', value: ticksNote.toFixed(2) },
+      { label: 'NPS',          value: nps.toFixed(2), color: nps > 20 ? '#ff6655' : nps > 12 ? '#ffaa33' : '#44dd88' },
+    ]));
   }
 
   bpmIn.addEventListener('input', recalc);
@@ -572,7 +607,7 @@ function _toolBpmSync(c) {
     for (let i = 0; i < 4; i++) chart.bt[i].forEach(n => { n.y = snap(n.y); });
     for (let i = 0; i < 2; i++) chart.fx[i].forEach(n => { n.y = snap(n.y); });
     if (typeof render === 'function') render();
-    out.innerHTML += '<div class="tool-result-item tool-result-ok">✓ Snapped all notes</div>';
+    out.appendChild(_h('div', 'tool-result-item tool-result-ok', '✓ Snapped all notes'));
   });
 
   sec.appendChild(_row('BPM:', bpmIn));
@@ -894,14 +929,14 @@ function _toolValidity(c) {
         row.addEventListener('click', () => {
           // Navigate using exact tick if available, else measure start
           const t = issue.tick != null ? issue.tick : issue.measure * TICKS_PER_MEASURE;
-          if (window.renderer && renderer.playTick !== undefined) {
+          if (renderer && renderer.playTick !== undefined) {
             renderer.playTick = Math.max(0, t);
             const colLen = (renderer.measPerCol ?? 1) * TICKS_PER_MEASURE;
             const col    = Math.floor(t / colLen);
             if (col < renderer.scrollCol || col >= renderer.scrollCol + (renderer.numCols ?? 1)) {
               renderer.scrollCol = Math.max(0, col - Math.floor((renderer.numCols ?? 1) / 2));
             }
-            if (window.gameView) { gameView.playTick = renderer.playTick; if (typeof gameView.draw==='function') gameView.draw(); }
+            if (gameView) { gameView.playTick = renderer.playTick; if (typeof gameView.draw==='function') gameView.draw(); }
             if (typeof updateSeekbar === 'function') updateSeekbar(renderer.playTick);
             if (typeof updateRadar   === 'function') updateRadar();
             if (typeof render        === 'function') render();
@@ -3486,7 +3521,7 @@ function _toolScale(c) {
     const lbl = document.createElement('span'); lbl.textContent = ' ' + name;
     btn.appendChild(lbl);
     btn.addEventListener('click', () => {
-      if (!(typeof chart !== "undefined" && chart) || !window.renderer) return;
+      if (!(typeof chart !== "undefined" && chart) || !renderer) return;
       if (typeof saveUndo === 'function') saveUndo('Insert Pattern: ' + name);
       const startTick = renderer.playTick || 0;
       grid.forEach((row, ri) => {
@@ -4347,7 +4382,7 @@ function _toolPatternLib(c) {
   }
 
   function _insertPattern(pat) {
-    if (!(typeof chart !== "undefined" && chart) || !window.renderer) return;
+    if (!(typeof chart !== "undefined" && chart) || !renderer) return;
     if (typeof saveUndo === 'function') saveUndo('Insert Pattern: ' + pat.name);
     const startTick = renderer.playTick || 0;
     if (pat.btNotes) {
@@ -4371,7 +4406,7 @@ function _toolPatternLib(c) {
     const name = prompt('Pattern name:');
     if (!name) return;
     // Capture from selection or full chart if no selection
-    const hasSel = window.sel && sel.active;
+    const hasSel = sel && sel.active;
     const startT = hasSel ? Math.min(sel.startTick, sel.endTick) : 0;
     const endT   = hasSel ? Math.max(sel.startTick, sel.endTick) : chart.totalMeasures * TICKS_PER_MEASURE;
     const spanTicks = endT - startT;
@@ -4628,11 +4663,11 @@ function _toolAudioAnchor(c) {
     if (!ch) { placeMsg.textContent='⚠ No chart loaded.'; placeMsg.style.color='#f87'; return; }
 
     const mode = modeSel.value;
-    const useSelection = regionSel.value === 'sel' && window.sel?.active;
+    const useSelection = regionSel.value === 'sel' && sel?.active;
     let lo = 0, hi = Infinity;
     if (useSelection) {
-      lo = Math.min(window.sel.startTick, window.sel.endTick);
-      hi = Math.max(window.sel.startTick, window.sel.endTick);
+      lo = Math.min(sel.startTick, sel.endTick);
+      hi = Math.max(sel.startTick, sel.endTick);
     }
 
     // Build the ordered list of ticks in range
@@ -4720,8 +4755,8 @@ function _toolAudioAnchor(c) {
       const secStr = secs?.[i]!=null ? secs[i].toFixed(3)+'s' : '';
       row.innerHTML=`<span style="color:#ffaa55;min-width:28px">T${i+1}</span><span style="min-width:60px">M${m} B${b}</span><span style="color:#778">${secStr}</span>`;
       row.addEventListener('click', () => {
-        if (window.renderer) {
-          window.renderer.playTick = tick;
+        if (renderer) {
+          renderer.playTick = tick;
           if (typeof updateSeekbar === 'function') updateSeekbar(tick);
           if (typeof render === 'function') render();
         }
@@ -5356,11 +5391,11 @@ function _toolChartValidator(c) {
           row.appendChild(nav);
           row.addEventListener('click',()=>{
             const t=issue.tick!=null?issue.tick:issue.measure*TICKS_PER_MEASURE;
-            if (window.renderer&&renderer.playTick!==undefined) {
+            if (renderer&&renderer.playTick!==undefined) {
               renderer.playTick=Math.max(0,t);
               const colLen=(renderer.measPerCol??1)*TICKS_PER_MEASURE, col=Math.floor(t/colLen);
               if (col<renderer.scrollCol||col>=renderer.scrollCol+(renderer.numCols??1)) renderer.scrollCol=Math.max(0,col-Math.floor((renderer.numCols??1)/2));
-              if (window.gameView){gameView.playTick=renderer.playTick;if(typeof gameView.draw==='function')gameView.draw();}
+              if (gameView){gameView.playTick=renderer.playTick;if(typeof gameView.draw==='function')gameView.draw();}
               if (typeof updateSeekbar==='function') updateSeekbar(renderer.playTick);
               if (typeof render==='function') render();
             }
@@ -5410,6 +5445,7 @@ function _toolChartValidator(c) {
 
     panels['integrity'].panelEl = panel;
     c.appendChild(panel);
+    setTimeout(() => runBtn.click(), 80);
   }
 
   // ── Ergonomics tab (was _toolCollision) ───────────────────────────────────
@@ -5524,92 +5560,86 @@ function _toolChartStats(c) {
   const sec = _section('Chart Statistics');
   c.appendChild(sec);
 
-  const results = _h('div', '');
-  results.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px';
+  const results   = _h('div', '');
+  const fullRes   = _h('div', 'tool-result-box');
+  fullRes.style.cssText = 'margin-top:8px;max-height:200px;overflow-y:auto';
 
-  const fullResults = _h('div', 'tool-result-box');
-  fullResults.style.cssText = 'margin-top:8px;max-height:220px;overflow-y:auto';
-
-  const runBtn = _btn('Compute Stats');
-  sec.appendChild(runBtn);
+  const refreshBtn = _btn('↺ Refresh');
+  refreshBtn.style.cssText = 'margin-bottom:8px;font-size:10px';
+  sec.appendChild(refreshBtn);
   sec.appendChild(results);
-  sec.appendChild(fullResults);
+  sec.appendChild(fullRes);
 
-  function stat(label, value, color) {
-    const box = document.createElement('div');
-    box.style.cssText = `background:#0a0a1e;border:1px solid #1e1e40;border-radius:4px;padding:6px 8px;text-align:center`;
-    box.innerHTML = `<div style="font-size:9px;color:#5558a0;margin-bottom:2px">${label}</div><div style="font-size:16px;font-weight:700;color:${color||'#aabbff'}">${value}</div>`;
-    return box;
-  }
-
-  runBtn.addEventListener('click', () => {
-    results.innerHTML = ''; fullResults.innerHTML = '';
-    if (!(typeof chart !== "undefined" && chart)) { fullResults.innerHTML = '<div class="tool-result-item tool-result-err">No chart loaded</div>'; return; }
-
+  function compute() {
+    results.innerHTML = ''; fullRes.innerHTML = '';
+    if (!(typeof chart !== 'undefined' && chart)) {
+      fullRes.innerHTML = '<div class="tool-result-item tool-result-err">No chart loaded</div>'; return;
+    }
     const ch = chart;
-    const totalMeas = ch.totalMeasures || 1;
+    const totalMeas  = ch.totalMeasures || 1;
     const totalTicks = totalMeas * TICKS_PER_MEASURE;
 
-    // Note counts
-    const btTotal    = [0,1,2,3].reduce((s,i)=>s+ch.bt[i].length, 0);
-    const fxTotal    = [0,1].reduce((s,i)=>s+ch.fx[i].length, 0);
-    const btChips    = [0,1,2,3].reduce((s,i)=>s+ch.bt[i].filter(n=>n.len===0).length, 0);
-    const btHolds    = btTotal - btChips;
-    const fxChips    = [0,1].reduce((s,i)=>s+ch.fx[i].filter(n=>n.len===0).length, 0);
-    const fxHolds    = fxTotal - fxChips;
-    const laserSecsL = ch.lasers[0].length, laserSecsR = ch.lasers[1].length;
-    const laserPtsL  = ch.lasers[0].reduce((s,sec2)=>s+sec2.points.length, 0);
-    const laserPtsR  = ch.lasers[1].reduce((s,sec2)=>s+sec2.points.length, 0);
+    const btTotal  = [0,1,2,3].reduce((s,i)=>s+ch.bt[i].length, 0);
+    const fxTotal  = [0,1].reduce((s,i)=>s+ch.fx[i].length, 0);
+    const btChips  = [0,1,2,3].reduce((s,i)=>s+ch.bt[i].filter(n=>n.len===0).length, 0);
+    const btHolds  = btTotal - btChips;
+    const fxChips  = [0,1].reduce((s,i)=>s+ch.fx[i].filter(n=>n.len===0).length, 0);
+    const fxHolds  = fxTotal - fxChips;
+    const lptsL    = ch.lasers[0].reduce((s,sec2)=>s+sec2.points.length, 0);
+    const lptsR    = ch.lasers[1].reduce((s,sec2)=>s+sec2.points.length, 0);
 
-    // Laser coverage: % of total ticks covered by an active laser section
-    const calcCoverage = (secs) => {
-      let covered = 0;
-      secs.forEach(sec2 => {
-        const lp = sec2.points[sec2.points.length-1];
-        covered += Math.max(0, lp?.ry ?? 0);
-      });
-      return totalTicks > 0 ? Math.min(100, (covered / totalTicks * 100)).toFixed(1) : '0.0';
+    const calcCov = secs => {
+      let cov = 0;
+      secs.forEach(sec2 => { const lp = sec2.points[sec2.points.length-1]; cov += lp?.ry ?? 0; });
+      return totalTicks > 0 ? Math.min(100, cov/totalTicks*100).toFixed(1) : '0.0';
     };
-    const coverL = calcCoverage(ch.lasers[0]);
-    const coverR = calcCoverage(ch.lasers[1]);
+    const coverL = calcCov(ch.lasers[0]);
+    const coverR = calcCov(ch.lasers[1]);
 
-    // BPM range
-    const bpms = ch.bpmEvents.map(e => e.bpm);
-    const bpmMin = bpms.length ? Math.min(...bpms).toFixed(1) : '—';
-    const bpmMax = bpms.length ? Math.max(...bpms).toFixed(1) : '—';
-    const bpmStr = bpmMin === bpmMax ? bpmMin : `${bpmMin}–${bpmMax}`;
+    const bpms   = ch.bpmEvents.map(e=>e.bpm);
+    const bpmMin = bpms.length ? Math.min(...bpms) : 0;
+    const bpmMax = bpms.length ? Math.max(...bpms) : 0;
+    const bpmStr = bpmMin === bpmMax ? bpmMin.toFixed(1) : `${bpmMin.toFixed(0)}–${bpmMax.toFixed(0)}`;
 
-    // Peak density: notes per measure (max over any single measure)
-    const allNoteTicks = [];
-    for (let i=0;i<4;i++) ch.bt[i].forEach(n=>allNoteTicks.push(n.y));
-    for (let i=0;i<2;i++) ch.fx[i].forEach(n=>allNoteTicks.push(n.y));
-    let peakDensity = 0;
+    const allTicks = [];
+    for (let i=0;i<4;i++) ch.bt[i].forEach(n=>allTicks.push(n.y));
+    for (let i=0;i<2;i++) ch.fx[i].forEach(n=>allTicks.push(n.y));
+    let peakDens = 0;
     for (let m=0;m<totalMeas;m++) {
-      const mStart=m*TICKS_PER_MEASURE, mEnd=mStart+TICKS_PER_MEASURE;
-      const cnt=allNoteTicks.filter(t=>t>=mStart&&t<mEnd).length;
-      if (cnt>peakDensity) peakDensity=cnt;
+      const s=m*TICKS_PER_MEASURE, e=s+TICKS_PER_MEASURE;
+      const cnt=allTicks.filter(t=>t>=s&&t<e).length;
+      if (cnt>peakDens) peakDens=cnt;
     }
 
-    results.appendChild(stat('BT Notes', btTotal, '#e0e0ff'));
-    results.appendChild(stat('FX Notes', fxTotal, '#ffd700'));
-    results.appendChild(stat('VOL-L pts', laserPtsL, '#0088ff'));
-    results.appendChild(stat('VOL-R pts', laserPtsR, '#ff1177'));
-    results.appendChild(stat('BPM', bpmStr, '#ffdd44'));
-    results.appendChild(stat('Measures', totalMeas, '#aabbff'));
+    results.appendChild(_statGrid([
+      { label: 'BT Notes',  value: btTotal,   color: '#c8c8ff' },
+      { label: 'BT Chips',  value: btChips,   color: '#9999ee' },
+      { label: 'BT Holds',  value: btHolds,   color: '#7777cc' },
+      { label: 'FX Notes',  value: fxTotal,   color: '#ffd700' },
+      { label: 'VOL-L pts', value: lptsL,     color: '#3388ff' },
+      { label: 'VOL-R pts', value: lptsR,     color: '#ff2266' },
+      { label: 'BPM',       value: bpmStr,    color: '#ffdd44' },
+      { label: 'Measures',  value: totalMeas, color: '#aabbff' },
+    ]));
 
-    const lines = [
-      `BT chips: ${btChips}  holds: ${btHolds}`,
-      `FX chips: ${fxChips}  holds: ${fxHolds}`,
-      `VOL-L: ${laserSecsL} section(s)  pts: ${laserPtsL}  coverage: ${coverL}%`,
-      `VOL-R: ${laserSecsR} section(s)  pts: ${laserPtsR}  coverage: ${coverR}%`,
-      `Peak density: ${peakDensity} notes/measure`,
-      `Total note events: ${allNoteTicks.length}`,
+    const details = [
+      { label: 'FX Chips / Holds',    value: `${fxChips} / ${fxHolds}` },
+      { label: 'VOL-L coverage',       value: `${coverL}%  (${ch.lasers[0].length} section${ch.lasers[0].length!==1?'s':''})` },
+      { label: 'VOL-R coverage',       value: `${coverR}%  (${ch.lasers[1].length} section${ch.lasers[1].length!==1?'s':''})` },
+      { label: 'Peak density',         value: `${peakDens} notes/measure` },
+      { label: 'Total note events',    value: allTicks.length },
+      { label: 'BPM events',           value: ch.bpmEvents.length },
+      { label: 'Chart sections',       value: (ch.sections||[]).length },
     ];
-    lines.forEach(l => {
-      const row = _h('div', 'tool-result-item', l);
-      fullResults.appendChild(row);
+    details.forEach(({ label, value }) => {
+      const kv = _h('div', 'tool-kv', '');
+      kv.innerHTML = `<span class="tool-kv-key">${label}</span><span class="tool-kv-val">${value}</span>`;
+      fullRes.appendChild(kv);
     });
-  });
+  }
+
+  refreshBtn.addEventListener('click', compute);
+  setTimeout(compute, 50);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

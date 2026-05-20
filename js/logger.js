@@ -1,6 +1,5 @@
-'use strict';
 
-class ErrorLogger {
+export class ErrorLogger {
   constructor() {
     this.errors = [];
     this.MAX = 200;
@@ -92,9 +91,9 @@ class ErrorLogger {
   }
 }
 
-function escHtml(s) {
+export function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-const logger = new ErrorLogger();
+export const logger = new ErrorLogger();
 logger.hookGlobal();

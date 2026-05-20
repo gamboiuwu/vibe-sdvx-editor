@@ -1,10 +1,11 @@
-'use strict';
+import { TICKS_PER_BEAT, TICKS_PER_MEASURE, BEATS_PER_MEASURE } from './chart.js';
+import { GLLaneRenderer } from './gl-lane.js';
 
 // ── SDVX Game Preview ──────────────────────────────────────────────────────────
 // Tick interval for hold scoring samples
-const HOLD_SAMPLE = TICKS_PER_BEAT / 8;
+export const HOLD_SAMPLE = TICKS_PER_BEAT / 8;
 
-class GameView {
+export class GameView {
   constructor(canvas) {
     this.canvas   = canvas;
     this.ctx      = canvas.getContext('2d');
