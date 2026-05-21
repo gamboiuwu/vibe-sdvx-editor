@@ -2297,22 +2297,9 @@ function _loadingShow(stage, pct) {
 function _loadingDone() {
   const ov = document.getElementById('loading-overlay');
   if (!ov) return;
+  // Always dismiss — log any init errors to console instead of blocking the UI
   if (_initErrors.length > 0) {
-    // Keep overlay up so user can read the errors; wire up continue button
-    const stageEl  = document.getElementById('loading-stage');
-    const contBtn  = document.getElementById('loading-continue-btn');
-    const errBox   = document.getElementById('loading-errors');
-    if (stageEl) stageEl.textContent = `⚠ Initialized with ${_initErrors.length} error${_initErrors.length > 1 ? 's' : ''}`;
-    if (errBox)  errBox.style.display = '';
-    if (contBtn) {
-      contBtn.style.display = '';
-      contBtn.onclick = () => {
-        ov.style.opacity = '0';
-        ov.style.pointerEvents = 'none';
-        setTimeout(() => { if (ov) ov.style.display = 'none'; }, 420);
-      };
-    }
-    return;
+    console.warn(`[vibe-editr] ${_initErrors.length} init error(s):`, _initErrors);
   }
   ov.style.opacity = '0';
   ov.style.pointerEvents = 'none';

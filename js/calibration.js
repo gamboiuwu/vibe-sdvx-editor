@@ -999,6 +999,7 @@ export class CalibrationWindow {
       if (cnf) cnf.style.display = 'inline';
       if (dsm) dsm.style.display = 'inline';
     }
+  }
 
   _handleTap() {
     const now = performance.now();
