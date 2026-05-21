@@ -1,4 +1,5 @@
 import { ChartData, TICKS_PER_BEAT, TICKS_PER_MEASURE, BEATS_PER_MEASURE } from './chart.js';
+import { EFFECT_DEFS } from './effects.js';
 
 // ── Layout constants ──────────────────────────────────────────────────────────
 // Lasers overlay the full column area (BT + side extensions).
@@ -985,9 +986,9 @@ export class Renderer {
           ctx.fillStyle = C.fxEdge;
           ctx.fillRect(x, yTop, w, 3);
         }
-        // Effect label — look up the chain's active effect for this lane
-        const chainEff = this.chart?.fxChains?.[span.li]?.[0];
-        const effLabel = chainEff ? (EFFECT_DEFS[chainEff.type]?.label ?? chainEff.type) : null;
+        // Effect label — per-note effect takes priority; fallback to lane chain
+        const effType = n.effect || this.chart?.fxChains?.[span.li]?.[0]?.type || null;
+        const effLabel = effType ? (EFFECT_DEFS[effType]?.label ?? effType) : null;
         if (effLabel && bh > 16) {
           ctx.save();
           ctx.font = `bold ${Math.min(11, bh * 0.35)}px monospace`;

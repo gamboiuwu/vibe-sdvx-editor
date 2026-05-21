@@ -1152,12 +1152,19 @@ function updateLaserFilter(tick) {
 function updateFxEffects(tick) {
   if (!audioCtx || !_fxWetGain || !chart) return;
 
-  // Find the highest-priority active FX hold and its effect chain
+  // Find the highest-priority active FX hold; use its per-note effect if set
   let activeEffect = null;
   for (let li = 0; li < 2; li++) {
     const hold = chart.fx[li].find(n => n.len > 0 && n.y <= tick && tick <= n.y + n.len);
-    if (hold && chart.fxChains[li]?.length) {
-      activeEffect = { inst: chart.fxChains[li][0], hold };
+    if (hold) {
+      const effType = hold.effect || null;
+      if (effType && EFFECT_DEFS[effType]) {
+        const def = EFFECT_DEFS[effType];
+        const mergedParams = {};
+        for (const [k, p] of Object.entries(def.params))
+          mergedParams[k] = hold.effectParams?.[k] ?? p.def;
+        activeEffect = { inst: { type: effType, params: mergedParams }, hold };
+      }
       break;
     }
   }
@@ -3636,32 +3643,13 @@ function _doShowFxTooltip(clientX, clientY, note, lane) {
   _fxPinned = true;
   _fxHoverNote = null;
 
-  const current   = note.effect || 'retrigger';
-  const laneName  = lane === 0 ? 'FX-L' : 'FX-R';
+  const current  = note.effect || '';
+  const laneName = lane === 0 ? 'FX-L' : 'FX-R';
 
-  const typeOpts = Object.entries(EFFECT_DEFS).map(([k, d]) =>
-    `<option value="${k}"${k === current ? ' selected' : ''}>${d.label}</option>`
-  ).join('');
-
-  let paramHtml = '';
-  const def = EFFECT_DEFS[current];
-  if (def) {
-    for (const [k, p] of Object.entries(def.params)) {
-      // Note: don't read params from note.effect (string), just show sliders with defaults
-      const val = p.def;
-      paramHtml += `
-        <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px">
-          <span style="min-width:68px;font-size:10px;color:#aaa">${p.label}</span>
-          <input type="range" class="fx-tt-sl" data-key="${k}"
-            min="${p.min}" max="${p.max}" step="${p.step}" value="${val}"
-            style="flex:1;accent-color:#ff8800;height:14px">
-          <input type="number" class="fx-tt-num" data-key="${k}"
-            min="${p.min}" max="${p.max}" step="${p.step}" value="${val}"
-            style="width:46px;background:#111;border:1px solid #333;border-radius:3px;color:#ddd;padding:1px 3px;font-size:10px">
-          <span style="min-width:20px;font-size:9px;color:#666">${p.unit || ''}</span>
-        </div>`;
-      }
-  }
+  const typeOpts = `<option value=""${!current ? ' selected' : ''}>None</option>` +
+    Object.entries(EFFECT_DEFS).map(([k, d]) =>
+      `<option value="${k}"${k === current ? ' selected' : ''}>${d.label}</option>`
+    ).join('');
 
   fxTooltipEl.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
@@ -3674,22 +3662,57 @@ function _doShowFxTooltip(clientX, clientY, note, lane) {
         ${typeOpts}
       </select>
     </div>
-    <div style="color:#666;font-size:9px;margin-bottom:4px;padding:0 2px">(per-note type only; lane effects set in panel)</div>
-    ${paramHtml}
+    <div class="fx-tt-params"></div>
   `;
 
-  // Type selector: change per-note effect type (note.effect)
-  fxTooltipEl.querySelector('.fx-tt-type-sel')?.addEventListener('change', ev => {
-    if (fxTooltipNote) fxTooltipNote.effect = ev.target.value || 'retrigger';
-    render();
-  });
+  function _buildParams(typeKey) {
+    const container = fxTooltipEl.querySelector('.fx-tt-params');
+    if (!container) return;
+    const def = EFFECT_DEFS[typeKey];
+    if (!def) { container.innerHTML = ''; return; }
+    let html = '';
+    for (const [k, p] of Object.entries(def.params)) {
+      const val = note.effectParams?.[k] ?? p.def;
+      html += `
+        <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px">
+          <span style="min-width:68px;font-size:10px;color:#aaa">${p.label}</span>
+          <input type="range" class="fx-tt-sl" data-key="${k}"
+            min="${p.min}" max="${p.max}" step="${p.step}" value="${val}"
+            style="flex:1;accent-color:#ff8800;height:14px">
+          <input type="number" class="fx-tt-num" data-key="${k}"
+            min="${p.min}" max="${p.max}" step="${p.step}" value="${val}"
+            style="width:46px;background:#111;border:1px solid #333;border-radius:3px;color:#ddd;padding:1px 3px;font-size:10px">
+          <span style="min-width:20px;font-size:9px;color:#666">${p.unit || ''}</span>
+        </div>`;
+    }
+    container.innerHTML = html;
+    container.querySelectorAll('.fx-tt-sl').forEach(sl => {
+      sl.addEventListener('input', () => {
+        if (!fxTooltipNote) return;
+        if (!fxTooltipNote.effectParams) fxTooltipNote.effectParams = {};
+        fxTooltipNote.effectParams[sl.dataset.key] = parseFloat(sl.value);
+        const num = container.querySelector(`.fx-tt-num[data-key="${sl.dataset.key}"]`);
+        if (num) num.value = sl.value;
+      });
+    });
+    container.querySelectorAll('.fx-tt-num').forEach(ni => {
+      ni.addEventListener('input', () => {
+        if (!fxTooltipNote) return;
+        if (!fxTooltipNote.effectParams) fxTooltipNote.effectParams = {};
+        fxTooltipNote.effectParams[ni.dataset.key] = parseFloat(ni.value);
+        const sl = container.querySelector(`.fx-tt-sl[data-key="${ni.dataset.key}"]`);
+        if (sl) sl.value = ni.value;
+      });
+    });
+  }
 
-  // Parameter sliders just for display (note.effect doesn't store params)
-  fxTooltipEl.querySelectorAll('.fx-tt-sl').forEach(sl => {
-    sl.addEventListener('input', () => { /* no-op: note.effect is string-only */ });
-  });
-  fxTooltipEl.querySelectorAll('.fx-tt-num').forEach(ni => {
-    ni.addEventListener('input', () => { /* no-op: note.effect is string-only */ });
+  _buildParams(current);
+
+  fxTooltipEl.querySelector('.fx-tt-type-sel')?.addEventListener('change', ev => {
+    if (!fxTooltipNote) return;
+    fxTooltipNote.effect = ev.target.value || null;
+    _buildParams(ev.target.value);
+    render();
   });
 
   fxTooltipEl.querySelector('.fx-tt-close')?.addEventListener('click', () => {
