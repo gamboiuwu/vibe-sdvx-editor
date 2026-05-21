@@ -1,4 +1,4 @@
-import { chart, renderer, gameView, render, saveUndo, updateSeekbar, addChartAnnotation, _seekTo, sel, playing } from './app.js';
+import { chart, renderer, gameView, render, saveUndo, updateSeekbar, addChartAnnotation, _seekTo, sel, playing, audioBuffer } from './app.js';
 import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE } from './chart.js';
 import { Renderer } from './renderer.js';
 import { updateRadar } from './radar.js';
@@ -4428,8 +4428,8 @@ function _toolPatternLib(c) {
    19. Audio Event Anchoring
    ═══════════════════════════════════════════════════════════════════════════ */
 function _toolAudioAnchor(c) {
-  const _ch  = () => { try { return (typeof chart    !== 'undefined') ? chart    : null; } catch(_){return null;} };
-  const _buf = () => { try { return (typeof audioBuffer !== 'undefined') ? audioBuffer : null; } catch(_){return null;} };
+  const _ch  = () => chart;
+  const _buf = () => audioBuffer;
 
   const wrap = document.createElement('div');
   wrap.style.cssText = 'display:flex;flex-direction:column;gap:6px;font-size:11px';
@@ -4561,6 +4561,15 @@ function _toolAudioAnchor(c) {
   });
 
   wrap.append(mkRow(detectBtn, statusDiv));
+
+  // Refresh status when audio loads while this tool is open (e.g. ksonpack auto-load)
+  const _aaOnAudioReady = () => refreshStatus();
+  window.addEventListener('vibe:audio-ready', _aaOnAudioReady);
+  const _aaObserver = new MutationObserver(() => {
+    if (!document.contains(c)) { window.removeEventListener('vibe:audio-ready', _aaOnAudioReady); _aaObserver.disconnect(); }
+  });
+  _aaObserver.observe(document.body, { childList: true, subtree: true });
+
   wrap.append(mkRow('Threshold', thrSlider, thrVal));
   wrap.append(mkRow('Min gap', mgnSlider, mgnVal));
   wrap.appendChild(mkSep());
@@ -4778,9 +4787,9 @@ function _toolAudioAnchor(c) {
    ═══════════════════════════════════════════════════════════════════════════ */
 function _toolWaveformAlign(c) {
   // ── Safe accessors (let vars in app.js — not window props) ────────────────
-  const _ch  = () => { try { return (typeof chart        !== 'undefined') ? chart        : null; } catch(_){return null;} };
-  const _r   = () => { try { return (typeof renderer     !== 'undefined') ? renderer     : null; } catch(_){return null;} };
-  const _buf = () => { try { return (typeof audioBuffer  !== 'undefined') ? audioBuffer  : null; } catch(_){return null;} };
+  const _ch  = () => chart;
+  const _r   = () => renderer;
+  const _buf = () => audioBuffer;
 
   // ── Tool state ────────────────────────────────────────────────────────────
   let peaks         = null;   // Float32Array 0-1 normalised
@@ -5075,6 +5084,20 @@ function _toolWaveformAlign(c) {
     statusDiv.textContent = '⚠ No audio loaded.';
     statusDiv.style.color = '#f87';
   }
+
+  // Refresh status when audio loads while this tool is open (e.g. ksonpack auto-load)
+  const _onAudioReady = () => {
+    if (!peaks) {
+      statusDiv.textContent = 'Audio present — click Decode to load waveform.';
+      statusDiv.style.color = '#aac';
+    }
+  };
+  window.addEventListener('vibe:audio-ready', _onAudioReady);
+  // Clean up listener when the container is removed from the DOM
+  const _waObserver = new MutationObserver(() => {
+    if (!document.contains(c)) { window.removeEventListener('vibe:audio-ready', _onAudioReady); _waObserver.disconnect(); }
+  });
+  _waObserver.observe(document.body, { childList: true, subtree: true });
 
   wrap.append(mkRow(decodeBtn, statusDiv));
   wrap.appendChild(mkSep());
