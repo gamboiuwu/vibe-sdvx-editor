@@ -822,7 +822,7 @@ function startPlay(stopAtTick = -1) {
     if (audioSource) { try { audioSource.stop(); } catch(e) {} }
     audioSource = audioCtx.createBufferSource();
     audioSource.buffer = audioBuffer;
-    audioSource.playbackRate.value = playbackRate;
+    audioSource.playbackRate.value = 1.0; // audio always plays at normal speed; only lane scroll is rate-scaled
     audioSource.connect(laserFilterNode || audioCtx.destination);
 
     // Add user-calibrated global audio delay (System Preferences > Audio)
@@ -1381,7 +1381,7 @@ function updateFxEffects(tick) {
       const dur = 1.5 * (1 - Math.min(0.99, (params.speed ?? 50) / 100)) + 0.05;
       if (audioSource) {
         audioSource.playbackRate.cancelScheduledValues(nowAC);
-        audioSource.playbackRate.setValueAtTime(playbackRate, nowAC);
+        audioSource.playbackRate.setValueAtTime(1.0, nowAC);
         audioSource.playbackRate.exponentialRampToValueAtTime(0.01, nowAC + dur);
       }
     }
@@ -1393,7 +1393,7 @@ function updateFxEffects(tick) {
     if (_fxEffectType === 'tapestop' || _fxTapeStopActive) {
       if (audioSource) {
         audioSource.playbackRate.cancelScheduledValues(nowAC);
-        audioSource.playbackRate.setTargetAtTime(playbackRate, nowAC, 0.05);
+        audioSource.playbackRate.setTargetAtTime(1.0, nowAC, 0.05);
       }
       _fxTapeStopActive = false;
     }
@@ -7765,15 +7765,15 @@ function _initProjectionControls() {
     });
   }
 
-  // Playback Rate slider — adjusts audio and chart tick advancement speed simultaneously
+  // Playback Rate slider — controls lane scroll speed only (audio is unaffected)
   const rateSl  = document.getElementById('pvc-rate');
   const rateLbl = document.getElementById('pvc-rate-label');
   rateSl?.addEventListener('input', () => {
     const newRate = +rateSl.value;
-    // Rebase audio start position so playhead doesn't jump when rate changes mid-play
+    // Rebase chart position reference so the playhead stays accurate at the new rate
     if (playing && audioCtx) {
       const elapsed = audioCtx.currentTime - audioStartAcTime;
-      audioStartChartSec += elapsed * playbackRate;  // commit elapsed with old rate
+      audioStartChartSec += elapsed * playbackRate;
       audioStartAcTime = audioCtx.currentTime;
     }
     playbackRate = newRate;
@@ -7781,11 +7781,7 @@ function _initProjectionControls() {
       rateLbl.textContent = newRate.toFixed(2) + '×';
       rateLbl.style.color = Math.abs(newRate - 1.0) > 0.001 ? '#ffcc44' : '';
     }
-    // Apply immediately to the currently playing audio source
-    if (playing && audioSource && audioCtx) {
-      audioSource.playbackRate.cancelScheduledValues(audioCtx.currentTime);
-      audioSource.playbackRate.setTargetAtTime(playbackRate, audioCtx.currentTime, 0.04);
-    }
+    // Audio pitch/speed is intentionally NOT changed — only chart tick advancement is scaled
   });
 
   // Judge Y slider

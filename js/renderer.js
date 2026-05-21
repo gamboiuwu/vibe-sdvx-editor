@@ -1,4 +1,4 @@
-import { TICKS_PER_BEAT, TICKS_PER_MEASURE, BEATS_PER_MEASURE } from './chart.js';
+import { ChartData, TICKS_PER_BEAT, TICKS_PER_MEASURE, BEATS_PER_MEASURE } from './chart.js';
 
 // ── Layout constants ──────────────────────────────────────────────────────────
 // Lasers overlay the full column area (BT + side extensions).
