@@ -209,7 +209,6 @@
         <button class="menu-item" id="btn-heatmap-window">&#127777; Intensity Heatmap…</button>
         <button class="menu-item" id="btn-bookmarks-panel">&#128278; Bookmarks  <kbd>Ctrl+B</kbd></button>
         <button class="menu-item" id="btn-sections-panel">&#127370; Chart Sections…</button>
-        <button class="menu-item" id="btn-snippets-panel">&#9986; Pattern Snippets…</button>
         <div class="menu-sep"></div>
         <button class="menu-item" id="btn-whats-new">&#10024; What's New…</button>
         <button class="menu-item" id="btn-diagnostics">&#9881; System Diagnostics…</button>
@@ -1333,25 +1332,6 @@
   <div id="sec-list" class="bm-list">
     <div class="bm-empty">No sections yet. Use <em>+ Add</em> to mark a region.</div>
   </div>
-</div>
-
-<!-- Pattern Snippet Library panel ──────────────────────────────── -->
-<div id="snippets-panel" class="floating-panel" style="display:none;top:170px;right:340px;width:300px">
-  <div class="fp-header">
-    <span class="fp-title">&#9986; Pattern Snippets</span>
-    <div class="fp-actions">
-      <button id="snp-save-sel" title="Save current selection as a snippet">Save Selection</button>
-      <button id="snp-close" title="Close">&#10005;</button>
-    </div>
-  </div>
-  <div style="padding:4px 8px;font-size:10px;color:#6668a0;border-bottom:1px solid #2a2a44">
-    Click a snippet to load into clipboard &mdash; then <kbd style="font-size:9px">Ctrl+V</kbd> to paste
-  </div>
-  <div style="padding:5px 8px;border-bottom:1px solid #1a1a30">
-    <input id="snp-search" type="text" placeholder="Filter snippets&#8230;"
-      style="width:100%;background:#111;border:1px solid #333;color:#ddd;border-radius:3px;padding:3px 7px;font-size:11px;outline:none">
-  </div>
-  <div id="snp-list" class="bm-list"></div>
 </div>
 
 <!-- What's New / Update modal ───────────────────────────────────── -->
