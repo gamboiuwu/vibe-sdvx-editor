@@ -340,7 +340,7 @@ let _velPopupFixedTick = null;
 
 // ── Audio ─────────────────────────────────────────────────────────────────────
 let audioCtx         = null;
-let audioBuffer      = null;
+export let audioBuffer      = null;
 let audioArrayBuffer = null; // raw bytes preserved before decodeAudioData (for IDB)
 let audioSource      = null;
 let audioStartAcTime = 0;
@@ -449,6 +449,7 @@ async function loadAudioFile(file) {
   audioBuffer = await audioCtx.decodeAudioData(buf);
   document.getElementById('audio-status').textContent = `Audio: ${file.name}`;
   _loadingDone();
+  window.dispatchEvent(new CustomEvent('vibe:audio-ready', { detail: { buffer: audioBuffer } }));
 }
 
 // ── Playback ──────────────────────────────────────────────────────────────────
@@ -3526,6 +3527,7 @@ async function _linkAudioFile(file, decodedBuffer = null) {
   }
   tabs.forEach(t => { t.audioBuffer = audioBuffer; });
   document.getElementById('audio-status').textContent = `Audio: ${file.name}`;
+  window.dispatchEvent(new CustomEvent('vibe:audio-ready', { detail: { buffer: audioBuffer } }));
   _idbAutosave();
 }
 
@@ -7288,6 +7290,7 @@ async function recoverAutosave() {
         audioBuffer = await audioCtx.decodeAudioData(savedAudio.slice(0));
         tabs.forEach(t => { t.audioBuffer = audioBuffer; });
         document.getElementById('audio-status').textContent = `Audio: ${data.audioName} (restored)`;
+        window.dispatchEvent(new CustomEvent('vibe:audio-ready', { detail: { buffer: audioBuffer } }));
       }
     } catch(audioErr) {
       console.warn('Could not restore autosaved audio:', audioErr);
