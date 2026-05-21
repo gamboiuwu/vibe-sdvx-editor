@@ -3206,3 +3206,18 @@ kbd {
 #velenv-canvas {
   cursor: crosshair;
 }
+
+/* When velenv is inside a dock float or region, neutralise its native chrome */
+.dp-float > #velenv-win,
+.dr-content > #velenv-win {
+  position: relative !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  left: unset !important; top: unset !important;
+  width: 100% !important; height: 100% !important;
+  min-width: 0 !important; min-height: 0 !important;
+  flex: 1;
+}
+.dp-float > #velenv-win #velenv-bar,
+.dr-content > #velenv-win #velenv-bar { display: none !important; }

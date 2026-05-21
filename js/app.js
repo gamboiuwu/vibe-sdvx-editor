@@ -6,7 +6,7 @@ import { exportKson, importKson, exportKsonPack, importKsonPack } from './kson.j
 import { EFFECT_DEFS, makeEffectInstance } from './effects.js';
 import { calibrationWindow } from './calibration.js';
 import { t, applyLocalization } from './i18n.js';
-import { velEnvEditor, openVelEnvEditor, toggleVelEnvEditor } from './velenv.js';
+import { velEnvEditor, getVelEnvEditor, openVelEnvEditor, toggleVelEnvEditor } from './velenv.js';
 import { dockInit, dockRegister, dockApplyLayout, dockToggle } from './dock.js';
 import { openToolsWindow } from './tools.js';
 import { openHeatmapWindow, updateHeatmap } from './heatmap.js';
@@ -7542,6 +7542,85 @@ let _glitchCtrl          = null;
 let _glitchActive        = false;
 let _glitchRefreshTimer  = null; // periodic snapshot refresh interval ID
 
+// ── Chromatic aberration + frame distortion CSS effects ──────────────────────
+let _glitchCssStyleEl = null;
+let _glitchCssAnimId  = 0;
+
+function _ensureGlitchSvgFilter() {
+  if (document.getElementById('glitch-chromab-svg')) return;
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.id = 'glitch-chromab-svg';
+  svg.setAttribute('style', 'position:absolute;width:0;height:0;overflow:hidden');
+  svg.innerHTML = `<defs>
+    <filter id="chromab-lo" color-interpolation-filters="sRGB">
+      <feColorMatrix in="SourceGraphic" type="matrix"
+        values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="r"/>
+      <feColorMatrix in="SourceGraphic" type="matrix"
+        values="0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0" result="g"/>
+      <feColorMatrix in="SourceGraphic" type="matrix"
+        values="0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0" result="b"/>
+      <feOffset in="r" dx="-2" dy="0" result="roff"/>
+      <feOffset in="b" dx="2"  dy="0" result="boff"/>
+      <feMerge><feMergeNode in="roff"/><feMergeNode in="g"/><feMergeNode in="boff"/></feMerge>
+    </filter>
+    <filter id="chromab-hi" color-interpolation-filters="sRGB">
+      <feColorMatrix in="SourceGraphic" type="matrix"
+        values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="r"/>
+      <feColorMatrix in="SourceGraphic" type="matrix"
+        values="0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0" result="g"/>
+      <feColorMatrix in="SourceGraphic" type="matrix"
+        values="0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0" result="b"/>
+      <feOffset in="r" dx="-5" dy="1"  result="roff"/>
+      <feOffset in="b" dx="5"  dy="-1" result="boff"/>
+      <feMerge><feMergeNode in="roff"/><feMergeNode in="g"/><feMergeNode in="boff"/></feMerge>
+    </filter>
+  </defs>`;
+  document.body.appendChild(svg);
+}
+
+function _applyGlitchCssEffects(el, level) {
+  if (!_glitchCssStyleEl) {
+    _glitchCssStyleEl = document.createElement('style');
+    _glitchCssStyleEl.id = 'glitch-css-effects';
+    document.head.appendChild(_glitchCssStyleEl);
+  }
+
+  if (level <= 0) {
+    el.style.filter    = '';
+    el.style.animation = '';
+    el.style.transform = '';
+    _glitchCssStyleEl.textContent = '';
+    return;
+  }
+
+  _ensureGlitchSvgFilter();
+
+  const t      = Math.max(0, Math.min(10, level)) / 10;
+  const filtId = t > 0.5 ? 'chromab-hi' : 'chromab-lo';
+  el.style.filter = `url(#${filtId})`;
+
+  // Distortion animation: irregular scaleX/scaleY/skewX oscillation
+  const animName = `glitch-dist-${++_glitchCssAnimId}`;
+  const sx1 = (1 + t * 0.06).toFixed(4);
+  const sx2 = (1 - t * 0.04).toFixed(4);
+  const sy1 = (1 - t * 0.05).toFixed(4);
+  const sy2 = (1 + t * 0.03).toFixed(4);
+  const sk  = (t * 1.8).toFixed(2);
+  const dur = Math.max(60, Math.round(180 - t * 130));
+
+  _glitchCssStyleEl.textContent = `
+    @keyframes ${animName} {
+      0%   { transform: scaleX(1)     scaleY(1);     }
+      15%  { transform: scaleX(${sx1}) scaleY(${sy1}) skewX(${sk}deg);  }
+      30%  { transform: scaleX(1)     scaleY(1);     }
+      55%  { transform: scaleX(${sx2}) scaleY(${sy2}) skewX(-${sk}deg); }
+      70%  { transform: scaleX(1)     scaleY(1);     }
+      85%  { transform: scaleX(${sx1}) scaleY(${sy2});                   }
+      100% { transform: scaleX(1)     scaleY(1);     }
+    }`;
+  el.style.animation = `${animName} ${dur}ms steps(3) infinite`;
+}
+
 function _levelToGlitchOptions(level) {
   const t = Math.max(0, Math.min(10, level)) / 10;
   return {
@@ -7589,6 +7668,7 @@ function _updateGlitchFromTick(tick) {
   const level = chart?.getGlitchLevelAt?.(tick) ?? 0;
   if (level === _glitchAppliedLevel) return; // no change
   _glitchAppliedLevel = level;
+  _applyGlitchCssEffects(el, level);
   if (level <= 0) {
     _glitchCtrl?.stopGlitch();
     _glitchCtrl = null;
@@ -8061,6 +8141,9 @@ window.addEventListener('DOMContentLoaded', () => {
       fxPanel.style.width = fxPanel.style.minWidth = fxPanel.style.maxWidth = '';
       dockRegister('fx-panel', fxPanel, 'FX & Events', '★', 'right');
     }
+
+    // Eagerly create velenv so its dockRegister call runs before dockApplyLayout
+    getVelEnvEditor();
 
     // Apply the full layout (from localStorage, or use each panel's defaultRegion)
     if (typeof dockApplyLayout === 'function') dockApplyLayout();
