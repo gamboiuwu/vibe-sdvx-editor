@@ -462,23 +462,33 @@ export function importKson(text) {
 export function exportKsonPack(charts, packMeta = {}, tabNames = []) {
   // Reuse exportKson then re-parse so each chart sits as a JS object inside
   // the bundle. Slightly wasteful but keeps a single export code path.
-  const entries = charts
-    .filter(c => c && c.meta)
-    .map((c, i) => {
-      const obj = JSON.parse(exportKson(c));
-      const name = tabNames[i];
-      if (name) obj._tabName = name;
-      return obj;
-    });
+  const validCharts = charts.filter(c => c && c.meta);
+  const entries = validCharts.map((c, i) => {
+    const obj = JSON.parse(exportKson(c));
+    const name = tabNames[i];
+    if (name) obj._tabName = name;
+    return obj;
+  });
+
+  // Collect all distinct audio filenames across all charts (basename only).
+  // Stored in meta so the folder auto-loader can find them without unpacking charts.
+  const audioFilenames = [...new Set(
+    validCharts
+      .map(c => c.meta?.music?.split(/[\\/]/).pop())
+      .filter(Boolean)
+  )];
+
   const pack = {
     format:  'ksonpack',
     version: '0.1.0',
     meta: {
-      title:       packMeta.title       || 'Untitled Pack',
-      artist:      packMeta.artist      || '',
-      description: packMeta.description || '',
-      created:     new Date().toISOString(),
-      chartCount:  entries.length,
+      title:           packMeta.title       || 'Untitled Pack',
+      artist:          packMeta.artist      || '',
+      description:     packMeta.description || '',
+      created:         new Date().toISOString(),
+      chartCount:      entries.length,
+      // Hint for folder-based auto-load: list of audio basenames used by charts.
+      audioFilenames:  audioFilenames,
     },
     charts: entries,
   };
@@ -492,5 +502,8 @@ export function importKsonPack(text) {
   }
   const tabNames = data.charts.map(c => c._tabName || null);
   const charts = data.charts.map(c => importKson(JSON.stringify(c)));
-  return { meta: data.meta || {}, charts, tabNames };
+  // audioFilenames: explicit list saved at export time; fall back to per-chart music fields.
+  const audioFilenames = data.meta?.audioFilenames
+    || [...new Set(data.charts.map(c => c.audio?.bgm?.filename?.split(/[\\/]/).pop()).filter(Boolean))];
+  return { meta: data.meta || {}, charts, tabNames, audioFilenames };
 }
