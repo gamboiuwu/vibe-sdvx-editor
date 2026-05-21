@@ -1,5 +1,6 @@
 import { TICKS_PER_MEASURE } from './chart.js';
-import { render, saveUndo } from './app.js';
+import { render, saveUndo, renderer } from './app.js';
+import { dockRegister } from './dock.js';
 
 // ─── Envelope Control ─────────────────────────────────────────────────────────
 // Floating MDI window with two sections:
@@ -157,7 +158,19 @@ export class VelocityEnvelopeEditor {
         <option value="0.5">0.5</option>
         <option value="1">1.0</option>
       </select>
-      <span style="color:#555;font-size:9px;margin-left:4px">Scroll: zoom  Dbl-click: toggle ramp</span>
+      <span style="color:#666;font-size:9px;margin-left:6px">Max:</span>
+      <input type="number" id="velenv-maxspeed" value="5" min="0.5" max="20" step="0.5"
+        title="Max visible speed (Y-axis top)"
+        style="width:38px;background:#111;border:1px solid #333;border-radius:3px;
+               color:#ccc;font-size:9px;padding:1px 3px">
+      <span style="color:#666;font-size:9px">Min:</span>
+      <input type="number" id="velenv-minspeed" value="0.05" min="0.01" max="1" step="0.05"
+        title="Min visible speed (Y-axis bottom)"
+        style="width:38px;background:#111;border:1px solid #333;border-radius:3px;
+               color:#ccc;font-size:9px;padding:1px 3px">
+      <button id="velenv-add-node" title="Add node at current playhead position"
+        style="margin-left:6px;background:#1a2a1a;border:1px solid #3a6a3a;border-radius:3px;
+               color:#88dd88;font-size:11px;font-weight:700;padding:0 7px;cursor:pointer;line-height:16px">+</button>
       <button id="velenv-reset"
         style="margin-left:auto;background:#111;border:1px solid #333;border-radius:3px;
                color:#888;font-size:9px;padding:1px 8px;cursor:pointer">Reset 1×</button>`;
@@ -209,6 +222,7 @@ export class VelocityEnvelopeEditor {
     win.appendChild(glitchSection);
 
     document.body.appendChild(win);
+    dockRegister('velenv', win, 'Envelope Control', '◈', 'float', { floatW: 660, floatH: 340 });
     this._win    = win;
     this._canvas = canvas;
     this._ctx    = canvas.getContext('2d');
@@ -545,6 +559,18 @@ export class VelocityEnvelopeEditor {
     const canvas = this._canvas;
 
     this._win.querySelector('#velenv-close').addEventListener('click', () => this.hide());
+
+    this._win.querySelector('#velenv-add-node').addEventListener('click', () => this._addNodeAtPlayhead());
+
+    this._win.querySelector('#velenv-maxspeed').addEventListener('change', e => {
+      const v = parseFloat(e.target.value);
+      if (!isNaN(v) && v > this._minSpeed) { this._maxSpeed = v; this.invalidate(); }
+    });
+    this._win.querySelector('#velenv-minspeed').addEventListener('change', e => {
+      const v = parseFloat(e.target.value);
+      if (!isNaN(v) && v >= 0 && v < this._maxSpeed) { this._minSpeed = v; this.invalidate(); }
+    });
+
     this._win.querySelector('#velenv-reset').addEventListener('click', () => {
       if (!this._chart) return;
       saveUndo('Reset velocity envelope to 1×');
@@ -773,6 +799,20 @@ export class VelocityEnvelopeEditor {
     this._chart.addScrollSpeedEvent(tick, speed, 'step');
     const evs = this._chart.scrollSpeedEvents;
     this._sel = evs.findIndex(e => e.y === tick);
+    this._notifyChange();
+  }
+
+  _addNodeAtPlayhead() {
+    if (!this._chart) return;
+    const tick = this._snapTick(renderer?.playTick ?? 0);
+    const evs  = this._chart.scrollSpeedEvents;
+    let speed = 1.0;
+    for (let i = evs.length - 1; i >= 0; i--) {
+      if (evs[i].y <= tick) { speed = evs[i].speed; break; }
+    }
+    saveUndo('Added velocity envelope node at playhead');
+    this._chart.addScrollSpeedEvent(tick, speed, 'step');
+    this._sel = this._chart.scrollSpeedEvents.findIndex(e => e.y === tick);
     this._notifyChange();
   }
 
