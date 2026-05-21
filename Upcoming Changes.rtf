@@ -11,6 +11,12 @@
 \
 [v0.0.20 SHIPPED] Chart Section Labels: Named ranges (Intro, Verse, Chorus, Bridge, Outro) overlaid as colored bands on the 2D ruler. Section Navigator panel lists all sections with click-to-seek. Selection-aware Add button uses the active selection range or defaults to 4 measures at playhead. Color swatch cycles through 7-color palette. Stored as _sections KSON custom field. Also fixed CHANGELOG syntax error from v0.0.19 that caused a SyntaxError at startup.\
 \
+[v0.0.21 SHIPPED] Section-Relative Paste: Right-click context menu includes a "Paste at Section..." submenu listing all named chart sections. Selecting a section pastes clipboard at that section's start tick with full undo support.\
+\
+[v0.0.22 SHIPPED] Per-Note FX Effects + Chromatic Aberration Glitch: Each FX hold now independently stores its own effect type and parameter values. "None" option added to silence lane-chain effects per hold. Glitch Events now produce SVG-based chromatic aberration (per-channel RGB offset filter) and CSS keyframe frame distortion, both scaling with glitch level. FX hold labels display per-note effect type.\
+\
+[v0.0.23 SHIPPED] Pattern Snippet Library: Floating panel (Window -> Pattern Snippets...) for saving and reusing named note patterns. Save any selection, name it, and it persists in localStorage. Click to load into clipboard and paste with Ctrl+V. Right-click context menu includes "Save as Snippet..." option. Double-click to rename snippets. Filter/search bar for large libraries.\
+\
 Point 1 (BPM Calibration Panel)\
 \pard\pardeftab720\sa240\partightenfactor0
 Calibration Mode should include a dedicated BPM analysis and BPM entry section that works alongside waveform-based timing alignment. Right now calibration focuses only on offset and start point alignment, but BPM is equally important because it defines how musical time is structured once the chart is synced.\
@@ -58,6 +64,14 @@ Point 6 (New Recommended: Orthographic Mode Overhaul)\
 Point 7 (New Recommended: Per-Section FX Automation Lane)\
 \pard\pardeftab720\sa240\partightenfactor0
 \cf0 \outl0\strokewidth0 \strokec2 The FX chain supports adding effects to FX-L and FX-R lanes but effect parameters (retrigger length, gate frequency, flanger rate, etc.) cannot be automated over time. The editor should add an automation lane view similar to REAPER or Ableton: each FX effect parameter gets a thin lane below the main chart lane with a drawn curve or step sequence representing the parameter value over time. Users can draw, drag, and edit automation breakpoints directly on the chart canvas. Automation data would be stored in KSON as part of the audio.fx.ch arrays or as a new nested automation key. This matches the system description\'92s \'93REAPER FX style automation or effect lanes\'94 requirement.\
+Status: NOT YET STARTED\
+\pard\pardeftab720\sa240\partightenfactor0
+\cf0 \outl0\strokewidth0 \strokec2 \
+\
+Point 8 (New Recommended: Waveform Preview Strip in 2D Edit View)\
+\pard\pardeftab720\sa240\partightenfactor0
+\cf0 \outl0\strokewidth0 \strokec2 The 2D chart editor currently shows only notes, lasers, and grid lines. A valuable addition would be a thin waveform strip rendered along the bottom or left edge of the edit canvas that shows the audio waveform amplitude in sync with the chart timeline. This would allow chartists to visually align notes to audio transients without switching to the Calibration window. The strip should be toggleable, semi-transparent, and use the same tick coordinate system as the rest of the editor so it scrolls in lockstep with the chart. The waveform data would be derived from the already-loaded audioBuffer using offline peak analysis, cached as a compact array of peak pairs, and redrawn only when the visible column range changes. This is a read-only visual aid and does not modify any chart data or timing model.\
+Status: NOT YET STARTED\
 \pard\pardeftab720\sa240\partightenfactor0
 \cf0 \outl0\strokewidth0 \
 }

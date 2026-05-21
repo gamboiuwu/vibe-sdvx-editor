@@ -6,7 +6,7 @@ import { exportKson, importKson, exportKsonPack, importKsonPack } from './kson.j
 import { EFFECT_DEFS, makeEffectInstance } from './effects.js';
 import { calibrationWindow } from './calibration.js';
 import { t, applyLocalization } from './i18n.js';
-import { velEnvEditor, openVelEnvEditor, toggleVelEnvEditor } from './velenv.js';
+import { velEnvEditor, getVelEnvEditor, openVelEnvEditor, toggleVelEnvEditor } from './velenv.js';
 import { dockInit, dockRegister, dockApplyLayout, dockToggle } from './dock.js';
 import { openToolsWindow } from './tools.js';
 import { openHeatmapWindow, updateHeatmap } from './heatmap.js';
@@ -62,6 +62,27 @@ console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px
 const APP_VERSION = '0.0.21';
 const CHANGELOG = [
   {
+    version: '0.0.23',
+    title: 'Pattern Snippet Library',
+    entries: [
+      ['add', '<strong>Pattern Snippet Library</strong> — new panel (<strong>Window → Pattern Snippets…</strong>) for saving and reusing note patterns. Select any region, click <em>Save Selection</em> in the panel, give it a name, and it persists across sessions.'],
+      ['add', 'Each snippet shows its note count and tick length. Click a snippet to load it into the clipboard, then <kbd>Ctrl+V</kbd> to paste it anywhere in the chart.'],
+      ['add', 'Double-click a snippet name to rename it. Individual snippets can be deleted with the ✕ button. All snippets are stored in browser localStorage and survive page reloads.'],
+      ['add', '<em>Save as Snippet…</em> option added to the right-click context menu (<kbd>C</kbd>) for quick access without opening the panel.'],
+      ['add', 'Filter/search bar at the top of the panel for quickly finding patterns by name when the library grows large.'],
+    ],
+  },
+  {
+    version: '0.0.22',
+    title: 'Per-Note FX Effects · Chromatic Aberration Glitch',
+    entries: [
+      ['add', '<strong>Per-note FX effect overrides</strong> — each FX hold can now carry its own independent effect type and parameter values. Right-click (or hover) an FX hold to open the FX tooltip, select any effect from the dropdown, and tweak its sliders. The hold drives that effect during playback regardless of the lane chain setting.'],
+      ['add', '<em>None</em> option added to the FX tooltip type selector — set an FX hold to None to explicitly silence any lane-chain effect during that hold while leaving the chain intact for other holds.'],
+      ['add', '<strong>Chromatic aberration + frame distortion glitch effects</strong> — Glitch Events now produce a true per-channel RGB offset (SVG <code>feColorMatrix</code> filter) visible as color fringing at the screen edges, plus an irregular <code>scaleX/scaleY/skewX</code> CSS keyframe animation that intensifies with the glitch level.'],
+      ['chg', 'FX hold labels in the 2D editor now display the per-note effect type (falling back to the lane chain if none is set), making per-note overrides immediately visible without opening the tooltip.'],
+    ],
+  },
+  {
     version: '0.0.21',
     title: 'Section-Relative Paste',
     entries: [
@@ -113,8 +134,8 @@ const CHANGELOG = [
       ['add', 'Tap sequence auto-resets after 3 seconds of inactivity so a new sequence can be started without closing the window.'],
       ['add', '<kbd>T</kbd> keyboard shortcut fires a tap and briefly flashes the button so keyboard-driven tapping gives clear visual feedback.'],
       ['add', 'Tap Tempo integrates with the existing BPM panel — confirmed tap BPM updates the beat-grid overlay in real time and is applied to the chart\'s first BPM event when the calibration window is closed with Apply.'],
-const APP_VERSION = '0.0.18';
-const CHANGELOG = [
+    ],
+  },
   {
     version: '0.0.18',
     title: 'Tap Tempo BPM Detection [Experimental]',
@@ -1152,12 +1173,19 @@ function updateLaserFilter(tick) {
 function updateFxEffects(tick) {
   if (!audioCtx || !_fxWetGain || !chart) return;
 
-  // Find the highest-priority active FX hold and its effect chain
+  // Find the highest-priority active FX hold; use its per-note effect if set
   let activeEffect = null;
   for (let li = 0; li < 2; li++) {
     const hold = chart.fx[li].find(n => n.len > 0 && n.y <= tick && tick <= n.y + n.len);
-    if (hold && chart.fxChains[li]?.length) {
-      activeEffect = { inst: chart.fxChains[li][0], hold };
+    if (hold) {
+      const effType = hold.effect || null;
+      if (effType && EFFECT_DEFS[effType]) {
+        const def = EFFECT_DEFS[effType];
+        const mergedParams = {};
+        for (const [k, p] of Object.entries(def.params))
+          mergedParams[k] = hold.effectParams?.[k] ?? p.def;
+        activeEffect = { inst: { type: effType, params: mergedParams }, hold };
+      }
       break;
     }
   }
@@ -2290,22 +2318,9 @@ function _loadingShow(stage, pct) {
 function _loadingDone() {
   const ov = document.getElementById('loading-overlay');
   if (!ov) return;
+  // Always dismiss — log any init errors to console instead of blocking the UI
   if (_initErrors.length > 0) {
-    // Keep overlay up so user can read the errors; wire up continue button
-    const stageEl  = document.getElementById('loading-stage');
-    const contBtn  = document.getElementById('loading-continue-btn');
-    const errBox   = document.getElementById('loading-errors');
-    if (stageEl) stageEl.textContent = `⚠ Initialized with ${_initErrors.length} error${_initErrors.length > 1 ? 's' : ''}`;
-    if (errBox)  errBox.style.display = '';
-    if (contBtn) {
-      contBtn.style.display = '';
-      contBtn.onclick = () => {
-        ov.style.opacity = '0';
-        ov.style.pointerEvents = 'none';
-        setTimeout(() => { if (ov) ov.style.display = 'none'; }, 420);
-      };
-    }
-    return;
+    console.warn(`[vibe-editr] ${_initErrors.length} init error(s):`, _initErrors);
   }
   ov.style.opacity = '0';
   ov.style.pointerEvents = 'none';
@@ -3636,32 +3651,13 @@ function _doShowFxTooltip(clientX, clientY, note, lane) {
   _fxPinned = true;
   _fxHoverNote = null;
 
-  const current   = note.effect || 'retrigger';
-  const laneName  = lane === 0 ? 'FX-L' : 'FX-R';
+  const current  = note.effect || '';
+  const laneName = lane === 0 ? 'FX-L' : 'FX-R';
 
-  const typeOpts = Object.entries(EFFECT_DEFS).map(([k, d]) =>
-    `<option value="${k}"${k === current ? ' selected' : ''}>${d.label}</option>`
-  ).join('');
-
-  let paramHtml = '';
-  const def = EFFECT_DEFS[current];
-  if (def) {
-    for (const [k, p] of Object.entries(def.params)) {
-      // Note: don't read params from note.effect (string), just show sliders with defaults
-      const val = p.def;
-      paramHtml += `
-        <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px">
-          <span style="min-width:68px;font-size:10px;color:#aaa">${p.label}</span>
-          <input type="range" class="fx-tt-sl" data-key="${k}"
-            min="${p.min}" max="${p.max}" step="${p.step}" value="${val}"
-            style="flex:1;accent-color:#ff8800;height:14px">
-          <input type="number" class="fx-tt-num" data-key="${k}"
-            min="${p.min}" max="${p.max}" step="${p.step}" value="${val}"
-            style="width:46px;background:#111;border:1px solid #333;border-radius:3px;color:#ddd;padding:1px 3px;font-size:10px">
-          <span style="min-width:20px;font-size:9px;color:#666">${p.unit || ''}</span>
-        </div>`;
-      }
-  }
+  const typeOpts = `<option value=""${!current ? ' selected' : ''}>None</option>` +
+    Object.entries(EFFECT_DEFS).map(([k, d]) =>
+      `<option value="${k}"${k === current ? ' selected' : ''}>${d.label}</option>`
+    ).join('');
 
   fxTooltipEl.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
@@ -3674,22 +3670,57 @@ function _doShowFxTooltip(clientX, clientY, note, lane) {
         ${typeOpts}
       </select>
     </div>
-    <div style="color:#666;font-size:9px;margin-bottom:4px;padding:0 2px">(per-note type only; lane effects set in panel)</div>
-    ${paramHtml}
+    <div class="fx-tt-params"></div>
   `;
 
-  // Type selector: change per-note effect type (note.effect)
-  fxTooltipEl.querySelector('.fx-tt-type-sel')?.addEventListener('change', ev => {
-    if (fxTooltipNote) fxTooltipNote.effect = ev.target.value || 'retrigger';
-    render();
-  });
+  function _buildParams(typeKey) {
+    const container = fxTooltipEl.querySelector('.fx-tt-params');
+    if (!container) return;
+    const def = EFFECT_DEFS[typeKey];
+    if (!def) { container.innerHTML = ''; return; }
+    let html = '';
+    for (const [k, p] of Object.entries(def.params)) {
+      const val = note.effectParams?.[k] ?? p.def;
+      html += `
+        <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px">
+          <span style="min-width:68px;font-size:10px;color:#aaa">${p.label}</span>
+          <input type="range" class="fx-tt-sl" data-key="${k}"
+            min="${p.min}" max="${p.max}" step="${p.step}" value="${val}"
+            style="flex:1;accent-color:#ff8800;height:14px">
+          <input type="number" class="fx-tt-num" data-key="${k}"
+            min="${p.min}" max="${p.max}" step="${p.step}" value="${val}"
+            style="width:46px;background:#111;border:1px solid #333;border-radius:3px;color:#ddd;padding:1px 3px;font-size:10px">
+          <span style="min-width:20px;font-size:9px;color:#666">${p.unit || ''}</span>
+        </div>`;
+    }
+    container.innerHTML = html;
+    container.querySelectorAll('.fx-tt-sl').forEach(sl => {
+      sl.addEventListener('input', () => {
+        if (!fxTooltipNote) return;
+        if (!fxTooltipNote.effectParams) fxTooltipNote.effectParams = {};
+        fxTooltipNote.effectParams[sl.dataset.key] = parseFloat(sl.value);
+        const num = container.querySelector(`.fx-tt-num[data-key="${sl.dataset.key}"]`);
+        if (num) num.value = sl.value;
+      });
+    });
+    container.querySelectorAll('.fx-tt-num').forEach(ni => {
+      ni.addEventListener('input', () => {
+        if (!fxTooltipNote) return;
+        if (!fxTooltipNote.effectParams) fxTooltipNote.effectParams = {};
+        fxTooltipNote.effectParams[ni.dataset.key] = parseFloat(ni.value);
+        const sl = container.querySelector(`.fx-tt-sl[data-key="${ni.dataset.key}"]`);
+        if (sl) sl.value = ni.value;
+      });
+    });
+  }
 
-  // Parameter sliders just for display (note.effect doesn't store params)
-  fxTooltipEl.querySelectorAll('.fx-tt-sl').forEach(sl => {
-    sl.addEventListener('input', () => { /* no-op: note.effect is string-only */ });
-  });
-  fxTooltipEl.querySelectorAll('.fx-tt-num').forEach(ni => {
-    ni.addEventListener('input', () => { /* no-op: note.effect is string-only */ });
+  _buildParams(current);
+
+  fxTooltipEl.querySelector('.fx-tt-type-sel')?.addEventListener('change', ev => {
+    if (!fxTooltipNote) return;
+    fxTooltipNote.effect = ev.target.value || null;
+    _buildParams(ev.target.value);
+    render();
   });
 
   fxTooltipEl.querySelector('.fx-tt-close')?.addEventListener('click', () => {
@@ -4434,6 +4465,7 @@ function ensureCtxMenu() {
     <div class="ctx-item ctx-has-sub" id="ctx-paste-section-root">Paste at Section… <span style="font-size:9px;color:#aaa">▶</span>
       <div class="ctx-sub" id="ctx-section-sub"></div>
     </div>
+    <div class="ctx-item" data-act="save-snippet">Save as Snippet…</div>
     <div class="ctx-sep"></div>
     <div class="ctx-item" data-act="add-bpm">Add BPM Change…</div>
     <div class="ctx-item" data-act="add-timesig">Add Time Sig…</div>
@@ -4447,12 +4479,31 @@ function ensureCtxMenu() {
             <div class="ctx-item" data-act="mirror-fx">Mirror FX</div>
             <div class="ctx-item" data-act="mirror-bt">Mirror BT</div>
             <div class="ctx-item" data-act="mirror-vol">Mirror VOL</div>
-            <div class="ctx-sep"></div>
+          </div>
+        </div>
+        <div class="ctx-item ctx-has-sub">Temporal Mirror
+          <div class="ctx-sub">
             <div class="ctx-item" data-act="tmirror-all">Temporal Mirror All</div>
             <div class="ctx-item" data-act="tmirror-bt">Temporal Mirror BT</div>
             <div class="ctx-item" data-act="tmirror-vol">Temporal Mirror VOL</div>
-            <div class="ctx-sep"></div>
-            <div class="ctx-item" data-act="swap-lasers">Swap VOL-L ↔ VOL-R</div>
+          </div>
+        </div>
+        <div class="ctx-item" data-act="swap-lasers">Swap VOL-L ↔ VOL-R</div>
+        <div class="ctx-sep"></div>
+        <div class="ctx-item ctx-has-sub">Random
+          <div class="ctx-sub">
+            <div class="ctx-item" data-act="rand-all">Random All</div>
+            <div class="ctx-item" data-act="rand-bt">Random BT</div>
+            <div class="ctx-item" data-act="rand-fx">Random FX</div>
+            <div class="ctx-item" data-act="rand-vol">Random VOL</div>
+          </div>
+        </div>
+        <div class="ctx-item ctx-has-sub">S-Ran <span style="font-size:9px;color:#aaa">(per-note)</span>
+          <div class="ctx-sub">
+            <div class="ctx-item" data-act="sran-all">S-Ran All</div>
+            <div class="ctx-item" data-act="sran-bt">S-Ran BT</div>
+            <div class="ctx-item" data-act="sran-fx">S-Ran FX</div>
+            <div class="ctx-item" data-act="sran-vol">S-Ran VOL</div>
           </div>
         </div>
       </div>
@@ -4462,23 +4513,6 @@ function ensureCtxMenu() {
         <div class="ctx-item" data-act="speed-half">Speed ½× (slower)</div>
         <div class="ctx-item" data-act="speed-double">Speed 2× (faster)</div>
         <div class="ctx-item" data-act="transform">Free Transform…  Ctrl+T</div>
-      </div>
-    </div>
-    <div class="ctx-sep"></div>
-    <div class="ctx-item ctx-has-sub">Random
-      <div class="ctx-sub">
-        <div class="ctx-item" data-act="rand-all">Random All</div>
-        <div class="ctx-item" data-act="rand-bt">Random BT</div>
-        <div class="ctx-item" data-act="rand-fx">Random FX</div>
-        <div class="ctx-item" data-act="rand-vol">Random VOL</div>
-      </div>
-    </div>
-    <div class="ctx-item ctx-has-sub">S-Ran <span style="font-size:9px;color:#aaa">(per-note)</span>
-      <div class="ctx-sub">
-        <div class="ctx-item" data-act="sran-all">S-Ran All</div>
-        <div class="ctx-item" data-act="sran-bt">S-Ran BT</div>
-        <div class="ctx-item" data-act="sran-fx">S-Ran FX</div>
-        <div class="ctx-item" data-act="sran-vol">S-Ran VOL</div>
       </div>
     </div>
     <div class="ctx-sep"></div>
@@ -4506,6 +4540,9 @@ function ensureCtxMenu() {
       const idx = parseInt(act.slice('paste-section-'.length), 10);
       const secs = [...(chart?.sections ?? [])].sort((a, b) => a.y - b.y);
       if (secs[idx]) selPasteAtTick(secs[idx].y);
+    }
+    else if (act === 'save-snippet') {
+      if (typeof SnippetLibrary !== 'undefined') SnippetLibrary.saveFromSelection();
     }
     else if (act === 'add-bpm')      openBpmModalAtCtx();
     else if (act === 'add-timesig')  openTimesigModalAtCtx();
@@ -5609,7 +5646,7 @@ function onKeyDown(e) {
     case '6': setTool('cam-event');  break;
     case '7': setTool('stop-event'); break;
     case 'e': case 'E': setTool('erase'); break;
-    case '`': e.preventDefault(); toggleVelEnvEditor(); break;
+    case 'Tab': e.preventDefault(); toggleVelEnvEditor(); break;
 
     case 'f': case 'F':
       if (!ctrl) {
@@ -7530,6 +7567,85 @@ let _glitchCtrl          = null;
 let _glitchActive        = false;
 let _glitchRefreshTimer  = null; // periodic snapshot refresh interval ID
 
+// ── Chromatic aberration + frame distortion CSS effects ──────────────────────
+let _glitchCssStyleEl = null;
+let _glitchCssAnimId  = 0;
+
+function _ensureGlitchSvgFilter() {
+  if (document.getElementById('glitch-chromab-svg')) return;
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.id = 'glitch-chromab-svg';
+  svg.setAttribute('style', 'position:absolute;width:0;height:0;overflow:hidden');
+  svg.innerHTML = `<defs>
+    <filter id="chromab-lo" color-interpolation-filters="sRGB">
+      <feColorMatrix in="SourceGraphic" type="matrix"
+        values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="r"/>
+      <feColorMatrix in="SourceGraphic" type="matrix"
+        values="0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0" result="g"/>
+      <feColorMatrix in="SourceGraphic" type="matrix"
+        values="0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0" result="b"/>
+      <feOffset in="r" dx="-2" dy="0" result="roff"/>
+      <feOffset in="b" dx="2"  dy="0" result="boff"/>
+      <feMerge><feMergeNode in="roff"/><feMergeNode in="g"/><feMergeNode in="boff"/></feMerge>
+    </filter>
+    <filter id="chromab-hi" color-interpolation-filters="sRGB">
+      <feColorMatrix in="SourceGraphic" type="matrix"
+        values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="r"/>
+      <feColorMatrix in="SourceGraphic" type="matrix"
+        values="0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0" result="g"/>
+      <feColorMatrix in="SourceGraphic" type="matrix"
+        values="0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0" result="b"/>
+      <feOffset in="r" dx="-5" dy="1"  result="roff"/>
+      <feOffset in="b" dx="5"  dy="-1" result="boff"/>
+      <feMerge><feMergeNode in="roff"/><feMergeNode in="g"/><feMergeNode in="boff"/></feMerge>
+    </filter>
+  </defs>`;
+  document.body.appendChild(svg);
+}
+
+function _applyGlitchCssEffects(el, level) {
+  if (!_glitchCssStyleEl) {
+    _glitchCssStyleEl = document.createElement('style');
+    _glitchCssStyleEl.id = 'glitch-css-effects';
+    document.head.appendChild(_glitchCssStyleEl);
+  }
+
+  if (level <= 0) {
+    el.style.filter    = '';
+    el.style.animation = '';
+    el.style.transform = '';
+    _glitchCssStyleEl.textContent = '';
+    return;
+  }
+
+  _ensureGlitchSvgFilter();
+
+  const t      = Math.max(0, Math.min(10, level)) / 10;
+  const filtId = t > 0.5 ? 'chromab-hi' : 'chromab-lo';
+  el.style.filter = `url(#${filtId})`;
+
+  // Distortion animation: irregular scaleX/scaleY/skewX oscillation
+  const animName = `glitch-dist-${++_glitchCssAnimId}`;
+  const sx1 = (1 + t * 0.06).toFixed(4);
+  const sx2 = (1 - t * 0.04).toFixed(4);
+  const sy1 = (1 - t * 0.05).toFixed(4);
+  const sy2 = (1 + t * 0.03).toFixed(4);
+  const sk  = (t * 1.8).toFixed(2);
+  const dur = Math.max(60, Math.round(180 - t * 130));
+
+  _glitchCssStyleEl.textContent = `
+    @keyframes ${animName} {
+      0%   { transform: scaleX(1)     scaleY(1);     }
+      15%  { transform: scaleX(${sx1}) scaleY(${sy1}) skewX(${sk}deg);  }
+      30%  { transform: scaleX(1)     scaleY(1);     }
+      55%  { transform: scaleX(${sx2}) scaleY(${sy2}) skewX(-${sk}deg); }
+      70%  { transform: scaleX(1)     scaleY(1);     }
+      85%  { transform: scaleX(${sx1}) scaleY(${sy2});                   }
+      100% { transform: scaleX(1)     scaleY(1);     }
+    }`;
+  el.style.animation = `${animName} ${dur}ms steps(3) infinite`;
+}
+
 function _levelToGlitchOptions(level) {
   const t = Math.max(0, Math.min(10, level)) / 10;
   return {
@@ -7577,6 +7693,7 @@ function _updateGlitchFromTick(tick) {
   const level = chart?.getGlitchLevelAt?.(tick) ?? 0;
   if (level === _glitchAppliedLevel) return; // no change
   _glitchAppliedLevel = level;
+  _applyGlitchCssEffects(el, level);
   if (level <= 0) {
     _glitchCtrl?.stopGlitch();
     _glitchCtrl = null;
@@ -8049,6 +8166,9 @@ window.addEventListener('DOMContentLoaded', () => {
       fxPanel.style.width = fxPanel.style.minWidth = fxPanel.style.maxWidth = '';
       dockRegister('fx-panel', fxPanel, 'FX & Events', '★', 'right');
     }
+
+    // Eagerly create velenv so its dockRegister call runs before dockApplyLayout
+    getVelEnvEditor();
 
     // Apply the full layout (from localStorage, or use each panel's defaultRegion)
     if (typeof dockApplyLayout === 'function') dockApplyLayout();
@@ -8977,4 +9097,183 @@ const ChartSections = (function() {
       try { localStorage.setItem(DIAG_KEY, today); } catch(_) {}
     }, 2500);
   }
+})();
+
+// ── v0.0.23: Pattern Snippet Library ─────────────────────────────────────────
+const SnippetLibrary = (function() {
+  const STORAGE_KEY = 'vibe_editr_snippets';
+  const panel   = document.getElementById('snippets-panel');
+  const list    = document.getElementById('snp-list');
+  const btnSave = document.getElementById('snp-save-sel');
+  const btnClose= document.getElementById('snp-close');
+  const btnOpen = document.getElementById('btn-snippets-panel');
+  const search  = document.getElementById('snp-search');
+
+  let snippets = [];
+  let filterQ  = '';
+
+  function loadStorage() {
+    try { snippets = JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch(_) { snippets = []; }
+  }
+  function persist() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(snippets)); } catch(_) {}
+  }
+  function countNotes(clip) {
+    let n = 0;
+    (clip.bt     || []).forEach(l => n += l.length);
+    (clip.fx     || []).forEach(l => n += l.length);
+    (clip.lasers || []).forEach(arr => (arr || []).forEach(s => n += (s.points?.length || 1)));
+    return n;
+  }
+  function ticksToLabel(t) {
+    const m = Math.floor((t || 0) / 192);
+    const b = Math.floor(((t || 0) % 192) / 48);
+    if (m > 0) return `${m}m ${b}b`;
+    return `${Math.max(b, 1)}b`;
+  }
+  function refresh() {
+    if (!list) return;
+    const q = filterQ.toLowerCase();
+    const shown = q ? snippets.filter(s => s.name.toLowerCase().includes(q)) : snippets;
+    if (!shown.length) {
+      list.innerHTML = `<div class="bm-empty">` +
+        (q ? `No snippets matching "<em>${q}</em>".`
+           : 'No snippets yet.<br>Select a region and click <em>Save Selection</em>.') +
+        `</div>`;
+      return;
+    }
+    list.innerHTML = shown.map(s => {
+      const noteStr = `${s.noteCount} note${s.noteCount !== 1 ? 's' : ''}`;
+      const durStr  = ticksToLabel(s.dur);
+      return `<div class="bm-item snp-item" data-id="${s.id}">
+        <div class="snp-info" style="flex:1;min-width:0;cursor:pointer">
+          <div class="snp-name">${s.name.replace(/</g,'&lt;')}</div>
+          <div class="snp-meta">${noteStr} &middot; ${durStr}</div>
+        </div>
+        <button class="snp-load fp-btn" data-id="${s.id}" title="Load into clipboard (then Ctrl+V to paste)">&#9166;</button>
+        <button class="bm-del" data-id="${s.id}" title="Delete snippet">&#10005;</button>
+      </div>`;
+    }).join('');
+
+    list.querySelectorAll('.snp-item').forEach(el => {
+      const id = el.dataset.id;
+      el.querySelector('.snp-info')?.addEventListener('click', () => loadSnippet(id));
+      el.querySelector('.snp-load')?.addEventListener('click', ev => {
+        ev.stopPropagation(); loadSnippet(id);
+      });
+      el.querySelector('.bm-del')?.addEventListener('click', ev => {
+        ev.stopPropagation();
+        snippets = snippets.filter(s => s.id !== id);
+        persist(); refresh();
+      });
+      el.querySelector('.snp-name')?.addEventListener('dblclick', ev => {
+        ev.stopPropagation();
+        const sn = snippets.find(s => s.id === id);
+        if (!sn) return;
+        const name = prompt('Rename snippet:', sn.name);
+        if (name !== null && name.trim()) { sn.name = name.trim(); persist(); refresh(); }
+      });
+    });
+  }
+
+  function loadSnippet(id) {
+    const sn = snippets.find(s => s.id === id);
+    if (!sn) return;
+    sel.clipboard = {
+      bt:     JSON.parse(JSON.stringify(sn.bt)),
+      fx:     JSON.parse(JSON.stringify(sn.fx)),
+      lasers: JSON.parse(JSON.stringify(sn.lasers)),
+      vel:    JSON.parse(JSON.stringify(sn.vel    || [])),
+      glitch: JSON.parse(JSON.stringify(sn.glitch || [])),
+      dur:    sn.dur,
+    };
+    _snpToast(`"${sn.name}" loaded — press Ctrl+V to paste`);
+  }
+
+  function saveFromSelection() {
+    if (!sel.active) { _snpToast('Select a region first (middle-mouse drag)'); return; }
+    selCopy();
+    const clip = sel.clipboard;
+    if (!clip) return;
+    _promptSave(clip);
+  }
+
+  function saveFromClipboard() {
+    const clip = sel.clipboard;
+    if (!clip) { _snpToast('Clipboard is empty — copy something first'); return; }
+    _promptSave(clip);
+  }
+
+  function _promptSave(clip) {
+    const defaultName = `Pattern ${snippets.length + 1}`;
+    const name = prompt('Name this snippet:', defaultName);
+    if (name === null) return;
+    const id = 'snp_' + Date.now();
+    snippets.unshift({
+      id,
+      name:      name.trim() || defaultName,
+      created:   Date.now(),
+      dur:       clip.dur || 0,
+      noteCount: countNotes(clip),
+      bt:        JSON.parse(JSON.stringify(clip.bt)),
+      fx:        JSON.parse(JSON.stringify(clip.fx)),
+      lasers:    JSON.parse(JSON.stringify(clip.lasers)),
+      vel:       JSON.parse(JSON.stringify(clip.vel    || [])),
+      glitch:    JSON.parse(JSON.stringify(clip.glitch || [])),
+    });
+    persist(); refresh();
+    _snpToast(`Saved snippet "${name.trim() || defaultName}"`);
+    if (panel && panel.style.display === 'none') panel.style.display = 'flex';
+  }
+
+  function _snpToast(msg) {
+    let t = document.getElementById('snp-toast');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'snp-toast';
+      t.style.cssText = 'position:fixed;bottom:54px;left:50%;transform:translateX(-50%);' +
+        'background:#16162a;border:1px solid #00cfff;color:#00cfff;padding:8px 18px;' +
+        'border-radius:6px;font-size:13px;font-weight:600;z-index:9999;' +
+        'pointer-events:none;opacity:0;transition:opacity 0.15s';
+      document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.style.opacity = '1';
+    clearTimeout(t._to);
+    t._to = setTimeout(() => { t.style.opacity = '0'; }, 2200);
+  }
+
+  function toggle() {
+    if (!panel) return;
+    if (panel.style.display === 'none') { loadStorage(); refresh(); panel.style.display = 'flex'; }
+    else panel.style.display = 'none';
+  }
+
+  btnSave?.addEventListener('click', saveFromSelection);
+  btnClose?.addEventListener('click', () => { if (panel) panel.style.display = 'none'; });
+  btnOpen?.addEventListener('click', toggle);
+  search?.addEventListener('input', () => { filterQ = search.value; refresh(); });
+
+  // Drag header
+  const header = panel?.querySelector('.fp-header');
+  if (header) {
+    let dragging = false, ox = 0, oy = 0;
+    header.addEventListener('mousedown', e => {
+      if (e.target.tagName === 'BUTTON') return;
+      dragging = true;
+      const r = panel.getBoundingClientRect();
+      ox = e.clientX - r.left; oy = e.clientY - r.top;
+      e.preventDefault();
+    });
+    window.addEventListener('mousemove', e => {
+      if (!dragging) return;
+      panel.style.left  = (e.clientX - ox) + 'px';
+      panel.style.top   = (e.clientY - oy) + 'px';
+      panel.style.right = 'auto';
+    });
+    window.addEventListener('mouseup', () => { dragging = false; });
+  }
+
+  loadStorage();
+  return { saveFromSelection, saveFromClipboard, loadSnippet, toggle, refresh };
 })();

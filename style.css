@@ -3097,6 +3097,34 @@ kbd {
 }
 .bm-item .bm-del:hover { color: #ff6080; }
 
+/* ── Pattern Snippet Library panel ───────────────────────────────────── */
+.snp-item { align-items: flex-start; }
+.snp-name {
+  font-size: 12px;
+  color: #f0f0ff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.snp-name:hover { color: #00cfff; }
+.snp-meta {
+  font-size: 10px;
+  color: #6668a0;
+  margin-top: 1px;
+}
+.snp-load {
+  background: #2a2a44;
+  border: 1px solid #3040a0;
+  color: #00cfff;
+  font-size: 13px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.snp-load:hover { background: #3040a0; }
+
 /* ── Chart Sections panel ─────────────────────────────────────────────── */
 .sec-item {
   display: flex;
@@ -3206,3 +3234,18 @@ kbd {
 #velenv-canvas {
   cursor: crosshair;
 }
+
+/* When velenv is inside a dock float or region, neutralise its native chrome */
+.dp-float > #velenv-win,
+.dr-content > #velenv-win {
+  position: relative !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  left: unset !important; top: unset !important;
+  width: 100% !important; height: 100% !important;
+  min-width: 0 !important; min-height: 0 !important;
+  flex: 1;
+}
+.dp-float > #velenv-win #velenv-bar,
+.dr-content > #velenv-win #velenv-bar { display: none !important; }

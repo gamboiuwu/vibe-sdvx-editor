@@ -3425,15 +3425,13 @@ function _toolHandOpt(c) {
       if (hasBtAD) {
         outer: for (let s = 0; s < 2; s++) {
           for (const sec of chart.lasers[s]) {
-            let segStart = sec.y;
             for (let pi = 0; pi < sec.points.length - 1; pi++) {
-              const p0 = sec.points[pi];
-              const segEnd = segStart + p0.ry;
-              if (p0.v !== sec.points[pi + 1].v && segEnd > startT && segStart < endT) {
+              const p0 = sec.points[pi], p1 = sec.points[pi + 1];
+              const segStart = sec.y + p0.ry, segEnd = sec.y + p1.ry;
+              if (p0.v !== p1.v && segEnd > startT && segStart < endT) {
                 stretchWithLaser = true;
                 break outer;
               }
-              segStart = segEnd;
             }
           }
         }
@@ -5620,16 +5618,14 @@ function _toolChartValidator(c) {
       const LASER_GAP_LIMIT = 12;
 
       // Returns true if any laser has a non-static (moving) segment active at tick t.
-      // A segment is moving when its start and end positions differ (p0.v !== p1.v).
+      // ry is an absolute offset from sec.y (same convention as renderer: t0 = sec.y + p0.ry).
       function isLaserMoving(t) {
         for (let s = 0; s < 2; s++) {
           for (const sec of chart.lasers[s]) {
-            let segStart = sec.y;
             for (let pi = 0; pi < sec.points.length - 1; pi++) {
-              const p0 = sec.points[pi];
-              const segEnd = segStart + p0.ry;
-              if (t >= segStart && t < segEnd && p0.v !== sec.points[pi + 1].v) return true;
-              segStart = segEnd;
+              const p0 = sec.points[pi], p1 = sec.points[pi + 1];
+              const segStart = sec.y + p0.ry, segEnd = sec.y + p1.ry;
+              if (t >= segStart && t < segEnd && p0.v !== p1.v) return true;
             }
           }
         }
