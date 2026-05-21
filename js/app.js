@@ -113,8 +113,8 @@ const CHANGELOG = [
       ['add', 'Tap sequence auto-resets after 3 seconds of inactivity so a new sequence can be started without closing the window.'],
       ['add', '<kbd>T</kbd> keyboard shortcut fires a tap and briefly flashes the button so keyboard-driven tapping gives clear visual feedback.'],
       ['add', 'Tap Tempo integrates with the existing BPM panel — confirmed tap BPM updates the beat-grid overlay in real time and is applied to the chart\'s first BPM event when the calibration window is closed with Apply.'],
-const APP_VERSION = '0.0.18';
-const CHANGELOG = [
+    ],
+  },
   {
     version: '0.0.18',
     title: 'Tap Tempo BPM Detection [Experimental]',
