@@ -2969,15 +2969,72 @@ window.addEventListener('DOMContentLoaded', () => {
       fr.readAsArrayBuffer(file);
     });
 
-    // If there's a .ksonpack in the folder, treat it like opening a ksonpack bundle
+    // If there's a .ksonpack in the folder, load it inline so the full folder
+    // file list stays available for audio/jacket auto-load.
     const packFile = files.find(f => f.name.endsWith('.ksonpack') || (f.name.endsWith('.json') && f.name.toLowerCase().includes('pack')));
     if (packFile) {
-      const fi = document.getElementById('file-input');
-      fi.accept = '.ksonpack,.json'; fi.dataset.bundle = '1';
-      // Synthesise a FileList-like event to reuse the existing ksonpack handler
-      const dt = new DataTransfer(); dt.items.add(packFile);
-      fi.files = dt.files;
-      fi.dispatchEvent(new Event('change', { bubbles: true }));
+      try {
+        _loadingShow(`Loading ${packFile.name}…`, 20);
+        const packText = await readText(packFile);
+        const { charts: packCharts, meta: packMeta, tabNames: packTabNames = [], audioFilenames: packAudioNames = [] } = importKsonPack(packText);
+        if (!packCharts.length) throw new Error('Pack contains no charts.');
+
+        const startIdx = activeTabIdx;
+        for (let i = 0; i < packCharts.length; i++) {
+          const c = packCharts[i];
+          const savedName = packTabNames[i];
+          const fallback = savedName || (c.meta?.title
+            ? (c.meta.difficulty ? `${c.meta.title} - ${c.meta.difficulty.toUpperCase()}` : c.meta.title)
+            : `Chart ${tabs.length + 1}`);
+          const slot = i === 0 ? startIdx : (tabs.push({ name: fallback, chart: c, audioBuffer: null, hispeed: 1.0 }) - 1);
+          tabs[slot].chart = c;
+          tabs[slot].name  = fallback;
+        }
+
+        chart = packCharts[0];
+        switchToTab(startIdx);
+        chart = tabs[startIdx].chart;
+        renderer.chart = chart; renderer.scrollCol = 0; renderer.playTick = 0;
+        if (gameView) { gameView.chart = chart; gameView._liveCamera = null; gameView._totalWeight = 0; }
+        fxChipSEBuffers = [null, null];
+        pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList(); updateStopEventList(); updateScrollSpeedEventList();
+        renderFxChain(0); renderFxChain(1);
+        renderTabBar();
+        render();
+        updateSeekbar(0);
+        _idbAutosave();
+
+        // ── Auto-load audio from folder ───────────────────────────────────
+        // 1. Try each audio filename listed in pack meta (exact basename match)
+        // 2. Fall back to any audio file in the folder
+        const audioExts = ['.ogg', '.mp3', '.wav', '.flac'];
+        let audioFile = null;
+        for (const name of packAudioNames) {
+          audioFile = files.find(f => f.name === name);
+          if (audioFile) break;
+        }
+        // Also check individual chart music fields in case pack was old format
+        if (!audioFile) {
+          for (const c of packCharts) {
+            const musicName = c.meta?.music?.split(/[\\/]/).pop();
+            if (musicName) { audioFile = files.find(f => f.name === musicName); if (audioFile) break; }
+          }
+        }
+        if (!audioFile) audioFile = files.find(f => audioExts.some(x => f.name.toLowerCase().endsWith(x)));
+        if (audioFile) { await loadAudioFile(audioFile); tabs.forEach(t => { t.audioBuffer = audioBuffer; }); }
+
+        // ── Auto-load jacket from folder ──────────────────────────────────
+        const imgExts = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
+        const jacketName = packCharts[0].meta?.jacket?.split(/[\\/]/).pop();
+        const jacketFile = (jacketName && files.find(f => f.name === jacketName))
+                        || files.find(f => imgExts.some(x => f.name.toLowerCase().endsWith(x)));
+        if (jacketFile) {
+          const img = document.getElementById('jacket-preview');
+          if (img) { img.src = URL.createObjectURL(jacketFile); img.style.display = 'block'; }
+        }
+
+        _loadingDone();
+      } catch (err) { _loadingDone(); alert('Error loading pack:\n' + err.message); }
       e.target.value = ''; return;
     }
 
