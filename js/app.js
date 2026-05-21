@@ -62,6 +62,27 @@ console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px
 const APP_VERSION = '0.0.21';
 const CHANGELOG = [
   {
+    version: '0.0.23',
+    title: 'Pattern Snippet Library',
+    entries: [
+      ['add', '<strong>Pattern Snippet Library</strong> — new panel (<strong>Window → Pattern Snippets…</strong>) for saving and reusing note patterns. Select any region, click <em>Save Selection</em> in the panel, give it a name, and it persists across sessions.'],
+      ['add', 'Each snippet shows its note count and tick length. Click a snippet to load it into the clipboard, then <kbd>Ctrl+V</kbd> to paste it anywhere in the chart.'],
+      ['add', 'Double-click a snippet name to rename it. Individual snippets can be deleted with the ✕ button. All snippets are stored in browser localStorage and survive page reloads.'],
+      ['add', '<em>Save as Snippet…</em> option added to the right-click context menu (<kbd>C</kbd>) for quick access without opening the panel.'],
+      ['add', 'Filter/search bar at the top of the panel for quickly finding patterns by name when the library grows large.'],
+    ],
+  },
+  {
+    version: '0.0.22',
+    title: 'Per-Note FX Effects · Chromatic Aberration Glitch',
+    entries: [
+      ['add', '<strong>Per-note FX effect overrides</strong> — each FX hold can now carry its own independent effect type and parameter values. Right-click (or hover) an FX hold to open the FX tooltip, select any effect from the dropdown, and tweak its sliders. The hold drives that effect during playback regardless of the lane chain setting.'],
+      ['add', '<em>None</em> option added to the FX tooltip type selector — set an FX hold to None to explicitly silence any lane-chain effect during that hold while leaving the chain intact for other holds.'],
+      ['add', '<strong>Chromatic aberration + frame distortion glitch effects</strong> — Glitch Events now produce a true per-channel RGB offset (SVG <code>feColorMatrix</code> filter) visible as color fringing at the screen edges, plus an irregular <code>scaleX/scaleY/skewX</code> CSS keyframe animation that intensifies with the glitch level.'],
+      ['chg', 'FX hold labels in the 2D editor now display the per-note effect type (falling back to the lane chain if none is set), making per-note overrides immediately visible without opening the tooltip.'],
+    ],
+  },
+  {
     version: '0.0.21',
     title: 'Section-Relative Paste',
     entries: [
@@ -4444,6 +4465,7 @@ function ensureCtxMenu() {
     <div class="ctx-item ctx-has-sub" id="ctx-paste-section-root">Paste at Section… <span style="font-size:9px;color:#aaa">▶</span>
       <div class="ctx-sub" id="ctx-section-sub"></div>
     </div>
+    <div class="ctx-item" data-act="save-snippet">Save as Snippet…</div>
     <div class="ctx-sep"></div>
     <div class="ctx-item" data-act="add-bpm">Add BPM Change…</div>
     <div class="ctx-item" data-act="add-timesig">Add Time Sig…</div>
@@ -4518,6 +4540,9 @@ function ensureCtxMenu() {
       const idx = parseInt(act.slice('paste-section-'.length), 10);
       const secs = [...(chart?.sections ?? [])].sort((a, b) => a.y - b.y);
       if (secs[idx]) selPasteAtTick(secs[idx].y);
+    }
+    else if (act === 'save-snippet') {
+      if (typeof SnippetLibrary !== 'undefined') SnippetLibrary.saveFromSelection();
     }
     else if (act === 'add-bpm')      openBpmModalAtCtx();
     else if (act === 'add-timesig')  openTimesigModalAtCtx();
@@ -9072,4 +9097,183 @@ const ChartSections = (function() {
       try { localStorage.setItem(DIAG_KEY, today); } catch(_) {}
     }, 2500);
   }
+})();
+
+// ── v0.0.23: Pattern Snippet Library ─────────────────────────────────────────
+const SnippetLibrary = (function() {
+  const STORAGE_KEY = 'vibe_editr_snippets';
+  const panel   = document.getElementById('snippets-panel');
+  const list    = document.getElementById('snp-list');
+  const btnSave = document.getElementById('snp-save-sel');
+  const btnClose= document.getElementById('snp-close');
+  const btnOpen = document.getElementById('btn-snippets-panel');
+  const search  = document.getElementById('snp-search');
+
+  let snippets = [];
+  let filterQ  = '';
+
+  function loadStorage() {
+    try { snippets = JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch(_) { snippets = []; }
+  }
+  function persist() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(snippets)); } catch(_) {}
+  }
+  function countNotes(clip) {
+    let n = 0;
+    (clip.bt     || []).forEach(l => n += l.length);
+    (clip.fx     || []).forEach(l => n += l.length);
+    (clip.lasers || []).forEach(arr => (arr || []).forEach(s => n += (s.points?.length || 1)));
+    return n;
+  }
+  function ticksToLabel(t) {
+    const m = Math.floor((t || 0) / 192);
+    const b = Math.floor(((t || 0) % 192) / 48);
+    if (m > 0) return `${m}m ${b}b`;
+    return `${Math.max(b, 1)}b`;
+  }
+  function refresh() {
+    if (!list) return;
+    const q = filterQ.toLowerCase();
+    const shown = q ? snippets.filter(s => s.name.toLowerCase().includes(q)) : snippets;
+    if (!shown.length) {
+      list.innerHTML = `<div class="bm-empty">` +
+        (q ? `No snippets matching "<em>${q}</em>".`
+           : 'No snippets yet.<br>Select a region and click <em>Save Selection</em>.') +
+        `</div>`;
+      return;
+    }
+    list.innerHTML = shown.map(s => {
+      const noteStr = `${s.noteCount} note${s.noteCount !== 1 ? 's' : ''}`;
+      const durStr  = ticksToLabel(s.dur);
+      return `<div class="bm-item snp-item" data-id="${s.id}">
+        <div class="snp-info" style="flex:1;min-width:0;cursor:pointer">
+          <div class="snp-name">${s.name.replace(/</g,'&lt;')}</div>
+          <div class="snp-meta">${noteStr} &middot; ${durStr}</div>
+        </div>
+        <button class="snp-load fp-btn" data-id="${s.id}" title="Load into clipboard (then Ctrl+V to paste)">&#9166;</button>
+        <button class="bm-del" data-id="${s.id}" title="Delete snippet">&#10005;</button>
+      </div>`;
+    }).join('');
+
+    list.querySelectorAll('.snp-item').forEach(el => {
+      const id = el.dataset.id;
+      el.querySelector('.snp-info')?.addEventListener('click', () => loadSnippet(id));
+      el.querySelector('.snp-load')?.addEventListener('click', ev => {
+        ev.stopPropagation(); loadSnippet(id);
+      });
+      el.querySelector('.bm-del')?.addEventListener('click', ev => {
+        ev.stopPropagation();
+        snippets = snippets.filter(s => s.id !== id);
+        persist(); refresh();
+      });
+      el.querySelector('.snp-name')?.addEventListener('dblclick', ev => {
+        ev.stopPropagation();
+        const sn = snippets.find(s => s.id === id);
+        if (!sn) return;
+        const name = prompt('Rename snippet:', sn.name);
+        if (name !== null && name.trim()) { sn.name = name.trim(); persist(); refresh(); }
+      });
+    });
+  }
+
+  function loadSnippet(id) {
+    const sn = snippets.find(s => s.id === id);
+    if (!sn) return;
+    sel.clipboard = {
+      bt:     JSON.parse(JSON.stringify(sn.bt)),
+      fx:     JSON.parse(JSON.stringify(sn.fx)),
+      lasers: JSON.parse(JSON.stringify(sn.lasers)),
+      vel:    JSON.parse(JSON.stringify(sn.vel    || [])),
+      glitch: JSON.parse(JSON.stringify(sn.glitch || [])),
+      dur:    sn.dur,
+    };
+    _snpToast(`"${sn.name}" loaded — press Ctrl+V to paste`);
+  }
+
+  function saveFromSelection() {
+    if (!sel.active) { _snpToast('Select a region first (middle-mouse drag)'); return; }
+    selCopy();
+    const clip = sel.clipboard;
+    if (!clip) return;
+    _promptSave(clip);
+  }
+
+  function saveFromClipboard() {
+    const clip = sel.clipboard;
+    if (!clip) { _snpToast('Clipboard is empty — copy something first'); return; }
+    _promptSave(clip);
+  }
+
+  function _promptSave(clip) {
+    const defaultName = `Pattern ${snippets.length + 1}`;
+    const name = prompt('Name this snippet:', defaultName);
+    if (name === null) return;
+    const id = 'snp_' + Date.now();
+    snippets.unshift({
+      id,
+      name:      name.trim() || defaultName,
+      created:   Date.now(),
+      dur:       clip.dur || 0,
+      noteCount: countNotes(clip),
+      bt:        JSON.parse(JSON.stringify(clip.bt)),
+      fx:        JSON.parse(JSON.stringify(clip.fx)),
+      lasers:    JSON.parse(JSON.stringify(clip.lasers)),
+      vel:       JSON.parse(JSON.stringify(clip.vel    || [])),
+      glitch:    JSON.parse(JSON.stringify(clip.glitch || [])),
+    });
+    persist(); refresh();
+    _snpToast(`Saved snippet "${name.trim() || defaultName}"`);
+    if (panel && panel.style.display === 'none') panel.style.display = 'flex';
+  }
+
+  function _snpToast(msg) {
+    let t = document.getElementById('snp-toast');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'snp-toast';
+      t.style.cssText = 'position:fixed;bottom:54px;left:50%;transform:translateX(-50%);' +
+        'background:#16162a;border:1px solid #00cfff;color:#00cfff;padding:8px 18px;' +
+        'border-radius:6px;font-size:13px;font-weight:600;z-index:9999;' +
+        'pointer-events:none;opacity:0;transition:opacity 0.15s';
+      document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.style.opacity = '1';
+    clearTimeout(t._to);
+    t._to = setTimeout(() => { t.style.opacity = '0'; }, 2200);
+  }
+
+  function toggle() {
+    if (!panel) return;
+    if (panel.style.display === 'none') { loadStorage(); refresh(); panel.style.display = 'flex'; }
+    else panel.style.display = 'none';
+  }
+
+  btnSave?.addEventListener('click', saveFromSelection);
+  btnClose?.addEventListener('click', () => { if (panel) panel.style.display = 'none'; });
+  btnOpen?.addEventListener('click', toggle);
+  search?.addEventListener('input', () => { filterQ = search.value; refresh(); });
+
+  // Drag header
+  const header = panel?.querySelector('.fp-header');
+  if (header) {
+    let dragging = false, ox = 0, oy = 0;
+    header.addEventListener('mousedown', e => {
+      if (e.target.tagName === 'BUTTON') return;
+      dragging = true;
+      const r = panel.getBoundingClientRect();
+      ox = e.clientX - r.left; oy = e.clientY - r.top;
+      e.preventDefault();
+    });
+    window.addEventListener('mousemove', e => {
+      if (!dragging) return;
+      panel.style.left  = (e.clientX - ox) + 'px';
+      panel.style.top   = (e.clientY - oy) + 'px';
+      panel.style.right = 'auto';
+    });
+    window.addEventListener('mouseup', () => { dragging = false; });
+  }
+
+  loadStorage();
+  return { saveFromSelection, saveFromClipboard, loadSnippet, toggle, refresh };
 })();
