@@ -616,6 +616,119 @@ function _toolBpmSync(c) {
   sec.appendChild(out);
   sec.appendChild(snapBtn);
   recalc();
+
+  // ── Tap Tempo sub-section ─────────────────────────────────────────────────
+  const tapSec = _section('Tap Tempo');
+  c.appendChild(tapSec);
+
+  let _ttTimes = [];
+  let _ttTimer = null;
+
+  const tapBtn = document.createElement('button');
+  tapBtn.textContent = '◉  Tap BPM';
+  tapBtn.title = 'Click repeatedly in rhythm to detect BPM';
+  tapBtn.style.cssText = [
+    'width:100%;padding:10px 0;margin-bottom:6px;cursor:pointer;',
+    'background:#1a1030;border:2px solid #aa88ff;color:#cc99ff;',
+    'border-radius:6px;font-size:15px;font-weight:700;letter-spacing:.5px;',
+    'transition:background .08s,transform .06s;',
+  ].join('');
+  tapBtn.addEventListener('mousedown', () => { tapBtn.style.transform = 'scale(0.97)'; });
+  tapBtn.addEventListener('mouseup',   () => { tapBtn.style.transform = ''; });
+
+  const ttReadout = _h('div', 'tool-result-box');
+  ttReadout.style.cssText += ';text-align:center;min-height:36px;line-height:36px;font-style:italic;color:#5558a0;';
+  ttReadout.textContent = '— click the button in rhythm —';
+
+  const ttBtnRow = document.createElement('div');
+  ttBtnRow.style.cssText = 'display:flex;gap:6px;margin-top:4px;';
+
+  const ttApply = _btn('✓ Set as Chart BPM');
+  ttApply.style.cssText += ';flex:1;background:#0a2210;border-color:#39ff14;color:#39ff14;display:none;';
+
+  const ttReset = _btn('✕ Reset');
+  ttReset.style.cssText += ';border-color:#882244;color:#ff4466;display:none;';
+
+  ttBtnRow.append(ttApply, ttReset);
+
+  function ttCalcBpm() {
+    if (_ttTimes.length < 2) return null;
+    let sum = 0;
+    for (let i = 1; i < _ttTimes.length; i++) sum += _ttTimes[i] - _ttTimes[i - 1];
+    return 60000 / (sum / (_ttTimes.length - 1));
+  }
+
+  function ttUpdateDisplay() {
+    const count = _ttTimes.length;
+    const bpm   = ttCalcBpm();
+    if (count === 0) {
+      ttReadout.style.fontStyle = 'italic';
+      ttReadout.style.color = '#5558a0';
+      ttReadout.innerHTML = '— click the button in rhythm —';
+      ttApply.style.display = 'none';
+      ttReset.style.display = 'none';
+    } else if (count === 1) {
+      ttReadout.style.fontStyle = '';
+      ttReadout.style.color = '#d8d8f0';
+      ttReadout.textContent = '1 tap — keep tapping…';
+      ttApply.style.display = 'none';
+      ttReset.style.display = 'inline';
+    } else {
+      ttReadout.style.fontStyle = '';
+      ttReadout.style.color = '#aaffaa';
+      ttReadout.innerHTML = `<b style="font-size:16px">${bpm.toFixed(1)} BPM</b> &nbsp;<span style="color:#888;font-size:11px">(${count} taps)</span>`;
+      bpmIn.value = bpm.toFixed(2);
+      recalc();
+      ttApply.style.display = 'inline';
+      ttReset.style.display = 'inline';
+    }
+  }
+
+  function ttHandleTap() {
+    const now = performance.now();
+    if (_ttTimes.length > 0 && now - _ttTimes[_ttTimes.length - 1] > 3000) _ttTimes = [];
+    _ttTimes.push(now);
+    if (_ttTimer) clearTimeout(_ttTimer);
+    _ttTimer = setTimeout(() => {
+      _ttTimes = [];
+      _ttTimer = null;
+      ttUpdateDisplay();
+    }, 3000);
+    ttUpdateDisplay();
+  }
+
+  tapBtn.addEventListener('click', ttHandleTap);
+
+  ttApply.addEventListener('click', () => {
+    const bpm = ttCalcBpm();
+    if (bpm === null) return;
+    const rounded = Math.round(bpm * 2) / 2;
+    if (typeof chart !== 'undefined' && chart) {
+      if (typeof saveUndo === 'function') saveUndo('Tap Tempo BPM');
+      chart.meta.bpm = rounded;
+      if (chart.bpmEvents.length > 0) chart.bpmEvents[0].bpm = rounded;
+      else chart.bpmEvents.push({ y: 0, bpm: rounded });
+      if (typeof updateBpmList === 'function') updateBpmList();
+      if (typeof render === 'function') render();
+    }
+    bpmIn.value = rounded.toFixed(2);
+    recalc();
+    _ttTimes = [];
+    if (_ttTimer) { clearTimeout(_ttTimer); _ttTimer = null; }
+    ttUpdateDisplay();
+    ttApply.textContent = `✓ Applied ${rounded} BPM`;
+    setTimeout(() => { ttApply.textContent = '✓ Set as Chart BPM'; }, 2200);
+  });
+
+  ttReset.addEventListener('click', () => {
+    _ttTimes = [];
+    if (_ttTimer) { clearTimeout(_ttTimer); _ttTimer = null; }
+    ttUpdateDisplay();
+  });
+
+  tapSec.appendChild(tapBtn);
+  tapSec.appendChild(ttReadout);
+  tapSec.appendChild(ttBtnRow);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
