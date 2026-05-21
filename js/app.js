@@ -113,6 +113,17 @@ const CHANGELOG = [
       ['add', 'Tap sequence auto-resets after 3 seconds of inactivity so a new sequence can be started without closing the window.'],
       ['add', '<kbd>T</kbd> keyboard shortcut fires a tap and briefly flashes the button so keyboard-driven tapping gives clear visual feedback.'],
       ['add', 'Tap Tempo integrates with the existing BPM panel — confirmed tap BPM updates the beat-grid overlay in real time and is applied to the chart\'s first BPM event when the calibration window is closed with Apply.'],
+const APP_VERSION = '0.0.18';
+const CHANGELOG = [
+  {
+    version: '0.0.18',
+    title: 'Tap Tempo BPM Detection [Experimental]',
+    entries: [
+      ['add', '<strong>Tap Tempo</strong> — two new tap-to-detect BPM interfaces. Tap the <kbd>◉ Tap BPM [T]</kbd> button in the Calibration window in rhythm, or use the new Tap Tempo section inside <strong>Tools Hub → Edit → BPM Sync</strong>. Both compute the average inter-tap interval and display a live BPM estimate.'],
+      ['add', 'Keyboard shortcut <kbd>T</kbd> triggers a tap while the Calibration window is open, so you can keep time against the audio without moving your hand to the mouse.'],
+      ['add', 'Minimum 2 taps (1 interval) required for a BPM estimate; accuracy improves with each additional tap. Count and running average are displayed in real time.'],
+      ['add', '<em>Apply</em> button updates the working BPM field and the beat grid overlay instantly. The Tools Hub variant also writes the value directly to the chart\'s BPM event list (undoable with <kbd>Ctrl+Z</kbd>).'],
+      ['add', 'Auto-reset — if no tap is received for 3 seconds the counter clears automatically, ready for a fresh attempt. A <em>Reset</em> button allows manual clearing at any time.'],
     ],
   },
   {
@@ -8354,114 +8365,6 @@ window.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('keydown', _onKey);
   // Only restart the scheduler when the user finishes editing BPM (blur / Enter)
   bpmInput?.addEventListener('change', () => { if (_schedStart !== null) _resetScheduler(); });
-})();
-
-// ── Song Data Window ──────────────────────────────────────────────────────────
-// Floating panel showing chart statistics: length, ticks, measures, BPM range.
-(function initSongDataWindow() {
-  let _win = null;
-
-  function _secToTime(s) {
-    const m = Math.floor(s / 60);
-    const sec = Math.floor(s % 60).toString().padStart(2, '0');
-    return `${m}min ${sec}sec`;
-  }
-
-  function _buildOrRefresh() {
-    if (!_win) {
-      _win = document.createElement('div');
-      _win.id = 'song-data-win';
-      Object.assign(_win.style, {
-        position: 'fixed', top: '80px', right: '24px', zIndex: '8000',
-        background: '#0e0e22', border: '1px solid #2a2a4a',
-        borderRadius: '10px', padding: '16px 20px', minWidth: '220px',
-        color: '#d8d8f0', fontFamily: 'monospace', fontSize: '12px',
-        boxShadow: '0 6px 32px #00000099', userSelect: 'none',
-      });
-      // Drag
-      let _dx = 0, _dy = 0, _drag = false;
-      const header = document.createElement('div');
-      Object.assign(header.style, {
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        marginBottom: '12px', cursor: 'move', fontWeight: 'bold',
-        fontSize: '11px', letterSpacing: '0.08em', color: '#88c8ff',
-      });
-      header.innerHTML = '&#9654; Song Data <span id="sdw-close" style="cursor:pointer;color:#6677aa;font-size:14px;padding:0 2px" title="Close">&#215;</span>';
-      header.addEventListener('mousedown', e => {
-        if (e.target.id === 'sdw-close') { _win.remove(); _win = null; return; }
-        _drag = true; _dx = e.clientX - _win.offsetLeft; _dy = e.clientY - _win.offsetTop;
-        e.preventDefault();
-      });
-      document.addEventListener('mousemove', e => {
-        if (!_drag || !_win) return;
-        _win.style.left = (e.clientX - _dx) + 'px';
-        _win.style.top  = (e.clientY - _dy) + 'px';
-        _win.style.right = 'auto';
-      });
-      document.addEventListener('mouseup', () => { _drag = false; });
-      _win.appendChild(header);
-      const body = document.createElement('div');
-      body.id = 'sdw-body';
-      _win.appendChild(body);
-      document.body.appendChild(_win);
-    }
-
-    const body = document.getElementById('sdw-body');
-    if (!body) return;
-
-    if (!chart) {
-      body.innerHTML = '<div style="color:#556">No chart loaded.</div>';
-      return;
-    }
-
-    const totalTicks = chart.totalTicks();
-    const totalMeasures = chart.totalMeasures;
-    const lengthSec = tickToSeconds(totalTicks);
-
-    const bpms = chart.bpmEvents.map(e => e.bpm).filter(b => b > 0);
-    const minBpm = bpms.length ? Math.min(...bpms).toFixed(1) : '—';
-    const maxBpm = bpms.length ? Math.max(...bpms).toFixed(1) : '—';
-    const nowBpm = chart.getBpmAt ? chart.getBpmAt(renderer?.playTick ?? 0).toFixed(1) : maxBpm;
-    const bpmStr = minBpm === maxBpm ? maxBpm : `${minBpm} – ${maxBpm}`;
-
-    // Count notes
-    let btNotes = 0, fxNotes = 0, volSecs = 0;
-    for (let li = 0; li < 4; li++) btNotes += chart.bt[li].length;
-    for (let li = 0; li < 2; li++) fxNotes += chart.fx[li].length;
-    for (let s  = 0; s  < 2; s++)  volSecs += chart.lasers[s].length;
-
-    const row = (label, value, hint = '') => `
-      <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #1a1a33">
-        <span style="color:#6677aa">${label}</span>
-        <span style="color:#e8e8f8;font-weight:bold" title="${hint}">${value}</span>
-      </div>`;
-
-    body.innerHTML =
-      row('Length',   _secToTime(lengthSec)) +
-      row('Ticks',    totalTicks.toLocaleString()) +
-      row('Measures', totalMeasures) +
-      row('BPM',      bpmStr, `Now: ${nowBpm}`) +
-      row('BT notes', btNotes) +
-      row('FX notes', fxNotes) +
-      row('VOL segs', volSecs);
-  }
-
-  document.getElementById('btn-song-data-window')?.addEventListener('click', () => {
-    if (_win) { _win.remove(); _win = null; return; } // toggle
-    _buildOrRefresh();
-  });
-
-  // Refresh whenever the chart changes (hook into render cycle)
-  const _origRender = window._sdwRefreshHooked;
-  if (!_origRender) {
-    window._sdwRefreshHooked = true;
-    // Lightweight: refresh on any render call if window is open
-    const _baseRender = typeof render === 'function' ? render : null;
-    if (_baseRender) {
-      // We patch render at the call site level — safer to just refresh on a timer
-      setInterval(() => { if (_win && chart) _buildOrRefresh(); }, 1000);
-    }
-  }
 })();
 
 // ──────────────────────────────────────────────────────────────────────────────
