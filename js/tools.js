@@ -2695,8 +2695,8 @@ function _hoReason(s) {
 
   // ── Stretch ────────────────────────────────────────────────────────────────
   if (s.stretch > 0) {
-    reasons.push('Full-span stretch: BT-A and BT-D both appear here, forcing the ring fingers to reach the outermost lanes simultaneously. This is tiring to sustain and increases drop risk at high BPM.');
-    suggests.push('Shift BT-A or BT-D hits to BT-B / BT-C so the hand span stays comfortable, or offset them so they never coincide in the same beat.');
+    reasons.push('Full-span stretch with laser: BT-A and BT-D both appear while a laser is moving, requiring the ring fingers to span the outermost lanes while a hand is also rotating the VOL knob. This is a demanding combination at high BPM.');
+    suggests.push('Shift BT-A or BT-D hits to BT-B / BT-C during the laser section, or time the stretch notes so they fall before or after the moving laser segment.');
   }
 
   // ── Chord density ──────────────────────────────────────────────────────────
@@ -3305,9 +3305,27 @@ function _toolHandOpt(c) {
       combos.sort((a, b) => b.lanes.length - a.lanes.length);
       const topCombos = combos.slice(0, 12);
 
-      // Stretch penalty (BT-A and BT-D both appear in this measure)
-      const stretch = chart.bt[0].some(n => n.y >= startT && n.y < endT) &&
-                      chart.bt[3].some(n => n.y >= startT && n.y < endT) ? 10 : 0;
+      // Stretch penalty: BT-A + BT-D coexist AND a moving laser is active in this measure
+      const hasBtAD = chart.bt[0].some(n => n.y >= startT && n.y < endT) &&
+                      chart.bt[3].some(n => n.y >= startT && n.y < endT);
+      let stretchWithLaser = false;
+      if (hasBtAD) {
+        outer: for (let s = 0; s < 2; s++) {
+          for (const sec of chart.lasers[s]) {
+            let segStart = sec.y;
+            for (let pi = 0; pi < sec.points.length - 1; pi++) {
+              const p0 = sec.points[pi];
+              const segEnd = segStart + p0.ry;
+              if (p0.v !== sec.points[pi + 1].v && segEnd > startT && segStart < endT) {
+                stretchWithLaser = true;
+                break outer;
+              }
+              segStart = segEnd;
+            }
+          }
+        }
+      }
+      const stretch = stretchWithLaser ? 10 : 0;
 
       const noteCount = laneCount.slice(0, 4).reduce((a, b) => a + b, 0);
       const total     = simScore + noteCount + stretch;
@@ -5485,19 +5503,70 @@ function _toolChartValidator(c) {
       const issues = [];
       const RESOLUTION = 6;
       const totalTicks = (chart.totalMeasures || 64) * TICKS_PER_MEASURE;
+      // max tick gap between laser sections that still makes buttons-in-gap impossible
+      const LASER_GAP_LIMIT = 12;
 
+      // Returns true if any laser has a non-static (moving) segment active at tick t.
+      // A segment is moving when its start and end positions differ (p0.v !== p1.v).
+      function isLaserMoving(t) {
+        for (let s = 0; s < 2; s++) {
+          for (const sec of chart.lasers[s]) {
+            let segStart = sec.y;
+            for (let pi = 0; pi < sec.points.length - 1; pi++) {
+              const p0 = sec.points[pi];
+              const segEnd = segStart + p0.ry;
+              if (t >= segStart && t < segEnd && p0.v !== sec.points[pi + 1].v) return true;
+              segStart = segEnd;
+            }
+          }
+        }
+        return false;
+      }
+
+      // Rule 1 & 2: stretch / overload only illegal when a laser is also moving
       for (let t = 0; t < totalTicks; t += RESOLUTION) {
         const activeBt = [false,false,false,false];
         const activeFx = [false,false];
         for (let i=0;i<4;i++) activeBt[i]=chart.bt[i].some(n=>n.len>0&&t>=n.y&&t<n.y+n.len);
         for (let i=0;i<2;i++) activeFx[i]=chart.fx[i].some(n=>n.len>0&&t>=n.y&&t<n.y+n.len);
         const simBt=activeBt.filter(Boolean).length, simFx=activeFx.filter(Boolean).length;
-        const total=simBt+simFx, m=Math.floor(t/TICKS_PER_MEASURE), beat=Math.floor((t%TICKS_PER_MEASURE)/TICKS_PER_BEAT)+1;
-        if (total>=5) issues.push({ type:'err', msg:`5+ simultaneous holds at M${m+1} B${beat} (impossible)`, measure:m });
-        else if (activeBt[0]&&activeBt[3]&&simBt>=2) issues.push({ type:'warn', msg:`BT-A+D extreme stretch at M${m+1} B${beat}`, measure:m });
-        else if (activeFx[0]&&activeBt[0]&&activeBt[1]) issues.push({ type:'warn', msg:`FX-L + BT-A + BT-B (3-finger strain) at M${m+1} B${beat}`, measure:m });
+        const total=simBt+simFx;
+        const m=Math.floor(t/TICKS_PER_MEASURE), beat=Math.floor((t%TICKS_PER_MEASURE)/TICKS_PER_BEAT)+1;
+        const moving = isLaserMoving(t);
+        if (total >= 5 && moving) {
+          issues.push({ type:'err', msg:`5+ simultaneous holds + moving laser at M${m+1} B${beat} (impossible)`, measure:m });
+        } else if (activeBt[0] && activeBt[3] && moving) {
+          issues.push({ type:'warn', msg:`BT-A+D extreme stretch during laser at M${m+1} B${beat}`, measure:m });
+        }
       }
 
+      // Rule 3: button(s) pressed inside a near-zero gap between two laser sections
+      // on the same side — the hand physically cannot reach both knob and button.
+      for (let s = 0; s < 2; s++) {
+        const side = chart.lasers[s];
+        for (let i = 0; i < side.length - 1; i++) {
+          const A = side[i];
+          const lastPt = A.points[A.points.length - 1];
+          const aEnd = A.y + (lastPt?.ry ?? 0);
+          const B = side[i + 1];
+          const gap = B.y - aEnd;
+          if (gap >= 0 && gap <= LASER_GAP_LIMIT) {
+            let hasButton = false;
+            for (let li = 0; li < 4 && !hasButton; li++)
+              hasButton = chart.bt[li].some(n => n.y > aEnd && n.y < B.y);
+            for (let li = 0; li < 2 && !hasButton; li++)
+              hasButton = chart.fx[li].some(n => n.y > aEnd && n.y < B.y);
+            if (hasButton) {
+              const m = Math.floor(aEnd / TICKS_PER_MEASURE);
+              const beat = Math.floor((aEnd % TICKS_PER_MEASURE) / TICKS_PER_BEAT) + 1;
+              const sideName = s === 0 ? 'L' : 'R';
+              issues.push({ type:'err', msg:`Button in ${gap}-tick laser-${sideName} gap at M${m+1} B${beat} (physically impossible)`, measure:m });
+            }
+          }
+        }
+      }
+
+      issues.sort((a, b) => a.measure - b.measure);
       const deduped = [];
       issues.forEach(iss => {
         const last=deduped[deduped.length-1];
