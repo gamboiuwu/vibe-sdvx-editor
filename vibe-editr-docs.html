@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.20 · 2026</span>
+  <span class="version">v0.0.21 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,17 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.21</span>Section-Relative Paste</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Paste at Section…</strong> — right-clicking the 2D editor now shows a <em>Paste at Section…</em> submenu beneath the standard Paste entry. It dynamically lists every named chart section (e.g. <em>Intro — m1:b1</em>, <em>Chorus — m9:b1</em>) with a color dot and tick label so the target is always unambiguous.</li>
+    <li><span class="tag add">add</span>Selecting a section entry pastes the clipboard contents at that section's start tick. All relative offsets within the copied selection are preserved exactly as with normal paste.</li>
+    <li><span class="tag add">add</span>If no sections are defined the submenu shows a prompt to add sections via <strong>Window → Chart Sections…</strong></li>
+    <li><span class="tag add">add</span>The <em>Paste at Section…</em> item is dimmed when the clipboard is empty to avoid confusion.</li>
+    <li><span class="tag add">add</span>All section-paste operations push an undo entry (<em>Pasted at Section</em>) so <kbd>Ctrl+Z</kbd> fully reverts the paste.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.20</span>Chart Section Labels</h4>

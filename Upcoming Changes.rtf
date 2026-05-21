@@ -43,9 +43,21 @@ Point 4 (New Recommended: Per-Section FX Automation Lane)\
 \cf0 \outl0\strokewidth0 \strokec2 The FX chain currently supports adding effects to FX-L and FX-R lanes, but the effect parameters (retrigger length, gate frequency, flanger rate, etc.) cannot be automated over time. The editor should add an automation lane view similar to how REAPER or Ableton handle automation: each FX effect parameter gets a thin lane below the main chart lane, with a drawn curve or step sequence representing the parameter value over time. Users should be able to draw, drag, and edit automation breakpoints directly on the chart canvas. The automation data would be stored in KSON as part of the audio.fx.ch arrays or as a new nested automation key. This matches the system description\'92s requirement for "REAPER FX style automation or effect lanes".\
 \
 
-Point 5 (New Recommended: Section-Relative Paste Operations)\
+Point 5 (Section-Relative Paste Operations)\
 \pard\pardeftab720\sa240\partightenfactor0
-\cf0 \outl0\strokewidth0 \strokec2 Now that Chart Sections exist (v0.0.20), the copy/paste system should be extended to support section-relative paste targets. When a user copies a selection, the paste menu should offer \'93Paste at Section Start\'94 with a submenu listing all named sections. This allows copying a pattern once and pasting it at \'93Chorus 1\'94, \'93Chorus 2\'94, etc., without manually seeking to each position. This is particularly useful for long-form charts where the same rhythmic pattern appears in multiple named sections.\
+\cf0 \outl0\strokewidth0 \strokec2 Status: SHIPPED in v0.0.21. Right-click context menu now includes a \'93Paste at Section\'85\'94 submenu that dynamically lists all named chart sections. Selecting a section entry pastes the clipboard at that section\'92s start tick with full undo support.\
+\pard\pardeftab720\sa240\partightenfactor0
+\cf0 \outl0\strokewidth0 \strokec2 \
+\
+Point 6 (New Recommended: Orthographic Mode Overhaul)\
+\pard\pardeftab720\sa240\partightenfactor0
+\cf0 \outl0\strokewidth0 \strokec2 Status: NOT YET STARTED. The orthographic (2D editor) preview mode must be a strict flat 2D projection with no perspective influence. BT/FX buttons must be fully embedded into the lane plane without depth offset, and lasers must render as continuous smoothed spline paths with no visible construction geometry. See Point 2 for full specification.\
+\pard\pardeftab720\sa240\partightenfactor0
+\cf0 \outl0\strokewidth0 \strokec2 \
+\
+Point 7 (New Recommended: Per-Section FX Automation Lane)\
+\pard\pardeftab720\sa240\partightenfactor0
+\cf0 \outl0\strokewidth0 \strokec2 The FX chain supports adding effects to FX-L and FX-R lanes but effect parameters (retrigger length, gate frequency, flanger rate, etc.) cannot be automated over time. The editor should add an automation lane view similar to REAPER or Ableton: each FX effect parameter gets a thin lane below the main chart lane with a drawn curve or step sequence representing the parameter value over time. Users can draw, drag, and edit automation breakpoints directly on the chart canvas. Automation data would be stored in KSON as part of the audio.fx.ch arrays or as a new nested automation key. This matches the system description\'92s \'93REAPER FX style automation or effect lanes\'94 requirement.\
 \pard\pardeftab720\sa240\partightenfactor0
 \cf0 \outl0\strokewidth0 \
 }
