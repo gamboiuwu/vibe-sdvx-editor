@@ -4457,12 +4457,31 @@ function ensureCtxMenu() {
             <div class="ctx-item" data-act="mirror-fx">Mirror FX</div>
             <div class="ctx-item" data-act="mirror-bt">Mirror BT</div>
             <div class="ctx-item" data-act="mirror-vol">Mirror VOL</div>
-            <div class="ctx-sep"></div>
+          </div>
+        </div>
+        <div class="ctx-item ctx-has-sub">Temporal Mirror
+          <div class="ctx-sub">
             <div class="ctx-item" data-act="tmirror-all">Temporal Mirror All</div>
             <div class="ctx-item" data-act="tmirror-bt">Temporal Mirror BT</div>
             <div class="ctx-item" data-act="tmirror-vol">Temporal Mirror VOL</div>
-            <div class="ctx-sep"></div>
-            <div class="ctx-item" data-act="swap-lasers">Swap VOL-L ↔ VOL-R</div>
+          </div>
+        </div>
+        <div class="ctx-item" data-act="swap-lasers">Swap VOL-L ↔ VOL-R</div>
+        <div class="ctx-sep"></div>
+        <div class="ctx-item ctx-has-sub">Random
+          <div class="ctx-sub">
+            <div class="ctx-item" data-act="rand-all">Random All</div>
+            <div class="ctx-item" data-act="rand-bt">Random BT</div>
+            <div class="ctx-item" data-act="rand-fx">Random FX</div>
+            <div class="ctx-item" data-act="rand-vol">Random VOL</div>
+          </div>
+        </div>
+        <div class="ctx-item ctx-has-sub">S-Ran <span style="font-size:9px;color:#aaa">(per-note)</span>
+          <div class="ctx-sub">
+            <div class="ctx-item" data-act="sran-all">S-Ran All</div>
+            <div class="ctx-item" data-act="sran-bt">S-Ran BT</div>
+            <div class="ctx-item" data-act="sran-fx">S-Ran FX</div>
+            <div class="ctx-item" data-act="sran-vol">S-Ran VOL</div>
           </div>
         </div>
       </div>
@@ -4472,23 +4491,6 @@ function ensureCtxMenu() {
         <div class="ctx-item" data-act="speed-half">Speed ½× (slower)</div>
         <div class="ctx-item" data-act="speed-double">Speed 2× (faster)</div>
         <div class="ctx-item" data-act="transform">Free Transform…  Ctrl+T</div>
-      </div>
-    </div>
-    <div class="ctx-sep"></div>
-    <div class="ctx-item ctx-has-sub">Random
-      <div class="ctx-sub">
-        <div class="ctx-item" data-act="rand-all">Random All</div>
-        <div class="ctx-item" data-act="rand-bt">Random BT</div>
-        <div class="ctx-item" data-act="rand-fx">Random FX</div>
-        <div class="ctx-item" data-act="rand-vol">Random VOL</div>
-      </div>
-    </div>
-    <div class="ctx-item ctx-has-sub">S-Ran <span style="font-size:9px;color:#aaa">(per-note)</span>
-      <div class="ctx-sub">
-        <div class="ctx-item" data-act="sran-all">S-Ran All</div>
-        <div class="ctx-item" data-act="sran-bt">S-Ran BT</div>
-        <div class="ctx-item" data-act="sran-fx">S-Ran FX</div>
-        <div class="ctx-item" data-act="sran-vol">S-Ran VOL</div>
       </div>
     </div>
     <div class="ctx-sep"></div>
@@ -5619,7 +5621,7 @@ function onKeyDown(e) {
     case '6': setTool('cam-event');  break;
     case '7': setTool('stop-event'); break;
     case 'e': case 'E': setTool('erase'); break;
-    case '`': e.preventDefault(); toggleVelEnvEditor(); break;
+    case 'Tab': e.preventDefault(); toggleVelEnvEditor(); break;
 
     case 'f': case 'F':
       if (!ctrl) {
