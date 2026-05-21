@@ -56,6 +56,8 @@
             <button class="menu-item" id="btn-tmirror-all">Temporal Mirror All</button>
             <button class="menu-item" id="btn-tmirror-bt">Temporal Mirror BT</button>
             <button class="menu-item" id="btn-tmirror-vol">Temporal Mirror VOL</button>
+            <div class="menu-sep"></div>
+            <button class="menu-item" id="btn-swap-lasers">Swap VOL-L ↔ VOL-R</button>
           </div>
         </div>
         <div class="menu-item menu-has-sub">Adjust Speed ▸
@@ -198,8 +200,6 @@
         <button class="menu-item" id="btn-history-panel">History &amp; Timeline</button>
         <button class="menu-item" id="btn-split-opts">Split View Options</button>
         <div class="menu-sep"></div>
-        <button class="menu-item" id="btn-song-data-window">&#9654; Song Data…</button>
-        <div class="menu-sep"></div>
         <button class="menu-item" id="btn-gameplay-panel">&#9654; Gameplay…</button>
         <button class="menu-item accent" id="btn-tools-window">&#9965; Tools Hub…</button>
         <button class="menu-item" id="btn-radar-window">&#11042; Pattern Radar…</button>
@@ -208,6 +208,7 @@
         <button class="menu-item" id="btn-chart-stats">&#128202; Chart Statistics…</button>
         <button class="menu-item" id="btn-heatmap-window">&#127777; Intensity Heatmap…</button>
         <button class="menu-item" id="btn-bookmarks-panel">&#128278; Bookmarks  <kbd>Ctrl+B</kbd></button>
+        <button class="menu-item" id="btn-sections-panel">&#127370; Chart Sections…</button>
         <div class="menu-sep"></div>
         <button class="menu-item" id="btn-whats-new">&#10024; What's New…</button>
         <button class="menu-item" id="btn-diagnostics">&#9881; System Diagnostics…</button>
@@ -389,6 +390,7 @@
       <span id="status-measure">Measure: 1</span>
       <span id="status-beat">Beat: 1</span>
       <span id="status-tool">Tool: Select</span>
+      <span id="status-laser-xsnap" style="display:none;color:#ffcc44" title="Laser X snap (;/') ">X: Free</span>
       <span id="status-sel" style="color:#00cfff"></span>
       <span class="status-hint">Press <kbd>C</kbd> for context menu</span>
     </div>
@@ -506,6 +508,11 @@
       <span class="pvc-label" data-i18n="preview.perspective">Perspective</span>
       <input type="range" id="pvc-intensity" min="0" max="100" step="1" value="65" title="Field of view / projection strength">
       <span id="pvc-intensity-label" class="pvc-val">65</span>
+    </div>
+    <div class="pvc-section" id="pvc-rate-section">
+      <span class="pvc-label" title="Audio &amp; chart playback speed — amber label = practice mode active">Rate</span>
+      <input type="range" id="pvc-rate" min="0.25" max="2.0" step="0.05" value="1" title="Playback rate: 0.25× (quarter speed) to 2.0× (double speed)">
+      <span id="pvc-rate-label" class="pvc-val">1.00×</span>
     </div>
     <div class="pvc-section">
       <span class="pvc-label" data-i18n="preview.hispeed">HiSpeed</span>
@@ -1018,6 +1025,18 @@
   </div>
 </div>
 
+<!-- Modal: Close tab confirmation -->
+<div id="modal-close-tab-confirm" class="modal" style="display:none">
+  <div class="modal-box" style="max-width:360px">
+    <h3>Close Tab?</h3>
+    <p id="close-tab-confirm-msg" style="margin:10px 0 16px;font-size:12px;color:#b0b0d0;line-height:1.55"></p>
+    <div class="modal-buttons">
+      <button id="close-tab-confirm-ok" style="background:#2a0a0a;border-color:#882233;color:#ffaaaa">Close Tab</button>
+      <button id="close-tab-confirm-cancel">Keep Open</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal: Import progress -->
 <div id="modal-import-progress" class="modal" style="display:none">
   <div class="modal-box" style="max-width:400px">
@@ -1027,6 +1046,10 @@
       <div id="import-progress-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#1255e8,#e000b8);transition:width .4s ease"></div>
     </div>
     <div id="import-progress-pct" style="font-size:11px;color:#6668a0;text-align:right">0%</div>
+    <div id="import-coffee-msg" style="display:none;font-size:12px;color:#ffcc66;text-align:center;margin:10px 0 4px;padding:7px 10px;background:#1a1205;border:1px solid #443310;border-radius:5px;line-height:1.5">
+      ☕ Encoding runs in real time, so this takes as long as the song.<br>
+      <span style="color:#ffaa44">Go grab a coffee — we'll download the OGG when it's ready.</span>
+    </div>
     <div class="modal-buttons" style="margin-top:14px">
       <button id="btn-cancel-import" style="background:#2a0a0a;border-color:#882233;color:#ffaaaa">✕ Cancel</button>
     </div>
@@ -1060,6 +1083,27 @@
     <div id="loading-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#1255e8,#e000b8);transition:width .25s ease;border-radius:3px"></div>
   </div>
   <div id="loading-pct" style="font-size:11px;color:#3336a0">0%</div>
+  <!-- Error log — shown if any JS errors are caught before/during init -->
+  <div id="loading-errors" style="
+    display:none;
+    max-width:560px;width:90%;
+    background:#1a0a0a;border:1px solid #7a2020;border-radius:6px;
+    padding:10px 14px;margin-top:8px;
+  ">
+    <div style="font-size:11px;font-weight:700;color:#e04040;letter-spacing:.06em;margin-bottom:6px">
+      ⚠ INITIALIZATION ERRORS
+    </div>
+    <pre id="loading-error-list" style="
+      margin:0;font-size:10px;color:#d07070;
+      font-family:monospace;white-space:pre-wrap;word-break:break-all;
+      max-height:200px;overflow-y:auto;
+    "></pre>
+    <button id="loading-continue-btn" style="
+      display:none;margin-top:10px;
+      background:#2a1010;border:1px solid #7a2020;color:#e04040;
+      padding:5px 14px;border-radius:4px;cursor:pointer;font-size:11px;
+    ">Continue anyway →</button>
+  </div>
 </div>
 
 <!-- Error screen — eAMUSEMENT style -->
@@ -1150,14 +1194,8 @@
   </div>
 </div>
 
-<script src="js/logger.js"></script>
-<script src="js/effects.js"></script>
 <script src="https://unpkg.com/powerglitch@latest/dist/powerglitch.min.js"></script>
-<script src="js/chart.js?v=2"></script>
-<script src="js/renderer.js?v=3"></script>
-<script src="js/game.js?v=6"></script>
-<script src="js/velenv.js?v=1"></script>
-<script src="js/ksh.js?v=3"></script>
+<script type="module" src="js/main.js"></script>
 <!-- Laser interpolation context menu -->
 <div id="laser-interp-menu" style="display:none;position:fixed;z-index:3000">
   <div class="lim-item" data-type="linear">
@@ -1276,6 +1314,23 @@
   </div>
   <div id="bm-list" class="bm-list">
     <div class="bm-empty">No bookmarks yet — press <kbd>Ctrl+B</kbd> at any playhead position to add one.</div>
+  </div>
+</div>
+
+<!-- Chart Sections floating panel ──────────────────────────────── -->
+<div id="sections-panel" class="floating-panel" style="display:none;top:150px;right:320px">
+  <div class="fp-header">
+    <span class="fp-title">&#127370; Chart Sections</span>
+    <div class="fp-actions">
+      <button id="sec-add" title="Add section at playhead (or from selection)">+ Add</button>
+      <button id="sec-close" title="Close">✕</button>
+    </div>
+  </div>
+  <div style="padding:6px 10px 4px;font-size:10px;color:#6668a0;border-bottom:1px solid #2a2a44">
+    Click row to seek · click swatch to change color · select a region first for precise range
+  </div>
+  <div id="sec-list" class="bm-list">
+    <div class="bm-empty">No sections yet. Use <em>+ Add</em> to mark a region.</div>
   </div>
 </div>
 
@@ -1417,23 +1472,22 @@
   </div>
 </div>
 
-<script src="js/kson.js?v=3"></script>
-<script src="js/calibration.js"></script>
-<script src="js/i18n.js"></script>
-<script src="js/gl-lane.js?v=4"></script>
-<script src="js/app.js?v=18"></script>
-<script src="js/dock.js?v=5"></script>
-<script src="js/tools.js?v=4"></script>
-<script src="js/heatmap.js?v=1"></script>
-<script src="js/radar.js?v=1"></script>
-<script src="js/handsim.js?v=1"></script>
-<script src="js/gameplay.js?v=3"></script>
+<!-- All JS now loaded via js/main.js (ES module entry point) -->
 <!-- Snap display (animated) -->
 <div id="snap-display" style="position:fixed;z-index:10001;pointer-events:none;display:none;font-family:monospace;font-size:16px;font-weight:bold;color:#88ccff;text-shadow:0 0 8px #0088ff;padding:8px 14px;border:1.5px solid #0088ff;border-radius:4px;background:#000000dd;white-space:nowrap;">
   <div id="snap-display-text" style="height:20px;overflow:hidden;position:relative;min-width:5ch">
     <div id="snap-display-prev" style="position:absolute;top:0;left:0;width:100%;opacity:0;transition:none">1/4</div>
     <div id="snap-display-curr" style="position:absolute;top:0;left:0;width:100%;opacity:1;transition:none">1/4</div>
     <div id="snap-display-next" style="position:absolute;top:0;left:0;width:100%;opacity:0;transition:none">1/4</div>
+  </div>
+</div>
+<!-- Laser X-axis snap display (animated) -->
+<div id="laser-xsnap-display" style="position:fixed;z-index:10001;pointer-events:none;display:none;font-family:monospace;font-size:14px;font-weight:bold;color:#ffcc44;text-shadow:0 0 8px #ff8800;padding:6px 12px;border:1.5px solid #ff8800;border-radius:4px;background:#000000dd;white-space:nowrap;">
+  <div style="font-size:9px;opacity:0.7;margin-bottom:2px;letter-spacing:1px">LASER X</div>
+  <div style="height:20px;overflow:hidden;position:relative;min-width:8ch">
+    <div id="laser-xsnap-prev" style="position:absolute;top:0;left:0;width:100%;opacity:0;transition:none">Free</div>
+    <div id="laser-xsnap-curr" style="position:absolute;top:0;left:0;width:100%;opacity:1;transition:none">Free</div>
+    <div id="laser-xsnap-next" style="position:absolute;top:0;left:0;width:100%;opacity:0;transition:none">Free</div>
   </div>
 </div>
 

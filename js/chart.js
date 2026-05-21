@@ -1,29 +1,29 @@
-'use strict';
 
 // Ticks per measure at 4/4 (matches KSH resolution)
-const TICKS_PER_MEASURE = 192;
-const BEATS_PER_MEASURE = 4;
-const TICKS_PER_BEAT    = TICKS_PER_MEASURE / BEATS_PER_MEASURE; // 48
+export const TICKS_PER_MEASURE = 192;
+export const BEATS_PER_MEASURE = 4;
+export const TICKS_PER_BEAT    = TICKS_PER_MEASURE / BEATS_PER_MEASURE; // 48
 // Sketch spec: "any laser ≤ 1/16 point is a SLAM" — 1/16 = 192/16 = 12 ticks
-let LASER_SLAM_TICKS = 12; // mutable — adjusted by Gameplay preferences
+export let LASER_SLAM_TICKS = 12; // mutable — adjusted by Gameplay preferences
+export function setLaserSlamTicks(v) { LASER_SLAM_TICKS = v; }
 
 // Lane indices
-const LANE = { LASER_L: 0, BT_A: 1, BT_B: 2, FX_L: 3, FX_R: 4, BT_C: 5, BT_D: 6, LASER_R: 7 };
-const LANE_COUNT = 8;
+export const LANE = { LASER_L: 0, BT_A: 1, BT_B: 2, FX_L: 3, FX_R: 4, BT_C: 5, BT_D: 6, LASER_R: 7 };
+export const LANE_COUNT = 8;
 
 // Laser position chars (51 steps: 0-9, A-Z, a-o)
-const LASER_CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmno';
+export const LASER_CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmno';
 
-function laserCharToPos(ch) {
+export function laserCharToPos(ch) {
   const i = LASER_CHARS.indexOf(ch);
   return i < 0 ? null : i / (LASER_CHARS.length - 1);
 }
-function laserPosToChar(pos) {
+export function laserPosToChar(pos) {
   const i = Math.round(Math.max(0, Math.min(1, pos)) * (LASER_CHARS.length - 1));
   return LASER_CHARS[i];
 }
 
-class ChartData {
+export class ChartData {
   constructor() {
     this.meta = {
       title: '', artist: '', effect: '', illust: '',
@@ -73,6 +73,10 @@ class ChartData {
     // level 0 = no glitch, 1-10 = increasing intensity.
     // Sampled at playback time to drive PowerGlitch dynamically.
     this.glitchEvents = [{ y: 0, level: 0 }];
+
+    // Chart Section Labels. Each: { y: startTick, endY: endTick, label: string, color: string }
+    // Stored as _sections in KSON custom extension field.
+    this.sections = [];
   }
 
   // Returns the effective scroll speed multiplier at tick y, supporting

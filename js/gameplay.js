@@ -1,4 +1,5 @@
-'use strict';
+import { chart, gameView, renderer } from './app.js';
+import { TICKS_PER_BEAT, TICKS_PER_MEASURE } from './chart.js';
 /* ═══════════════════════════════════════════════════════════════════════════
    vibe-editr  ·  Gameplay / Judgment Screen Panel
    Floating sub-window accessible via  Window → Gameplay…
@@ -50,7 +51,7 @@ const _GP_WIN_KEY = 'vibe_gameplay_win';
 
 // ── Scoring helpers ───────────────────────────────────────────────────────────
 
-function gpTotalObjects(chart) {
+export function gpTotalObjects(chart) {
   if (!chart) return 1;
   if (typeof gameView !== 'undefined' && gameView?.countChain)
     return Math.max(1, gameView.countChain(chart, Infinity));
@@ -70,14 +71,14 @@ function gpTotalObjects(chart) {
   return Math.max(1, n);
 }
 
-function gpChainAt(chart, tick) {
+export function gpChainAt(chart, tick) {
   if (!chart) return 0;
   if (typeof gameView !== 'undefined' && gameView?.countChain)
     return gameView.countChain(chart, tick);
   return 0;
 }
 
-function gpStats(chart, tick) {
+export function gpStats(chart, tick) {
   if (!chart) return { score: 0, exScore: 0, exMax: 0, sCrit: 0, crit: 0, near: 0, error: 0, chain: 0, total: 0 };
   const total   = gpTotalObjects(chart);
   const chain   = gpChainAt(chart, tick);
@@ -88,7 +89,7 @@ function gpStats(chart, tick) {
   return { score, exScore, exMax, sCrit: chain, crit: 0, near: 0, error: 0, chain, total };
 }
 
-function gpGrade(score) {
+export function gpGrade(score) {
   if (score >= 9900000) return { label: 'S',    color: '#ffe866' };
   if (score >= 9800000) return { label: 'AAA+', color: '#ffcc00' };
   if (score >= 9700000) return { label: 'AAA',  color: '#ffcc00' };
@@ -101,7 +102,7 @@ function gpGrade(score) {
   return                       { label: 'D',    color: '#ff7777' };
 }
 
-function gpStatus(stats) {
+export function gpStatus(stats) {
   if (stats.total === 0) return { label: '—',     color: '#5558a0' };
   if (stats.error === 0 && stats.near === 0) return { label: 'PUC',   color: '#ffe866' };
   if (stats.error === 0)                     return { label: 'UC',    color: '#00cfff' };
@@ -532,7 +533,7 @@ function _gpUpdateDials(chart, tick) {
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-function openGameplayPanel() {
+export function openGameplayPanel() {
   if (!_gpWin) {
     _gpWin = _gpBuild();
     const st = _gpLoadWin();
@@ -549,14 +550,14 @@ function openGameplayPanel() {
   if (!_gpRaf) _gpRaf = requestAnimationFrame(_gpRender);
 }
 
-function closeGameplayPanel() {
+export function closeGameplayPanel() {
   if (_gpWin) _gpWin.style.display = 'none';
   _gpOpen = false;
   if (_gpRaf) { cancelAnimationFrame(_gpRaf); _gpRaf = null; }
   _gpSaveWin();
 }
 
-function toggleGameplayPanel() {
+export function toggleGameplayPanel() {
   if (!_gpWin || _gpWin.style.display === 'none') openGameplayPanel();
   else closeGameplayPanel();
 }

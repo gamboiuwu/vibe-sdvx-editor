@@ -1,6 +1,56 @@
-'use strict';
+import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS } from './chart.js';
+import { Renderer, C, laserColors, laserOpacity, laserWideMode, LASER_PRESETS, applyLaserPreset, setLaserColorCustom, buildLaneHeader, setLaserOpacity, setLaserWideMode } from './renderer.js';
+import { GameView } from './game.js';
+import { exportKsh, importKsh, downloadText } from './ksh.js';
+import { exportKson, importKson, exportKsonPack, importKsonPack } from './kson.js';
+import { EFFECT_DEFS, makeEffectInstance } from './effects.js';
+import { calibrationWindow } from './calibration.js';
+import { t, applyLocalization } from './i18n.js';
+import { velEnvEditor, openVelEnvEditor, toggleVelEnvEditor } from './velenv.js';
+import { dockInit, dockRegister, dockApplyLayout, dockToggle } from './dock.js';
+import { openToolsWindow } from './tools.js';
+import { openHeatmapWindow, updateHeatmap } from './heatmap.js';
+import { updateRadar, openRadarWindow } from './radar.js';
+import { openHandSimWindow } from './handsim.js';
+import { openGameplayPanel, closeGameplayPanel, toggleGameplayPanel } from './gameplay.js';
+import { logger } from './logger.js';
 
-// ── Console banner ────────────────────────────────────────────────────────────
+// ── Pre-init error capture ─────────────────────────────────────────────────────
+// Runs before anything else so errors from ANY script (including imports,
+// async DOMContentLoaded handlers, unhandled rejections, and sub-modules)
+// are captured and shown on the loading screen rather than silently swallowed.
+const _initErrors = [];
+let   _initPhase  = 'pre-init';
+
+function _showInitError(msg, file, line, col, err) {
+  _initErrors.push({ msg, file, line, col, err });
+  const errBox  = document.getElementById('loading-errors');
+  const errList = document.getElementById('loading-error-list');
+  const contBtn = document.getElementById('loading-continue-btn');
+  if (errBox)  errBox.style.display = '';
+  if (errList) {
+    const src = file ? file.split('/').pop() : '';
+    const loc = src  ? (line ? `[${src}:${line}]` : `[${src}]`) : '';
+    const txt = (loc ? loc + ' ' : '') + msg;
+    errList.textContent += (errList.textContent ? '\n' : '') + txt;
+  }
+  if (contBtn && contBtn.style.display === 'none') contBtn.style.display = '';
+  // Also keep the stage label updated so the last stage is always visible
+  const stageEl = document.getElementById('loading-stage');
+  if (stageEl) stageEl.textContent = `⚠ Error during: ${_initPhase}`;
+}
+
+window.addEventListener('error', ev => {
+  _showInitError(ev.message, ev.filename, ev.lineno, ev.colno, ev.error);
+});
+window.addEventListener('unhandledrejection', ev => {
+  const msg = ev.reason instanceof Error
+    ? ev.reason.message
+    : String(ev.reason ?? 'Unknown rejection');
+  _showInitError('Unhandled Promise — ' + msg, null, null, null, ev.reason);
+});
+
+// ── Console banner ─────────────────────────────────────────────────────────────
 console.log(
   '%c vibe-editr %c vibecoded by gamboiuwu ',
   'background:#1255e8;color:#fff;font-weight:bold;font-size:13px;padding:3px 8px;border-radius:4px 0 0 4px',
@@ -9,6 +59,60 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
+const APP_VERSION = '0.0.21';
+const CHANGELOG = [
+  {
+    version: '0.0.21',
+    title: 'Section-Relative Paste',
+    entries: [
+      ['add', '<strong>Paste at Section Start</strong> — right-click menu now includes a <em>Paste at Section…</em> submenu that lists every named chart section. Selecting one pastes the clipboard contents at that section\'s start tick, offset-matched exactly as with normal paste.'],
+      ['add', 'Section names and tick positions are shown in the submenu (e.g. <em>Intro — m1:b1</em>) so the target is always unambiguous.'],
+      ['add', 'If no sections are defined the submenu shows a hint to add sections via <strong>Window → Chart Sections…</strong>'],
+      ['add', 'Section-relative paste is undo-able via <kbd>Ctrl+Z</kbd> like all other paste operations.'],
+    ],
+  },
+  {
+    version: '0.0.20',
+    title: 'Chart Section Labels',
+    entries: [
+      ['add', '<strong>Chart Section Labels</strong> — named ranges (Intro, Verse, Chorus, Bridge, Outro…) drawn as colored bands on the 2D ruler. Each section has a start tick, end tick, name, and color.'],
+      ['add', '<strong>Section Navigator panel</strong> — open via <strong>Window → Chart Sections…</strong>. Lists all sections in order; click any row to jump the playhead to that section\'s start.'],
+      ['add', '<strong>Selection-aware Add</strong> — the <em>+ Add</em> button uses the current selection range as the section start/end. With no selection active, it creates a 4-measure section starting at the playhead.'],
+      ['add', 'Click a color swatch in the panel to cycle through a preset palette (red, amber, green, blue, violet, cyan, orange). Edit the section name inline.'],
+      ['add', 'Section data is saved as <code>_sections</code> in the KSON custom extension field and survives full export/import round-trips.'],
+      ['fix', 'CHANGELOG array syntax error (v0.0.19 second entry was missing its enclosing object braces) — fixed so the What\'s New popup displays all entries correctly.'],
+    ],
+  },
+  {
+    version: '0.0.19',
+    title: 'Practice Playback Rate [Experimental]',
+    entries: [
+      ['add', '<strong>Playback Rate</strong> control added to the Game Preview side panel. A slider (0.25×–2.0×) adjusts audio and chart playback speed simultaneously in real time — slow down to analyse dense sections or speed up for challenge practice.'],
+      ['add', 'Rate label turns <span style="color:#ffcc44">amber</span> whenever the rate is not 1.0×, providing a clear indicator that practice mode is active.'],
+      ['add', 'Changing the rate mid-playback is seamless — the playhead continues from the correct chart position without jumping or drifting.'],
+      ['add', 'Playback Rate is saved and restored by <em>Save Config</em> alongside Projection, HiSpeed, and Judge Y.'],
+      ['fix', 'TapeStop FX effect now ramps from the active playback rate (rather than always from 1.0×), so it behaves correctly when practice rate is engaged.'],
+    ],
+  },
+  {
+    version: '0.0.19',
+    title: 'Laser X Snap · Tool Consolidation',
+    entries: [
+      ['add', '<strong>Laser X-Axis Snapping</strong> — press <kbd>;</kbd> / <kbd>\'</kbd> while placing lasers to step through X-position grids (Free → 1/2 → 1/4 → 1/8 → 1/16 → 1/32 → 1/50 KSM). A yellow HUD shows the current grid near your cursor, mirroring the Y-snap behaviour of <kbd>[</kbd> / <kbd>]</kbd>.'],
+      ['add', 'X-snap applied consistently in all laser edit surfaces: the 2D pen tool, the game-preview drag, and the multi-preview drag. Freehand laser points snap to the nearest X grid position on every mousemove.'],
+      ['add', '<strong>Chart Validator</strong> — unified Integrity / Ergonomics / Export validation tool (replaces three separate overlapping validate tools). Tab-based UI groups: Integrity (structural errors + auto-fix), Ergonomics (hold collision + strain patterns), Export (pre-flight checklist). Total tool count unchanged.'],
+      ['add', '<strong>Chart Statistics</strong> tool (Analysis tab) — at-a-glance grid showing BT/FX/VOL-L/VOL-R note counts, BPM range, measure count, laser coverage percentages, and peak density.'],
+      ['add', '<strong>Laser Fixer</strong> tool (Validate tab) — scans all laser sections for structure bugs: negative <code>ry</code> values, unsorted points, duplicate ticks, out-of-range <code>v</code>, empty sections, negative <code>y</code>. One-click Auto Fix resolves all detected issues.'],
+    ],
+  },
+  {
+    version: '0.0.18',
+    title: 'Tap Tempo BPM [Experimental]',
+    entries: [
+      ['add', '<strong>Tap Tempo</strong> — new button in the Calibration Mode BPM panel. Click <em>🥁 Tap Tempo</em> (or press <kbd>T</kbd> while calibration is open) repeatedly in time with the music to estimate BPM from tap intervals. After 2 taps the running estimate is shown live; after 4 or more taps the result is promoted to a confirmable suggestion using the same Apply / Dismiss flow as Auto-Detect.'],
+      ['add', 'Tap sequence auto-resets after 3 seconds of inactivity so a new sequence can be started without closing the window.'],
+      ['add', '<kbd>T</kbd> keyboard shortcut fires a tap and briefly flashes the button so keyboard-driven tapping gives clear visual feedback.'],
+      ['add', 'Tap Tempo integrates with the existing BPM panel — confirmed tap BPM updates the beat-grid overlay in real time and is applied to the chart\'s first BPM event when the calibration window is closed with Apply.'],
 const APP_VERSION = '0.0.18';
 const CHANGELOG = [
   {
@@ -158,13 +262,15 @@ const tabs = [{ name: 'Chart 1', chart: new ChartData(), audioBuffer: null, hisp
 let activeTabIdx = 0;
 
 // ── State ─────────────────────────────────────────────────────────────────────
-let chart    = tabs[0].chart;
-let renderer = null;
+export let chart    = tabs[0].chart;
+export let renderer = null;
 let tool     = 'select';
 let snap     = 12;
+// Laser X-axis snap: 0 = free, otherwise snap v to nearest multiple
+let laserXSnap = 0;
 
 const drag = { active: false, lane: -1, laneType: '', startTick: 0, side: 0, localX: 0, laserSec: null };
-const sel  = { active: false, dragging: false, startTick: 0, endTick: 0, clipboard: null };
+export const sel  = { active: false, dragging: false, startTick: 0, endTick: 0, clipboard: null };
 const undoStack = [], redoStack = [];
 let MAX_UNDO = 100; // adjustable via preferences
 let _hasUnsavedChanges = false; // track if chart has unsaved changes
@@ -180,7 +286,7 @@ const _chartAnnotations = [];
 const _ANN_LIFETIME = 7000; // ms visible (last 1200ms = fade-out)
 const _ANN_FADE     = 1200; // ms of fade at end
 
-function addChartAnnotation({ tick, label, severity, source }) {
+export function addChartAnnotation({ tick, label, severity, source }) {
   // Deduplicate by tick+source
   const idx = _chartAnnotations.findIndex(a => a.tick === tick && a.source === source);
   if (idx >= 0) _chartAnnotations.splice(idx, 1);
@@ -245,11 +351,12 @@ let _velPopupFixedTick = null;
 
 // ── Audio ─────────────────────────────────────────────────────────────────────
 let audioCtx         = null;
-let audioBuffer      = null;
+export let audioBuffer      = null;
 let audioArrayBuffer = null; // raw bytes preserved before decodeAudioData (for IDB)
 let audioSource      = null;
 let audioStartAcTime = 0;
 let audioStartChartSec = 0;
+let playbackRate = 1.0;  // practice playback rate (1.0 = normal)
 let laserFilterNode  = null;
 let masterGainNode   = null;
 let slamBuffer       = null;
@@ -353,10 +460,11 @@ async function loadAudioFile(file) {
   audioBuffer = await audioCtx.decodeAudioData(buf);
   document.getElementById('audio-status').textContent = `Audio: ${file.name}`;
   _loadingDone();
+  window.dispatchEvent(new CustomEvent('vibe:audio-ready', { detail: { buffer: audioBuffer } }));
 }
 
 // ── Playback ──────────────────────────────────────────────────────────────────
-let playing        = false;
+export let playing        = false;
 let playStartPerf  = 0;
 let playStartTickV = 0;
 let chartSpeed     = 1.0;  // hispeed: visual scroll density only
@@ -364,7 +472,7 @@ let prevPlayTick   = 0;
 
 // ── View mode ─────────────────────────────────────────────────────────────────
 let viewMode = 'split'; // start with 3D lane visible by default
-let gameView = null;
+export let gameView = null;
 const settings = { tickSound: false };
 
 // Apply a new beats-per-lane value and update all related UI.
@@ -437,6 +545,31 @@ function addTab() {
   _multiUpdateTabButtons();
 }
 
+// Show a confirmation modal before closing a tab.
+// Calls closeTab(idx) only if the user confirms.
+function _confirmCloseTab(idx) {
+  if (tabs.length <= 1) return; // can't close last tab — no need to ask
+  const name = tabs[idx]?.name ?? `Tab ${idx + 1}`;
+  const modal = document.getElementById('modal-close-tab-confirm');
+  const msg   = document.getElementById('close-tab-confirm-msg');
+  const btnOk = document.getElementById('close-tab-confirm-ok');
+  const btnNo = document.getElementById('close-tab-confirm-cancel');
+  if (!modal) { closeTab(idx); return; } // fallback if modal missing
+  if (msg) msg.textContent = `"${name}" will be closed. Any unsaved changes will be lost.`;
+  modal.style.display = 'flex';
+  const ok = () => { cleanup(); modal.style.display = 'none'; closeTab(idx); };
+  const no = () => { cleanup(); modal.style.display = 'none'; };
+  const onKey = e => { if (e.key === 'Escape') no(); if (e.key === 'Enter') ok(); };
+  const cleanup = () => {
+    btnOk.removeEventListener('click', ok);
+    btnNo.removeEventListener('click', no);
+    window.removeEventListener('keydown', onKey, true);
+  };
+  btnOk.addEventListener('click', ok);
+  btnNo.addEventListener('click', no);
+  window.addEventListener('keydown', onKey, true);
+}
+
 function closeTab(idx) {
   if (tabs.length <= 1) return; // can't close last tab
   // Remove from multi mask if present
@@ -481,7 +614,7 @@ function renderTabBar() {
 
     tab.querySelector('.tab-close').addEventListener('click', e => {
       e.stopPropagation();
-      closeTab(+e.currentTarget.dataset.close);
+      _confirmCloseTab(+e.currentTarget.dataset.close);
     });
     tab.querySelector('.tab-name').addEventListener('dblclick', () => renameTab(i));
     tab.addEventListener('click', e => { if (!e.target.closest('.tab-close')) switchToTab(i); });
@@ -560,7 +693,7 @@ function showTabContextMenu(idx, x, y) {
     { label: 'Rename',    action: () => renameTab(idx) },
     { label: 'Duplicate', action: () => duplicateTab(idx) },
     { sep: true },
-    { label: 'Close', action: () => closeTab(idx), danger: true },
+    { label: 'Close', action: () => _confirmCloseTab(idx), danger: true },
   ];
   for (const item of items) {
     if (item.sep) {
@@ -701,7 +834,7 @@ function startPlay(stopAtTick = -1) {
     if (audioSource) { try { audioSource.stop(); } catch(e) {} }
     audioSource = audioCtx.createBufferSource();
     audioSource.buffer = audioBuffer;
-    audioSource.playbackRate.value = 1.0;
+    audioSource.playbackRate.value = 1.0; // audio always plays at normal speed; only lane scroll is rate-scaled
     audioSource.connect(laserFilterNode || audioCtx.destination);
 
     // Add user-calibrated global audio delay (System Preferences > Audio)
@@ -762,14 +895,14 @@ function playFrame(now) {
   // Video delay: shift the *visual* tick by N ms relative to audio (positive = visuals appear later)
   const videoOffsetSec = (prefs.videoDelay ?? 0) / 1000;
   if (audioBuffer && audioCtx) {
-    const acElapsed = audioCtx.currentTime - audioStartAcTime;
+    const acElapsed = (audioCtx.currentTime - audioStartAcTime) * playbackRate;
     const audioChartSec = audioStartChartSec + acElapsed - videoOffsetSec;
     // Use stop-aware conversion so the visual chart freezes during stop events
     currentTick = computeVisualTickWithStops(audioChartSec);
   } else {
     // Note: chartSpeed (hispeed) is purely visual — it must NOT affect playback timing.
     // Real-time BPM-aware advancement; no chartSpeed divisor here.
-    const elapsed = (now - playStartPerf) / 1000;
+    const elapsed = (now - playStartPerf) / 1000 * playbackRate;
     currentTick = playStartTickV;
     let remSec = elapsed, prevTick2 = playStartTickV;
     for (const ev of chart.bpmEvents) {
@@ -1313,7 +1446,7 @@ function _teardownFxEffect() {
   _fxTapeStopActive = false;
 }
 
-function getLaserPosAt(side, tick) {
+export function getLaserPosAt(side, tick) {
   for (const sec of chart.lasers[side]) {
     if (tick < sec.y) continue;
     const pts = sec.points;
@@ -1365,7 +1498,7 @@ function _fmtTime(sec) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
-function updateSeekbar(tick) {
+export function updateSeekbar(tick) {
   const fill  = document.getElementById('game-seekbar-fill');
   const thumb = document.getElementById('game-seekbar-thumb');
   const label = document.getElementById('game-seekbar-time');
@@ -1389,7 +1522,7 @@ function _seekbarTickFromEvent(e) {
   return Math.round(pct * (chart ? chart.totalTicks() : 0));
 }
 
-function _seekTo(tick) {
+export function _seekTo(tick) {
   if (!chart) return;
   renderer.playTick = Math.max(0, Math.min(tick, chart.totalTicks()));
   if (gameView) gameView.playTick = renderer.playTick;
@@ -1724,7 +1857,7 @@ function _wireMultiEditCanvas(mv) {
     }
     if (tool === 'laser-l' || tool === 'laser-r') {
       const side = tool === 'laser-l' ? 0 : 1;
-      const v    = Math.max(0, Math.min(1, norm));
+      const v    = snapLaserV(Math.max(0, Math.min(1, norm)));
       saveUndo(`VOL-${side === 0 ? 'L' : 'R'} at M${m} (Multi-Preview)`);
       targetChart.addLaserPoint(side, tick, v, false, false);
       mv._drag.active = true; mv._drag.tool = tool; mv._drag.laserSide = side;
@@ -1755,7 +1888,7 @@ function _wireMultiEditCanvas(mv) {
     if (mv._drag.active && (tool === 'laser-l' || tool === 'laser-r')) {
       const targetChart = tabs[mv.tabIdx]?.chart;
       if (targetChart) {
-        const v = Math.max(0, Math.min(1, hit.norm));
+        const v = snapLaserV(Math.max(0, Math.min(1, hit.norm)));
         targetChart.addLaserPoint(mv._drag.laserSide, hit.tick, v, false, false);
         afterEdit();
       }
@@ -2157,6 +2290,23 @@ function _loadingShow(stage, pct) {
 function _loadingDone() {
   const ov = document.getElementById('loading-overlay');
   if (!ov) return;
+  if (_initErrors.length > 0) {
+    // Keep overlay up so user can read the errors; wire up continue button
+    const stageEl  = document.getElementById('loading-stage');
+    const contBtn  = document.getElementById('loading-continue-btn');
+    const errBox   = document.getElementById('loading-errors');
+    if (stageEl) stageEl.textContent = `⚠ Initialized with ${_initErrors.length} error${_initErrors.length > 1 ? 's' : ''}`;
+    if (errBox)  errBox.style.display = '';
+    if (contBtn) {
+      contBtn.style.display = '';
+      contBtn.onclick = () => {
+        ov.style.opacity = '0';
+        ov.style.pointerEvents = 'none';
+        setTimeout(() => { if (ov) ov.style.display = 'none'; }, 420);
+      };
+    }
+    return;
+  }
   ov.style.opacity = '0';
   ov.style.pointerEvents = 'none';
   setTimeout(() => { if (ov) ov.style.display = 'none'; }, 420);
@@ -2191,9 +2341,11 @@ function _showErrorScreen(error) {
 window.addEventListener('DOMContentLoaded', () => {
   try {
 
+  _initPhase = 'editor-init';
   _loadingShow('Initializing editor…', 5);
   buildLaneHeader();
 
+  _initPhase = 'renderer-init';
   const canvas = document.getElementById('chart-canvas');
   renderer = new Renderer(canvas);
   renderer.chart = chart;
@@ -2206,6 +2358,7 @@ window.addEventListener('DOMContentLoaded', () => {
   renderer.zoom = +zs.value / 100 * 1.2;
   renderer.resize();
 
+  _initPhase = 'game-view-init';
   // Game view
   const gameCanvas = document.getElementById('game-canvas');
   if (gameCanvas) {
@@ -2305,6 +2458,7 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-tmirror-all')?.addEventListener('click', () => selTemporalMirror('all'));
   document.getElementById('btn-tmirror-bt')?.addEventListener('click',  () => selTemporalMirror('bt'));
   document.getElementById('btn-tmirror-vol')?.addEventListener('click', () => selTemporalMirror('vol'));
+  document.getElementById('btn-swap-lasers')?.addEventListener('click', () => selSwapLasers());
   document.getElementById('btn-speed-half')?.addEventListener('click',   () => selAdjustSpeed(0.5));
   document.getElementById('btn-speed-double')?.addEventListener('click', () => selAdjustSpeed(2.0));
   document.getElementById('btn-sran-all')?.addEventListener('click', () => applySRan('all'));
@@ -2313,11 +2467,13 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-sran-vol')?.addEventListener('click', () => applySRan('vol'));
   document.getElementById('btn-ripple-delete')?.addEventListener('click', selRippleDelete);
 
+  _initPhase = 'first-render';
   _loadingShow('Building renderer…', 60);
   syncMetaToChart();
   renderTabBar();
   render();
 
+  _initPhase = 'done';
   _loadingShow('Ready', 100);
   // Dismiss loading overlay after a brief frame — everything is painted
   requestAnimationFrame(() => requestAnimationFrame(_loadingDone));
@@ -2825,15 +2981,72 @@ window.addEventListener('DOMContentLoaded', () => {
       fr.readAsArrayBuffer(file);
     });
 
-    // If there's a .ksonpack in the folder, treat it like opening a ksonpack bundle
+    // If there's a .ksonpack in the folder, load it inline so the full folder
+    // file list stays available for audio/jacket auto-load.
     const packFile = files.find(f => f.name.endsWith('.ksonpack') || (f.name.endsWith('.json') && f.name.toLowerCase().includes('pack')));
     if (packFile) {
-      const fi = document.getElementById('file-input');
-      fi.accept = '.ksonpack,.json'; fi.dataset.bundle = '1';
-      // Synthesise a FileList-like event to reuse the existing ksonpack handler
-      const dt = new DataTransfer(); dt.items.add(packFile);
-      fi.files = dt.files;
-      fi.dispatchEvent(new Event('change', { bubbles: true }));
+      try {
+        _loadingShow(`Loading ${packFile.name}…`, 20);
+        const packText = await readText(packFile);
+        const { charts: packCharts, meta: packMeta, tabNames: packTabNames = [], audioFilenames: packAudioNames = [] } = importKsonPack(packText);
+        if (!packCharts.length) throw new Error('Pack contains no charts.');
+
+        const startIdx = activeTabIdx;
+        for (let i = 0; i < packCharts.length; i++) {
+          const c = packCharts[i];
+          const savedName = packTabNames[i];
+          const fallback = savedName || (c.meta?.title
+            ? (c.meta.difficulty ? `${c.meta.title} - ${c.meta.difficulty.toUpperCase()}` : c.meta.title)
+            : `Chart ${tabs.length + 1}`);
+          const slot = i === 0 ? startIdx : (tabs.push({ name: fallback, chart: c, audioBuffer: null, hispeed: 1.0 }) - 1);
+          tabs[slot].chart = c;
+          tabs[slot].name  = fallback;
+        }
+
+        chart = packCharts[0];
+        switchToTab(startIdx);
+        chart = tabs[startIdx].chart;
+        renderer.chart = chart; renderer.scrollCol = 0; renderer.playTick = 0;
+        if (gameView) { gameView.chart = chart; gameView._liveCamera = null; gameView._totalWeight = 0; }
+        fxChipSEBuffers = [null, null];
+        pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList(); updateStopEventList(); updateScrollSpeedEventList();
+        renderFxChain(0); renderFxChain(1);
+        renderTabBar();
+        render();
+        updateSeekbar(0);
+        _idbAutosave();
+
+        // ── Auto-load audio from folder ───────────────────────────────────
+        // 1. Try each audio filename listed in pack meta (exact basename match)
+        // 2. Fall back to any audio file in the folder
+        const audioExts = ['.ogg', '.mp3', '.wav', '.flac'];
+        let audioFile = null;
+        for (const name of packAudioNames) {
+          audioFile = files.find(f => f.name === name);
+          if (audioFile) break;
+        }
+        // Also check individual chart music fields in case pack was old format
+        if (!audioFile) {
+          for (const c of packCharts) {
+            const musicName = c.meta?.music?.split(/[\\/]/).pop();
+            if (musicName) { audioFile = files.find(f => f.name === musicName); if (audioFile) break; }
+          }
+        }
+        if (!audioFile) audioFile = files.find(f => audioExts.some(x => f.name.toLowerCase().endsWith(x)));
+        if (audioFile) { await loadAudioFile(audioFile); tabs.forEach(t => { t.audioBuffer = audioBuffer; }); }
+
+        // ── Auto-load jacket from folder ──────────────────────────────────
+        const imgExts = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
+        const jacketName = packCharts[0].meta?.jacket?.split(/[\\/]/).pop();
+        const jacketFile = (jacketName && files.find(f => f.name === jacketName))
+                        || files.find(f => imgExts.some(x => f.name.toLowerCase().endsWith(x)));
+        if (jacketFile) {
+          const img = document.getElementById('jacket-preview');
+          if (img) { img.src = URL.createObjectURL(jacketFile); img.style.display = 'block'; }
+        }
+
+        _loadingDone();
+      } catch (err) { _loadingDone(); alert('Error loading pack:\n' + err.message); }
       e.target.value = ''; return;
     }
 
@@ -3158,16 +3371,33 @@ async function importAudioFile(file) {
     }
 
     _showImportStage(`Encoding to OGG format… (song is ${decoded.duration.toFixed(1)}s)`, 20);
+    const coffeeEl = document.getElementById('import-coffee-msg');
+    if (coffeeEl) coffeeEl.style.display = 'block';
+
     const oggBlob = await _encodeToOgg(decoded);
 
-    _showImportStage('Finalizing and linking to project…', 95);
+    if (coffeeEl) coffeeEl.style.display = 'none';
+
+    // Auto-download the converted OGG so the user always has the file.
     const newName = file.name.replace(/\.[^.]+$/, '.ogg');
+    try {
+      const dlUrl  = URL.createObjectURL(oggBlob);
+      const dlLink = document.createElement('a');
+      dlLink.href     = dlUrl;
+      dlLink.download = newName;
+      dlLink.click();
+      setTimeout(() => URL.revokeObjectURL(dlUrl), 10000);
+    } catch (_) { /* download is best-effort */ }
+
+    _showImportStage('Finalizing and linking to project…', 95);
     const oggFile = new File([oggBlob], newName, { type: oggBlob.type });
     await _linkAudioFile(oggFile, decoded);
 
     _hideImportProgress();
-    _flashStatus(`✓ Imported & converted ${newName}`);
+    _flashStatus(`✓ Imported & converted ${newName} — check your Downloads folder`);
   } catch (err) {
+    const coffeeEl = document.getElementById('import-coffee-msg');
+    if (coffeeEl) coffeeEl.style.display = 'none';
     _hideImportProgress();
     if (err.message === 'Import cancelled') return; // user cancelled — no error modal
     _showImportError(file.name, err.message || String(err));
@@ -3308,6 +3538,7 @@ async function _linkAudioFile(file, decodedBuffer = null) {
   }
   tabs.forEach(t => { t.audioBuffer = audioBuffer; });
   document.getElementById('audio-status').textContent = `Audio: ${file.name}`;
+  window.dispatchEvent(new CustomEvent('vibe:audio-ready', { detail: { buffer: audioBuffer } }));
   _idbAutosave();
 }
 
@@ -3519,10 +3750,11 @@ function setTool(t) {
   if (camSub) camSub.classList.toggle('visible', t === 'cam-event');
   // Update context palette (dock.js)
   if (typeof updateContextPalette === 'function') updateContextPalette(t);
+  syncLaserXSnapUI();
 }
 
 let _renderScheduled = false;
-function render() {
+export function render() {
   autoDetectMeasures();
   checkLaserOverlap();
   if (playing) {
@@ -3668,6 +3900,27 @@ function selPaste() {
   render();
 }
 
+// v0.0.21: Paste clipboard at an explicit target tick (section-relative paste).
+function selPasteAtTick(targetTick) {
+  if (!sel.clipboard) return;
+  saveUndo('Pasted at Section');
+  const at = Math.max(0, Math.round(targetTick));
+  const { bt, fx, lasers, vel = [], glitch = [] } = sel.clipboard;
+  for (let li = 0; li < 4; li++) bt[li].forEach(n => chart.addBtNote(li, at + n.y, n.len));
+  for (let li = 0; li < 2; li++) fx[li].forEach(n => chart.addFxNote(li, at + n.y, n.len));
+  for (let s = 0; s < 2; s++) {
+    lasers[s].forEach(sec => {
+      chart.lasers[s].push({ y: at + sec.y, points: sec.points.map(p => ({...p})), wide: sec.wide });
+    });
+    chart.lasers[s].sort((a, b) => a.y - b.y);
+  }
+  vel.forEach(ev => chart.addScrollSpeedEvent(at + ev.y, ev.speed, ev.interp ?? 'step'));
+  glitch.forEach(ev => chart.addGlitchEvent(at + ev.y, ev.level));
+  if (vel.length) updateScrollSpeedEventList();
+  if (glitch.length) { updateGlitchEventList(); _glitchAppliedLevel = -1; _updateGlitchFromTick(renderer?.playTick ?? 0); }
+  render();
+}
+
 function selMirror(what) {
   if (!sel.active) return;
   saveUndo(`Mirrored ${what.toUpperCase()}`);
@@ -3744,6 +3997,31 @@ function selTemporalMirror(what) {
       chart.lasers[s].sort((a, b) => a.y - b.y);
     }
   }
+  render();
+}
+
+// Swap VOL-L and VOL-R sections within the selection (or entire chart if no
+// active selection). Unlike Mirror VOL, positions are not flipped — only the
+// channel assignment changes so that left-knob patterns become right-knob and
+// vice versa.
+function selSwapLasers() {
+  saveUndo('Swap VOL-L ↔ VOL-R');
+
+  let lo = 0, hi = Infinity;
+  if (sel.active) {
+    [lo, hi] = selTickRange();
+  }
+  const inRange = y => y >= lo && y <= hi;
+
+  const snapL = chart.lasers[0].filter(s => inRange(s.y));
+  const snapR = chart.lasers[1].filter(s => inRange(s.y));
+
+  chart.lasers[0] = [...chart.lasers[0].filter(s => !inRange(s.y)), ...snapR];
+  chart.lasers[1] = [...chart.lasers[1].filter(s => !inRange(s.y)), ...snapL];
+  chart.lasers[0].sort((a, b) => a.y - b.y);
+  chart.lasers[1].sort((a, b) => a.y - b.y);
+
+  updateTimeSigList();
   render();
 }
 
@@ -4153,6 +4431,9 @@ function ensureCtxMenu() {
     <div class="ctx-item" data-act="cut">Cut</div>
     <div class="ctx-item" data-act="copy">Copy</div>
     <div class="ctx-item" data-act="paste">Paste</div>
+    <div class="ctx-item ctx-has-sub" id="ctx-paste-section-root">Paste at Section… <span style="font-size:9px;color:#aaa">▶</span>
+      <div class="ctx-sub" id="ctx-section-sub"></div>
+    </div>
     <div class="ctx-sep"></div>
     <div class="ctx-item" data-act="add-bpm">Add BPM Change…</div>
     <div class="ctx-item" data-act="add-timesig">Add Time Sig…</div>
@@ -4170,6 +4451,8 @@ function ensureCtxMenu() {
             <div class="ctx-item" data-act="tmirror-all">Temporal Mirror All</div>
             <div class="ctx-item" data-act="tmirror-bt">Temporal Mirror BT</div>
             <div class="ctx-item" data-act="tmirror-vol">Temporal Mirror VOL</div>
+            <div class="ctx-sep"></div>
+            <div class="ctx-item" data-act="swap-lasers">Swap VOL-L ↔ VOL-R</div>
           </div>
         </div>
       </div>
@@ -4219,6 +4502,11 @@ function ensureCtxMenu() {
     if (act === 'cut')          selCut();
     else if (act === 'copy')    selCopy();
     else if (act === 'paste')   selPaste();
+    else if (act.startsWith('paste-section-')) {
+      const idx = parseInt(act.slice('paste-section-'.length), 10);
+      const secs = [...(chart?.sections ?? [])].sort((a, b) => a.y - b.y);
+      if (secs[idx]) selPasteAtTick(secs[idx].y);
+    }
     else if (act === 'add-bpm')      openBpmModalAtCtx();
     else if (act === 'add-timesig')  openTimesigModalAtCtx();
     else if (act === 'add-velocity') openScrollSpeedModalAtCtx();
@@ -4230,6 +4518,7 @@ function ensureCtxMenu() {
     else if (act === 'tmirror-all') selTemporalMirror('all');
     else if (act === 'tmirror-bt')  selTemporalMirror('bt');
     else if (act === 'tmirror-vol') selTemporalMirror('vol');
+    else if (act === 'swap-lasers') selSwapLasers();
     else if (act === 'speed-half')   selAdjustSpeed(0.5);
     else if (act === 'speed-double') selAdjustSpeed(2.0);
     else if (act === 'rand-all') selRandom('all');
@@ -4288,9 +4577,31 @@ function updateCtxMenuExperimentalLabels() {
   if (snapTrEl)   snapTrEl.textContent   = (prefs.snapToTransients  ? '✓' : '✕') + ' Snap to Transients';
 }
 
+// v0.0.21: refresh the "Paste at Section…" submenu with current section list.
+function _refreshSectionPasteSubmenu() {
+  const sub = document.getElementById('ctx-section-sub');
+  const root = document.getElementById('ctx-paste-section-root');
+  if (!sub) return;
+  const secs = [...(chart?.sections ?? [])].sort((a, b) => a.y - b.y);
+  const hasClip = !!sel.clipboard;
+  if (root) root.style.opacity = hasClip ? '' : '0.4';
+  if (!secs.length) {
+    sub.innerHTML = `<div class="ctx-item" style="color:#888;cursor:default;font-style:italic">No sections — add via Window → Chart Sections…</div>`;
+    return;
+  }
+  sub.innerHTML = secs.map((s, i) => {
+    const m = Math.floor(s.y / TICKS_PER_MEASURE) + 1;
+    const b = Math.floor((s.y % TICKS_PER_MEASURE) / TICKS_PER_BEAT) + 1;
+    const label = s.label || `Section ${i + 1}`;
+    const dot = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${s.color};margin-right:6px;flex-shrink:0"></span>`;
+    return `<div class="ctx-item" data-act="paste-section-${i}">${dot}${label} <span style="color:#888;font-size:10px;margin-left:6px">m${m}:b${b}</span></div>`;
+  }).join('');
+}
+
 function showCtxMenu(x, y) {
   ensureCtxMenu();
   updateCtxMenuExperimentalLabels();
+  _refreshSectionPasteSubmenu();
   ctxMenuEl.style.display = 'block';
   const tw = ctxMenuEl.offsetWidth || 160, th = ctxMenuEl.offsetHeight || 200;
   ctxMenuEl.style.left = Math.min(x, window.innerWidth  - tw - 8) + 'px';
@@ -4693,7 +5004,7 @@ function onMouseDown(e) {
     }
 
     // ── Pen tool: place one point at a time (Illustrator-style) ───────────
-    const v = renderer.localXToLaserPos(localX, wide);
+    const v = snapLaserV(renderer.localXToLaserPos(localX, wide));
 
     if (_activeLaserSec && _activeLaserSec.side === side) {
       // Extend the active section with a new point
@@ -5221,6 +5532,70 @@ const SNAP_ENTRIES = [
 const SNAP_VALUES = SNAP_ENTRIES.map(e => e.v);
 const SNAP_LABELS = Object.fromEntries(SNAP_ENTRIES.map(e => [e.v, e.l]));
 
+// Laser X-axis snap grid — coarse to fine order ([ = coarser, ] = finer analog)
+// ; = coarser (fewer snaps), ' = finer (more snaps)
+const LASER_X_SNAP_ENTRIES = [
+  { v: 0,        l: 'Free'       },
+  { v: 0.5,      l: '1/2'        },
+  { v: 0.25,     l: '1/4'        },
+  { v: 0.125,    l: '1/8'        },
+  { v: 0.0625,   l: '1/16'       },
+  { v: 0.03125,  l: '1/32'       },
+  { v: 0.02,     l: '1/50 (KSM)' },
+];
+const LASER_X_SNAP_VALUES = LASER_X_SNAP_ENTRIES.map(e => e.v);
+const LASER_X_SNAP_LABELS = Object.fromEntries(LASER_X_SNAP_ENTRIES.map(e => [e.v, e.l]));
+
+function snapLaserV(v) {
+  if (laserXSnap <= 0) return v;
+  return Math.max(0, Math.min(1, Math.round(v / laserXSnap) * laserXSnap));
+}
+
+let _laserXSnapDisplayTimeout = null;
+function showLaserXSnapDisplay(oldSnap, newSnap, direction) {
+  const display = document.getElementById('laser-xsnap-display');
+  const curr    = document.getElementById('laser-xsnap-curr');
+  const prev    = document.getElementById('laser-xsnap-prev');
+  const next    = document.getElementById('laser-xsnap-next');
+  if (!display || !curr || !prev || !next) return;
+
+  const oldLabel = LASER_X_SNAP_LABELS[oldSnap];
+  const newLabel = LASER_X_SNAP_LABELS[newSnap];
+  const EASE = 'cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+  const T = '0.18s';
+  const ANIM = `top ${T} ${EASE}, opacity ${T} ${EASE}`;
+
+  [prev, curr, next].forEach(el => {
+    el.style.transition = 'none'; el.style.opacity = '0'; el.style.top = '0px';
+  });
+
+  if (direction === 'up') {
+    prev.textContent = oldLabel; curr.textContent = newLabel; next.textContent = '';
+    prev.style.top = '0px'; prev.style.opacity = '1';
+    curr.style.top = '22px'; curr.style.opacity = '0';
+    requestAnimationFrame(() => {
+      prev.style.transition = ANIM; curr.style.transition = ANIM;
+      prev.style.top = '-22px'; prev.style.opacity = '0';
+      curr.style.top = '0px'; curr.style.opacity = '1';
+    });
+  } else {
+    next.textContent = oldLabel; curr.textContent = newLabel;
+    next.style.top = '0px'; next.style.opacity = '1';
+    curr.style.top = '-22px'; curr.style.opacity = '0';
+    requestAnimationFrame(() => {
+      next.style.transition = ANIM; curr.style.transition = ANIM;
+      next.style.top = '22px'; next.style.opacity = '0';
+      curr.style.top = '0px'; curr.style.opacity = '1';
+    });
+  }
+
+  display.style.left = `${_lastMouseX + 18}px`;
+  display.style.top  = `${_lastMouseY - 16}px`;
+  display.style.display = 'block';
+  clearTimeout(_laserXSnapDisplayTimeout);
+  _laserXSnapDisplayTimeout = setTimeout(() => { display.style.display = 'none'; }, 1400);
+}
+
 function onKeyDown(e) {
   if (['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName)) return;
   const ctrl = e.ctrlKey || e.metaKey;
@@ -5359,6 +5734,27 @@ function onKeyDown(e) {
           snap = SNAP_VALUES[i - 1];
           syncSnapUI();
           showSnapDisplay(oldSnap, snap, 'down');
+        } }
+      break;
+
+    case ';':
+      // Laser X snap — coarser (fewer grid divisions)
+      { const i = LASER_X_SNAP_VALUES.findIndex(v => Math.abs(v - laserXSnap) < 0.0001);
+        if (i > 0) {
+          const old = laserXSnap;
+          laserXSnap = LASER_X_SNAP_VALUES[i - 1];
+          showLaserXSnapDisplay(old, laserXSnap, 'down');
+          syncLaserXSnapUI();
+        } }
+      break;
+    case "'":
+      // Laser X snap — finer (more grid divisions)
+      { const i = LASER_X_SNAP_VALUES.findIndex(v => Math.abs(v - laserXSnap) < 0.0001);
+        if (i < LASER_X_SNAP_VALUES.length - 1) {
+          const old = laserXSnap;
+          laserXSnap = LASER_X_SNAP_VALUES[i + 1];
+          showLaserXSnapDisplay(old, laserXSnap, 'up');
+          syncLaserXSnapUI();
         } }
       break;
 
@@ -5577,6 +5973,17 @@ function syncSnapUI() {
   document.getElementById('status-tool').textContent = `Tool: ${tool}  Snap: ${entry?.l ?? snap}`;
   // Update context palette snap display (dock.js)
   if (typeof updateSnapDisplay === 'function') updateSnapDisplay(entry?.l ?? String(snap));
+  syncLaserXSnapUI();
+}
+
+function syncLaserXSnapUI() {
+  const el = document.getElementById('status-laser-xsnap');
+  if (!el) return;
+  const isLaserTool = tool === 'laser-l' || tool === 'laser-r';
+  const entry = LASER_X_SNAP_ENTRIES.find(e => Math.abs(e.v - laserXSnap) < 0.0001);
+  const label = entry?.l ?? 'Free';
+  el.textContent = `X: ${label}`;
+  el.style.display = isLaserTool ? '' : 'none';
 }
 
 function adjustZoom(delta) {
@@ -6338,7 +6745,7 @@ function renderFxChain(side) {
 const historyEntries = [];
 let historyCurrentIdx = -1; // index into historyEntries of current state
 
-function saveUndo(label = null) {
+export function saveUndo(label = null) {
   const snap = JSON.stringify(serialize());
   const m = Math.floor((renderer?.playTick ?? 0) / TICKS_PER_MEASURE) + 1;
   const entry = { label: label ?? `Edit @ M${m}`, snap };
@@ -6721,7 +7128,7 @@ function applyPreferences() {
   }
 
   // Slam threshold (1–16 ticks)
-  LASER_SLAM_TICKS = prefs.slamThreshold ?? 6;
+  setLaserSlamTicks(prefs.slamThreshold ?? 6);
 
   // Tick sound enabled gate (used by detectFxHits/detectBtHits via settings.tickSound)
   settings.tickSound = !!prefs.tickEnabled;
@@ -6894,6 +7301,7 @@ async function recoverAutosave() {
         audioBuffer = await audioCtx.decodeAudioData(savedAudio.slice(0));
         tabs.forEach(t => { t.audioBuffer = audioBuffer; });
         document.getElementById('audio-status').textContent = `Audio: ${data.audioName} (restored)`;
+        window.dispatchEvent(new CustomEvent('vibe:audio-ready', { detail: { buffer: audioBuffer } }));
       }
     } catch(audioErr) {
       console.warn('Could not restore autosaved audio:', audioErr);
@@ -7026,7 +7434,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (tool === 'laser-l' || tool === 'laser-r') {
       const side = tool === 'laser-l' ? 0 : 1;
-      const v    = Math.max(0, Math.min(1, norm));
+      const v    = snapLaserV(Math.max(0, Math.min(1, norm)));
       saveUndo(`VOL-${side === 0 ? 'L' : 'R'} at M${m} (Preview)`);
       chart.addLaserPoint(side, tick, v, false, false);
       _geDrag.active = true; _geDrag.tool = tool; _geDrag.laserSide = side;
@@ -7061,7 +7469,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Extend laser while dragging
     if (_geDrag.active && (tool === 'laser-l' || tool === 'laser-r')) {
-      const v = Math.max(0, Math.min(1, hit.norm));
+      const v = snapLaserV(Math.max(0, Math.min(1, hit.norm)));
       chart.addLaserPoint(_geDrag.laserSide, hit.tick, v, false, false);
       render();
     }
@@ -7120,6 +7528,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // ── Glitch effect (PowerGlitch) ───────────────────────────────────────────────
 let _glitchCtrl          = null;
 let _glitchActive        = false;
+let _glitchRefreshTimer  = null; // periodic snapshot refresh interval ID
 
 function _levelToGlitchOptions(level) {
   const t = Math.max(0, Math.min(10, level)) / 10;
@@ -7170,15 +7579,43 @@ function _updateGlitchFromTick(tick) {
   _glitchAppliedLevel = level;
   if (level <= 0) {
     _glitchCtrl?.stopGlitch();
+    _glitchCtrl = null;
     _glitchActive = false;
+    if (_glitchRefreshTimer) { clearInterval(_glitchRefreshTimer); _glitchRefreshTimer = null; }
     return;
   }
-  // Reinitialize with new level options
+
+  // Helper that (re)initialises PowerGlitch against the current canvas content.
+  // Called once after a one-frame delay and then periodically so the snapshot
+  // stays in sync with the moving 2D overlay (notes/lasers).
+  const _startGlitch = () => {
+    if (_glitchAppliedLevel !== level) return;
+    if (typeof PowerGlitch === 'undefined') return;
+    _glitchCtrl?.stopGlitch();
+    _glitchCtrl = PowerGlitch.glitch(el, _levelToGlitchOptions(level));
+    _glitchCtrl.startGlitch();
+    _glitchActive = true;
+  };
+
+  // Stop any currently running instance and clear refresh timer.
   _glitchCtrl?.stopGlitch();
   _glitchCtrl = null;
-  _glitchCtrl = PowerGlitch.glitch(el, _levelToGlitchOptions(level));
-  _glitchCtrl.startGlitch();
-  _glitchActive = true;
+  _glitchActive = false;
+  if (_glitchRefreshTimer) { clearInterval(_glitchRefreshTimer); _glitchRefreshTimer = null; }
+
+  // Delay first init by one rAF so the WebGL canvas (preserveDrawingBuffer: true)
+  // has committed at least one frame before PowerGlitch snapshots it.
+  requestAnimationFrame(() => {
+    _startGlitch();
+    // Refresh the snapshot every ~250 ms while glitch is active so the
+    // displacement layers stay approximately in sync with moving chart content.
+    _glitchRefreshTimer = setInterval(() => {
+      if (_glitchAppliedLevel !== level) {
+        clearInterval(_glitchRefreshTimer); _glitchRefreshTimer = null; return;
+      }
+      _startGlitch();
+    }, 250);
+  });
 }
 
 // ── Session persistence ───────────────────────────────────────────────────────
@@ -7211,12 +7648,12 @@ function _restoreSession() {
     if (s.playTick && renderer)  renderer.playTick  = s.playTick;
     if (s.viewMode) setTimeout(() => setViewMode(s.viewMode), 0);
     if (typeof s.laserOpacity === 'number') {
-      laserOpacity = s.laserOpacity;
+      setLaserOpacity(s.laserOpacity);
       const sl = document.getElementById('pref-laser-opacity');
       if (sl) sl.value = Math.round(s.laserOpacity * 100);
     }
     if (typeof s.laserWideMode === 'boolean') {
-      laserWideMode = s.laserWideMode;
+      setLaserWideMode(s.laserWideMode);
       const cb = document.getElementById('laser-wide');
       if (cb) cb.checked = s.laserWideMode;
     }
@@ -7261,7 +7698,7 @@ window.addEventListener('DOMContentLoaded', () => {
   if (opSl) {
     opSl.value = Math.round(laserOpacity * 100);
     opSl.addEventListener('input', () => {
-      laserOpacity = +opSl.value / 100;
+      setLaserOpacity(+opSl.value / 100);
       const lbl = document.getElementById('pref-laser-opacity-label');
       if (lbl) lbl.textContent = opSl.value + '%';
       render();
@@ -7270,7 +7707,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
   // Wide laser checkboxes — Settings menu + View menu stay in sync
   const _syncWideCheckboxes = (checked) => {
-    laserWideMode = checked;
+    setLaserWideMode(checked);
     const cbA = document.getElementById('laser-wide');
     const cbB = document.getElementById('laser-wide-view');
     if (cbA) cbA.checked = checked;
@@ -7399,6 +7836,25 @@ function _initProjectionControls() {
     });
   }
 
+  // Playback Rate slider — controls lane scroll speed only (audio is unaffected)
+  const rateSl  = document.getElementById('pvc-rate');
+  const rateLbl = document.getElementById('pvc-rate-label');
+  rateSl?.addEventListener('input', () => {
+    const newRate = +rateSl.value;
+    // Rebase chart position reference so the playhead stays accurate at the new rate
+    if (playing && audioCtx) {
+      const elapsed = audioCtx.currentTime - audioStartAcTime;
+      audioStartChartSec += elapsed * playbackRate;
+      audioStartAcTime = audioCtx.currentTime;
+    }
+    playbackRate = newRate;
+    if (rateLbl) {
+      rateLbl.textContent = newRate.toFixed(2) + '×';
+      rateLbl.style.color = Math.abs(newRate - 1.0) > 0.001 ? '#ffcc44' : '';
+    }
+    // Audio pitch/speed is intentionally NOT changed — only chart tick advancement is scaled
+  });
+
   // Judge Y slider
   const jySl  = document.getElementById('pvc-judge-y');
   const jyLbl = document.getElementById('pvc-judge-y-label');
@@ -7466,6 +7922,9 @@ function _initProjectionControls() {
     if (jyEl) prefs.judgeYFrac = +jyEl.value;
     // Visual interpretation mode (managed by Tools Hub → Visual Mode)
     if (gameView) prefs.interpMode = gameView.interpMode;
+    // Playback Rate
+    const rateEl = document.getElementById('pvc-rate');
+    if (rateEl) prefs.playbackRate = +rateEl.value;
     // Persist
     try { localStorage.setItem('vibe-editr-prefs', JSON.stringify(prefs)); } catch(_) {}
     // Show "Saved!" flash
@@ -7504,6 +7963,16 @@ function _initProjectionControls() {
     const lb = document.getElementById('pvc-judge-y-label');
     if (el) { el.value = prefs.judgeYFrac; if (gameView) gameView.judgeYFrac = prefs.judgeYFrac; }
     if (lb) lb.textContent = Math.round(prefs.judgeYFrac * 100) + '%';
+  }
+  if (prefs.playbackRate != null) {
+    const el = document.getElementById('pvc-rate');
+    const lb = document.getElementById('pvc-rate-label');
+    playbackRate = prefs.playbackRate;
+    if (el) el.value = prefs.playbackRate;
+    if (lb) {
+      lb.textContent = prefs.playbackRate.toFixed(2) + '×';
+      lb.style.color = Math.abs(prefs.playbackRate - 1.0) > 0.001 ? '#ffcc44' : '';
+    }
   }
 
   // Set default projection to SDVX on load (only if no saved proj mode)
@@ -7898,114 +8367,6 @@ window.addEventListener('DOMContentLoaded', () => {
   bpmInput?.addEventListener('change', () => { if (_schedStart !== null) _resetScheduler(); });
 })();
 
-// ── Song Data Window ──────────────────────────────────────────────────────────
-// Floating panel showing chart statistics: length, ticks, measures, BPM range.
-(function initSongDataWindow() {
-  let _win = null;
-
-  function _secToTime(s) {
-    const m = Math.floor(s / 60);
-    const sec = Math.floor(s % 60).toString().padStart(2, '0');
-    return `${m}min ${sec}sec`;
-  }
-
-  function _buildOrRefresh() {
-    if (!_win) {
-      _win = document.createElement('div');
-      _win.id = 'song-data-win';
-      Object.assign(_win.style, {
-        position: 'fixed', top: '80px', right: '24px', zIndex: '8000',
-        background: '#0e0e22', border: '1px solid #2a2a4a',
-        borderRadius: '10px', padding: '16px 20px', minWidth: '220px',
-        color: '#d8d8f0', fontFamily: 'monospace', fontSize: '12px',
-        boxShadow: '0 6px 32px #00000099', userSelect: 'none',
-      });
-      // Drag
-      let _dx = 0, _dy = 0, _drag = false;
-      const header = document.createElement('div');
-      Object.assign(header.style, {
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        marginBottom: '12px', cursor: 'move', fontWeight: 'bold',
-        fontSize: '11px', letterSpacing: '0.08em', color: '#88c8ff',
-      });
-      header.innerHTML = '&#9654; Song Data <span id="sdw-close" style="cursor:pointer;color:#6677aa;font-size:14px;padding:0 2px" title="Close">&#215;</span>';
-      header.addEventListener('mousedown', e => {
-        if (e.target.id === 'sdw-close') { _win.remove(); _win = null; return; }
-        _drag = true; _dx = e.clientX - _win.offsetLeft; _dy = e.clientY - _win.offsetTop;
-        e.preventDefault();
-      });
-      document.addEventListener('mousemove', e => {
-        if (!_drag || !_win) return;
-        _win.style.left = (e.clientX - _dx) + 'px';
-        _win.style.top  = (e.clientY - _dy) + 'px';
-        _win.style.right = 'auto';
-      });
-      document.addEventListener('mouseup', () => { _drag = false; });
-      _win.appendChild(header);
-      const body = document.createElement('div');
-      body.id = 'sdw-body';
-      _win.appendChild(body);
-      document.body.appendChild(_win);
-    }
-
-    const body = document.getElementById('sdw-body');
-    if (!body) return;
-
-    if (!chart) {
-      body.innerHTML = '<div style="color:#556">No chart loaded.</div>';
-      return;
-    }
-
-    const totalTicks = chart.totalTicks();
-    const totalMeasures = chart.totalMeasures;
-    const lengthSec = tickToSeconds(totalTicks);
-
-    const bpms = chart.bpmEvents.map(e => e.bpm).filter(b => b > 0);
-    const minBpm = bpms.length ? Math.min(...bpms).toFixed(1) : '—';
-    const maxBpm = bpms.length ? Math.max(...bpms).toFixed(1) : '—';
-    const nowBpm = chart.getBpmAt ? chart.getBpmAt(renderer?.playTick ?? 0).toFixed(1) : maxBpm;
-    const bpmStr = minBpm === maxBpm ? maxBpm : `${minBpm} – ${maxBpm}`;
-
-    // Count notes
-    let btNotes = 0, fxNotes = 0, volSecs = 0;
-    for (let li = 0; li < 4; li++) btNotes += chart.bt[li].length;
-    for (let li = 0; li < 2; li++) fxNotes += chart.fx[li].length;
-    for (let s  = 0; s  < 2; s++)  volSecs += chart.lasers[s].length;
-
-    const row = (label, value, hint = '') => `
-      <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #1a1a33">
-        <span style="color:#6677aa">${label}</span>
-        <span style="color:#e8e8f8;font-weight:bold" title="${hint}">${value}</span>
-      </div>`;
-
-    body.innerHTML =
-      row('Length',   _secToTime(lengthSec)) +
-      row('Ticks',    totalTicks.toLocaleString()) +
-      row('Measures', totalMeasures) +
-      row('BPM',      bpmStr, `Now: ${nowBpm}`) +
-      row('BT notes', btNotes) +
-      row('FX notes', fxNotes) +
-      row('VOL segs', volSecs);
-  }
-
-  document.getElementById('btn-song-data-window')?.addEventListener('click', () => {
-    if (_win) { _win.remove(); _win = null; return; } // toggle
-    _buildOrRefresh();
-  });
-
-  // Refresh whenever the chart changes (hook into render cycle)
-  const _origRender = window._sdwRefreshHooked;
-  if (!_origRender) {
-    window._sdwRefreshHooked = true;
-    // Lightweight: refresh on any render call if window is open
-    const _baseRender = typeof render === 'function' ? render : null;
-    if (_baseRender) {
-      // We patch render at the call site level — safer to just refresh on a timer
-      setInterval(() => { if (_win && chart) _buildOrRefresh(); }, 1000);
-    }
-  }
-})();
-
 // ──────────────────────────────────────────────────────────────────────────────
 // First-run disclaimer (blocks the app until the user agrees)
 // ──────────────────────────────────────────────────────────────────────────────
@@ -8387,6 +8748,145 @@ const Bookmarks = (function() {
   }, true); // capture phase so we run before any other handler
 
   return { addAtPlayhead, toggle, refresh };
+})();
+
+// ──────────────────────────────────────────────────────────────────────────────
+// v0.0.20: Chart Section Labels
+// Named ranges (Intro, Verse, Chorus…) overlaid on the 2D ruler.
+// ──────────────────────────────────────────────────────────────────────────────
+const ChartSections = (function() {
+  const PALETTE = ['#ff4466','#ffaa00','#44dd88','#4488ff','#dd44ff','#00ccff','#ff8800'];
+  const panel  = document.getElementById('sections-panel');
+  const list   = document.getElementById('sec-list');
+  const btnAdd = document.getElementById('sec-add');
+  const btnClose = document.getElementById('sec-close');
+  const btnOpen  = document.getElementById('btn-sections-panel');
+
+  function getSections() { return (chart?.sections ?? []); }
+
+  function tickToLabel(tick) {
+    const m = Math.floor(tick / TICKS_PER_MEASURE) + 1;
+    const b = Math.floor((tick % TICKS_PER_MEASURE) / TICKS_PER_BEAT) + 1;
+    return `m${m}:b${b}`;
+  }
+
+  function nextColor() {
+    const used = getSections().map(s => s.color);
+    for (const c of PALETTE) if (!used.includes(c)) return c;
+    return PALETTE[getSections().length % PALETTE.length];
+  }
+
+  function save() {
+    if (chart && renderer) renderer.draw();
+    // Sections are persisted in KSON export; nothing extra needed for localStorage
+  }
+
+  function refresh() {
+    if (!list) return;
+    const secs = [...getSections()].sort((a, b) => a.y - b.y);
+    if (!secs.length) {
+      list.innerHTML = `<div class="bm-empty">No sections yet. Use <em>+ Add</em> to mark a region.</div>`;
+      return;
+    }
+    list.innerHTML = secs.map((s, i) =>
+      `<div class="sec-item" data-i="${i}">
+        <span class="sec-swatch" data-i="${i}" style="background:${s.color}"></span>
+        <span class="sec-range">${tickToLabel(s.y)}</span>
+        <input class="sec-label bm-label" value="${(s.label || '').replace(/"/g,'&quot;')}" placeholder="Section name">
+        <button class="bm-del sec-del" data-i="${i}" title="Remove">✕</button>
+      </div>`
+    ).join('');
+
+    list.querySelectorAll('.sec-item').forEach(el => {
+      const i = +el.dataset.i;
+      const sec = secs[i];
+
+      // Click row → seek
+      el.addEventListener('click', ev => {
+        if (ev.target.classList.contains('bm-del') ||
+            ev.target.classList.contains('sec-label') ||
+            ev.target.classList.contains('sec-swatch')) return;
+        if (typeof _seekTo === 'function') _seekTo(sec.y);
+      });
+
+      // Edit label
+      el.querySelector('.sec-label').addEventListener('change', ev => {
+        sec.label = ev.target.value;
+        save();
+      });
+
+      // Cycle color
+      el.querySelector('.sec-swatch').addEventListener('click', ev => {
+        ev.stopPropagation();
+        const idx = PALETTE.indexOf(sec.color);
+        sec.color = PALETTE[(idx + 1) % PALETTE.length];
+        ev.target.style.background = sec.color;
+        save();
+      });
+
+      // Delete
+      el.querySelector('.sec-del').addEventListener('click', ev => {
+        ev.stopPropagation();
+        const arr = chart.sections;
+        const real = arr.findIndex(s2 => s2.y === sec.y && s2.label === sec.label);
+        if (real >= 0) arr.splice(real, 1);
+        save(); refresh();
+      });
+    });
+  }
+
+  function addFromSelection() {
+    if (!chart || !renderer) {
+      alert('No chart loaded.');
+      return;
+    }
+    let startTick, endTick;
+    if (sel.active) {
+      startTick = Math.min(sel.startTick, sel.endTick);
+      endTick   = Math.max(sel.startTick, sel.endTick);
+    } else {
+      startTick = renderer.playTick | 0;
+      endTick   = startTick + TICKS_PER_MEASURE * 4; // default 4 measures
+    }
+    if (endTick <= startTick) endTick = startTick + TICKS_PER_MEASURE;
+    if (!Array.isArray(chart.sections)) chart.sections = [];
+    chart.sections.push({ y: startTick, endY: endTick, label: 'Section', color: nextColor() });
+    chart.sections.sort((a, b) => a.y - b.y);
+    if (panel && panel.style.display === 'none') panel.style.display = 'flex';
+    save(); refresh();
+  }
+
+  function toggle() {
+    if (!panel) return;
+    if (panel.style.display === 'none') { refresh(); panel.style.display = 'flex'; }
+    else panel.style.display = 'none';
+  }
+
+  btnAdd?.addEventListener('click', addFromSelection);
+  btnClose?.addEventListener('click', () => panel && (panel.style.display = 'none'));
+  btnOpen?.addEventListener('click', toggle);
+
+  // Drag-to-move header
+  const header = panel?.querySelector('.fp-header');
+  if (header) {
+    let dragging = false, ox = 0, oy = 0;
+    header.addEventListener('mousedown', e => {
+      if (e.target.tagName === 'BUTTON') return;
+      dragging = true;
+      const r = panel.getBoundingClientRect();
+      ox = e.clientX - r.left; oy = e.clientY - r.top;
+      e.preventDefault();
+    });
+    window.addEventListener('mousemove', e => {
+      if (!dragging) return;
+      panel.style.left  = (e.clientX - ox) + 'px';
+      panel.style.top   = (e.clientY - oy) + 'px';
+      panel.style.right = 'auto';
+    });
+    window.addEventListener('mouseup', () => dragging = false);
+  }
+
+  return { addFromSelection, toggle, refresh };
 })();
 
 // ──────────────────────────────────────────────────────────────────────────────

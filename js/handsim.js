@@ -1,8 +1,7 @@
 // js/handsim.js v6 — 3D Skeletal Hand Renderer
 // Forward-kinematics bone chains, perspective cylinder shading, joint spheres.
 // ─────────────────────────────────────────────────────────────────────────────
-(function () {
-'use strict';
+import { chart, renderer } from './app.js';
 
 const CW = 560, CH = 340;
 
@@ -874,7 +873,5 @@ function _build() {
   document.addEventListener('mouseup', () => { drag=false; });
 }
 
-window.openHandSimWindow  = function() { if(!_win)_build(); _win.style.display='flex'; window._hsVisible=true;  _startLoop(); };
-window.closeHandSimWindow = function() { if(_win)_win.style.display='none';            window._hsVisible=false; _stopLoop();  };
-
-})();
+export function openHandSimWindow()  { if(!_win)_build(); _win.style.display='flex'; window._hsVisible=true;  _startLoop(); }
+export function closeHandSimWindow() { if(_win)_win.style.display='none';            window._hsVisible=false; _stopLoop();  }

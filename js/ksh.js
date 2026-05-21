@@ -1,8 +1,9 @@
-'use strict';
+import { effectToKsh } from './effects.js';
+import { TICKS_PER_BEAT, TICKS_PER_MEASURE, ChartData, LASER_CHARS, laserCharToPos, laserPosToChar, LANE, LASER_SLAM_TICKS } from './chart.js';
 
 // ── KSH EXPORT ──────────────────────────────────────────────────────────────
 
-function exportKsh(chart) {
+export function exportKsh(chart) {
   const m = chart.meta;
   const lines = [];
 
@@ -175,7 +176,7 @@ function exportKsh(chart) {
 
 // ── KSH effect string → makeEffectInstance ─────────────────────────────────
 // Parses "Wobble;12" / "Gate;8" / "Retrigger;4" / "Echo;4;60" etc.
-function _kshEffectFromStr(str) {
+export function _kshEffectFromStr(str) {
   if (!str || typeof makeEffectInstance !== 'function') return null;
   const parts = str.split(';');
   const name  = (parts[0] || '').trim().toLowerCase();
@@ -205,7 +206,7 @@ function _kshEffectFromStr(str) {
 // ── KSH IMPORT ──────────────────────────────────────────────────────────────
 // Accepts either a UTF-8 string OR an ArrayBuffer (for Shift-JIS auto-detection).
 
-function importKsh(input) {
+export function importKsh(input) {
   // ── Decode ──────────────────────────────────────────────────────────────────
   let text;
   if (typeof input === 'string') {
@@ -517,9 +518,9 @@ function importKsh(input) {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function gcd(a, b) { return b === 0 ? a : gcd(b, a % b); }
+export function gcd(a, b) { return b === 0 ? a : gcd(b, a % b); }
 
-function getTimeSigAt(chart, measure) {
+export function getTimeSigAt(chart, measure) {
   let ts = { num: 4, den: 4 };
   for (const ev of chart.timeSigEvents) {
     if (ev.measure <= measure) ts = ev;
@@ -528,9 +529,9 @@ function getTimeSigAt(chart, measure) {
   return ts;
 }
 
-function timeSigEqual(a, b) { return a.num === b.num && a.den === b.den; }
+export function timeSigEqual(a, b) { return a.num === b.num && a.den === b.den; }
 
-function downloadText(filename, text) {
+export function downloadText(filename, text) {
   // Firefox (and some Safari builds) refuse to fire downloads when the anchor
   // isn't part of the DOM, and revoking the object URL synchronously can
   // cancel the transfer mid-flight. Attach, click, then revoke on a delay.

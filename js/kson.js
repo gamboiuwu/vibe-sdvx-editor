@@ -1,8 +1,9 @@
-'use strict';
+import { TICKS_PER_BEAT, TICKS_PER_MEASURE, ChartData, LASER_SLAM_TICKS } from './chart.js';
+import { EFFECT_DEFS } from './effects.js';
 
 // KSON uses 240 ticks per beat (960 per 4/4 measure)
-const KSON_TPB = 240;
-const KSH_TO_KSON = KSON_TPB / TICKS_PER_BEAT; // 5x
+export const KSON_TPB = 240;
+export const KSH_TO_KSON = KSON_TPB / TICKS_PER_BEAT; // 5x
 
 // ── Export ──────────────────────────────────────────────────────────────────
 //
@@ -26,7 +27,7 @@ const KSH_TO_KSON = KSON_TPB / TICKS_PER_BEAT; // 5x
 // GraphValue form [v_in, v_out]. exportKson merges the pair; importKson
 // splits it back.
 
-function exportKson(chart) {
+export function exportKson(chart) {
   const m = chart.meta;
 
   const DIFF_TABLE = ['light', 'challenge', 'extended', 'infinite'];
@@ -121,6 +122,9 @@ function exportKson(chart) {
       }),
     },
     _glitchEvents: (chart.glitchEvents || []).map(ev => [ev.y, ev.level]),
+    _sections: (chart.sections && chart.sections.length)
+      ? chart.sections.map(s => [s.y, s.endY, s.label || '', s.color || '#4488ff'])
+      : undefined,
     note: {
       bt: chart.bt.map(lane =>
         lane.map(n => [Math.round(n.y * KSH_TO_KSON), Math.round((n.len || 0) * KSH_TO_KSON)])
@@ -177,7 +181,7 @@ function exportKson(chart) {
 // object form ({y, v}, {ry, v, slam, a, b}, etc.) so older vibe-editr exports
 // still load.
 
-function importKson(text) {
+export function importKson(text) {
   const data  = JSON.parse(text);
   const chart = new ChartData();
 
@@ -250,6 +254,17 @@ function importKson(text) {
       chart.glitchEvents.unshift({ y: 0, level: 0 });
       chart.glitchEvents.sort((a, b) => a.y - b.y);
     }
+  }
+
+  // Section labels (custom field)
+  if (Array.isArray(data._sections) && data._sections.length) {
+    chart.sections = data._sections.map(s => ({
+      y:     s[0] ?? 0,
+      endY:  s[1] ?? 0,
+      label: s[2] ?? '',
+      color: s[3] ?? '#4488ff',
+    })).filter(s => s.endY > s.y);
+    chart.sections.sort((a, b) => a.y - b.y);
   }
 
   // ── Notes: BT / FX ──────────────────────────────────────────────────────
@@ -444,38 +459,51 @@ function importKson(text) {
 // reading `charts[i]` and serialising that subtree back out as KSON.
 // ─────────────────────────────────────────────────────────────────────────────
 
-function exportKsonPack(charts, packMeta = {}, tabNames = []) {
+export function exportKsonPack(charts, packMeta = {}, tabNames = []) {
   // Reuse exportKson then re-parse so each chart sits as a JS object inside
   // the bundle. Slightly wasteful but keeps a single export code path.
-  const entries = charts
-    .filter(c => c && c.meta)
-    .map((c, i) => {
-      const obj = JSON.parse(exportKson(c));
-      const name = tabNames[i];
-      if (name) obj._tabName = name;
-      return obj;
-    });
+  const validCharts = charts.filter(c => c && c.meta);
+  const entries = validCharts.map((c, i) => {
+    const obj = JSON.parse(exportKson(c));
+    const name = tabNames[i];
+    if (name) obj._tabName = name;
+    return obj;
+  });
+
+  // Collect all distinct audio filenames across all charts (basename only).
+  // Stored in meta so the folder auto-loader can find them without unpacking charts.
+  const audioFilenames = [...new Set(
+    validCharts
+      .map(c => c.meta?.music?.split(/[\\/]/).pop())
+      .filter(Boolean)
+  )];
+
   const pack = {
     format:  'ksonpack',
     version: '0.1.0',
     meta: {
-      title:       packMeta.title       || 'Untitled Pack',
-      artist:      packMeta.artist      || '',
-      description: packMeta.description || '',
-      created:     new Date().toISOString(),
-      chartCount:  entries.length,
+      title:           packMeta.title       || 'Untitled Pack',
+      artist:          packMeta.artist      || '',
+      description:     packMeta.description || '',
+      created:         new Date().toISOString(),
+      chartCount:      entries.length,
+      // Hint for folder-based auto-load: list of audio basenames used by charts.
+      audioFilenames:  audioFilenames,
     },
     charts: entries,
   };
   return JSON.stringify(pack, null, 2);
 }
 
-function importKsonPack(text) {
+export function importKsonPack(text) {
   const data = JSON.parse(text);
   if (data.format !== 'ksonpack' || !Array.isArray(data.charts)) {
     throw new Error('Not a ksonpack file (missing format:"ksonpack" or charts[]).');
   }
   const tabNames = data.charts.map(c => c._tabName || null);
   const charts = data.charts.map(c => importKson(JSON.stringify(c)));
-  return { meta: data.meta || {}, charts, tabNames };
+  // audioFilenames: explicit list saved at export time; fall back to per-chart music fields.
+  const audioFilenames = data.meta?.audioFilenames
+    || [...new Set(data.charts.map(c => c.audio?.bgm?.filename?.split(/[\\/]/).pop()).filter(Boolean))];
+  return { meta: data.meta || {}, charts, tabNames, audioFilenames };
 }

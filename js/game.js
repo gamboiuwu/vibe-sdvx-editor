@@ -1,10 +1,12 @@
-'use strict';
+import { ChartData, TICKS_PER_BEAT, TICKS_PER_MEASURE, BEATS_PER_MEASURE } from './chart.js';
+import { GLLaneRenderer } from './gl-lane.js';
+import { laserOpacity, laserColors } from './renderer.js';
 
 // ── SDVX Game Preview ──────────────────────────────────────────────────────────
 // Tick interval for hold scoring samples
-const HOLD_SAMPLE = TICKS_PER_BEAT / 8;
+export const HOLD_SAMPLE = TICKS_PER_BEAT / 8;
 
-class GameView {
+export class GameView {
   constructor(canvas) {
     this.canvas   = canvas;
     this.ctx      = canvas.getContext('2d');
@@ -345,8 +347,7 @@ class GameView {
     // Suppress glow/shadows in simplified and wireframe modes
     const hqE = hq && (im === 'standard' || im === 'colorblind');
     // Colorblind mode: swap right laser to gold (deuteranopia/protanopia-safe)
-    const _lc = typeof laserColors !== 'undefined' ? laserColors
-      : { L:'#0088ff', Lg:'#0088ff88', Le:'#66bbff', R:'#ff1177', Rg:'#ff117788', Re:'#ff88cc' };
+    const _lc = laserColors;
     const LC = im === 'colorblind'
       ? { ..._lc, R: '#ddaa00', Rg: '#ddaa0088', Re: '#ffdd55' }
       : _lc;
@@ -369,7 +370,7 @@ class GameView {
     if (useGL) {
       this._glRenderer.render(
         p, this, LC, chart,
-        typeof laserOpacity !== 'undefined' ? laserOpacity : 0.7,
+        laserOpacity,
         im
       );
       ctx.clearRect(0, 0, p.w, p.h);

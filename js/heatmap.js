@@ -1,4 +1,5 @@
-'use strict';
+import { chart, renderer, render, updateSeekbar } from './app.js';
+import { TICKS_PER_MEASURE, TICKS_PER_BEAT } from './chart.js';
 
 // ── Emotional Intensity Heatmap — full-chart density visualization ─────────────
 // Per-measure note density displayed as a color gradient (cool → hot).
@@ -338,8 +339,8 @@ function _buildHeatmapWindow() {
     const totalMeas = Math.max(1, ch.totalMeasures || 64);
     const tick = Math.max(0, Math.min(Math.round(rel * totalMeas * 192), (totalMeas - 1) * 192));
     rend.playTick = tick;
-    if (typeof render === 'function') render();
-    if (typeof updateSeekbar === 'function') updateSeekbar(tick);
+    render();
+    updateSeekbar(tick);
     _drawHeatmap();
   });
 
@@ -368,7 +369,7 @@ function _buildHeatmapWindow() {
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
-function openHeatmapWindow() {
+export function openHeatmapWindow() {
   if (!_hmWin) _hmWin = _buildHeatmapWindow();
   _hmWin.style.display = 'flex';
   _hmVisible = true;
@@ -378,7 +379,7 @@ function openHeatmapWindow() {
   _startHmLoop();
 }
 
-function closeHeatmapWindow() {
+export function closeHeatmapWindow() {
   if (_hmWin) _hmWin.style.display = 'none';
   _hmVisible = false;
   _stopHmLoop();
@@ -386,7 +387,7 @@ function closeHeatmapWindow() {
 }
 
 // Called by render() / playFrame() whenever the chart or playhead changes.
-function updateHeatmap() {
+export function updateHeatmap() {
   if (!_hmWin || !_hmVisible) return;
   _hmLastTick = -1; // force redraw on next animation frame
 }

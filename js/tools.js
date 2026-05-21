@@ -1,4 +1,7 @@
-'use strict';
+import { chart, renderer, gameView, render, saveUndo, updateSeekbar, addChartAnnotation, _seekTo, sel, playing, audioBuffer } from './app.js';
+import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE } from './chart.js';
+import { Renderer } from './renderer.js';
+import { updateRadar } from './radar.js';
 /* ═══════════════════════════════════════════════════════════════════════════
    vibe-editr  ·  Tools Hub  ·  20 tools — floating MDI window
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -20,6 +23,7 @@ const TOOL_REGISTRY = [
   { id: 'hand-opt',    cat: 'Analysis', label: 'Hand Optimizer',   icon: '◈'  },
   { id: 'symmetry',    cat: 'Analysis', label: 'Symmetry Check',   icon: '⚖'  },
   { id: 'timing-window',cat:'Analysis', label: 'Timing Windows',   icon: '⏱'  },
+  { id: 'chart-stats', cat: 'Analysis', label: 'Chart Statistics', icon: '📊'  },
   // Preview
   { id: 'visual-mode', cat: 'Preview',  label: 'Visual Mode',      icon: '◑'  },
   // Audio
@@ -30,9 +34,8 @@ const TOOL_REGISTRY = [
   // Metadata
   { id: 'jacket-meta', cat: 'Metadata', label: 'Jacket Meta',      icon: '▣'  },
   // Validate
-  { id: 'validity',    cat: 'Validate', label: 'Validity Checker', icon: '✓'  },
-  { id: 'collision',   cat: 'Validate', label: 'Collision Detect', icon: '✗'  },
-  { id: 'export-validate',cat:'Validate',label:'Export Validator', icon: '▶'  },
+  { id: 'chart-validator', cat: 'Validate', label: 'Chart Validator', icon: '✓'  },
+  { id: 'laser-fixer',     cat: 'Validate', label: 'Laser Fixer',     icon: '⤢'  },
 ];
 
 // ── Per-tool settings schema ──────────────────────────────────────────────────
@@ -53,14 +56,12 @@ const TOOL_SETTINGS = {
     { key:'window', label:'Window size (measures)', type:'number', min:1, max:8, default:1 },
     { key:'color',  label:'High-density color',     type:'color',  default:'#ff3300' },
   ],
-  'validity': [
+  'chart-validator': [
     { key:'checkOverlaps', label:'Check BT note overlaps',  type:'toggle', default:true },
     { key:'checkFX',       label:'Check FX note overlaps',  type:'toggle', default:true },
     { key:'checkLasers',   label:'Check laser sections',    type:'toggle', default:true },
     { key:'checkMeta',     label:'Check metadata',          type:'toggle', default:true },
-  ],
-  'export-validate': [
-    { key:'strict', label:'Strict mode (warnings = fail)', type:'toggle', default:false },
+    { key:'strict',        label:'Strict mode (warnings = fail)', type:'toggle', default:false },
   ],
   'adaptive-compress': [
     { key:'threshold', label:'Default threshold (notes/beat)', type:'number', min:0.5, max:8, default:4 },
@@ -109,7 +110,7 @@ let _winEl = null;
 let _activeToolId = null;
 
 // ── Public API ────────────────────────────────────────────────────────────────
-function openToolsWindow() {
+export function openToolsWindow() {
   if (!_winEl) return;
   _winEl.style.display = 'flex';
   _winEl.classList.remove('tw-collapsed');
@@ -118,11 +119,25 @@ function openToolsWindow() {
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────────
-function initTools() {
+function _buildWelcomeGrid() {
+  const grid = document.getElementById('tw-welcome-grid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  TOOL_REGISTRY.forEach(tool => {
+    const card = _h('div', 'tw-welcome-card');
+    card.title = `${tool.cat} · ${tool.label}`;
+    card.innerHTML = `<span class="wc-icon">${tool.icon}</span><span class="wc-name">${tool.label}</span><span class="wc-cat">${tool.cat}</span>`;
+    card.addEventListener('click', () => _activateTool(tool.id));
+    grid.appendChild(card);
+  });
+}
+
+export function initTools() {
   _winEl = _buildWindow();
   document.body.appendChild(_winEl);
-  // Build sidebar NOW — element is in the live DOM so getElementById works
+  // Build sidebar and welcome grid NOW — elements are in the live DOM
   _buildSidebar();
+  _buildWelcomeGrid();
   // Restore position/size — but reject fullscreen/maximized states
   const st = _loadWinState();
   if (st) {
@@ -165,8 +180,8 @@ function _buildWindow() {
       </nav>
       <div class="tw-main" id="tw-main">
         <div class="tw-welcome" id="tw-welcome">
-          <div style="font-size:16px;font-weight:700;color:#d8d8f0;margin-bottom:6px">Tools Hub</div>
-          <div style="font-size:12px;color:#5558a0">Select a tool from the sidebar to get started.<br>Pin your favourites with ★ for quick access.</div>
+          <div class="tw-welcome-header">Tools Hub &mdash; ${TOOL_REGISTRY.length} tools &middot; Click to open &middot; &#9733; to pin</div>
+          <div class="tw-welcome-grid" id="tw-welcome-grid"></div>
         </div>
         <div class="tw-tool-view" id="tw-tool-view" style="display:none">
           <div class="tw-tool-topbar" id="tw-tool-topbar"></div>
@@ -423,6 +438,23 @@ function _section(title) {
   return s;
 }
 
+function _statGrid(cells) {
+  const grid = _h('div', 'tool-stat-grid');
+  cells.forEach(({ label, value, color }) => {
+    const cell = _h('div', 'tool-stat-cell');
+    const v = _h('div', 'tsv', String(value));
+    if (color) v.style.color = color;
+    const l = _h('div', 'tsl', label.toUpperCase());
+    cell.appendChild(v); cell.appendChild(l);
+    grid.appendChild(cell);
+  });
+  return grid;
+}
+
+function _badge(text, type) {
+  return _h('span', `tool-badge tool-badge-${type || 'info'}`, String(text));
+}
+
 // Creates a top-level tool description banner using the i18n key
 function _toolDesc(key) {
   const txt = (typeof t === 'function') ? t(key) : key;
@@ -457,7 +489,7 @@ function _tickToMB(tick) {
 
 /** Navigate both the edit renderer and the game/preview view to a measure. */
 function _goToMeasure(m) {
-  if (!(window.renderer && renderer.playTick !== undefined)) return;
+  if (!(renderer && renderer.playTick !== undefined)) return;
   const targetTick = Math.max(0, m * TICKS_PER_MEASURE);
   renderer.playTick = targetTick;
 
@@ -471,7 +503,7 @@ function _goToMeasure(m) {
   }
 
   // Sync the game/preview view too so it jumps in real-time
-  if (window.gameView) {
+  if (gameView) {
     gameView.playTick = targetTick;
     if (typeof gameView.draw === 'function') gameView.draw();
   }
@@ -490,7 +522,9 @@ function _getBpm() {
 function _renderTool(id, container) {
   switch (id) {
     case 'bpm-sync':      return _toolBpmSync(container);
-    case 'validity':      return _toolValidity(container);
+    case 'chart-validator': return _toolChartValidator(container);
+    case 'chart-stats':   return _toolChartStats(container);
+    case 'laser-fixer':   return _toolLaserFixer(container);
     case 'laser-smooth':  return _toolLaserSmooth(container);
     case 'density-heatmap': return _toolDensityHeatmap(container);
     case 'multi-sync':    return _toolMultiSync(container);
@@ -507,8 +541,8 @@ function _renderTool(id, container) {
     case 'pattern-lib':   return _toolPatternLib(container);
     case 'waveform-align':return _toolWaveformAlign(container);
     case 'audio-anchor':  return _toolAudioAnchor(container);
-    case 'collision':     return _toolCollision(container);
-    case 'export-validate':return _toolExportValidate(container);
+    case 'collision':      return _toolChartValidator(container); // redirected
+    case 'export-validate':return _toolChartValidator(container); // redirected
     case 'visual-mode':       return _toolVisualMode(container);
     case 'adaptive-compress': return _toolAdaptiveCompress(container);
     default: container.textContent = 'Unknown tool: ' + id;
@@ -550,11 +584,13 @@ function _toolBpmSync(c) {
     const msNote = msBeat / sd.div;
     const ticksNote = TICKS_PER_BEAT / sd.div;
     const nps = 1000 / msNote;
-    out.innerHTML = `
-      <div class="tool-result-item">ms/beat: <b>${msBeat.toFixed(2)}</b></div>
-      <div class="tool-result-item">ms/note: <b>${msNote.toFixed(2)}</b></div>
-      <div class="tool-result-item">ticks/note: <b>${ticksNote.toFixed(2)}</b></div>
-      <div class="tool-result-item">NPS: <b>${nps.toFixed(2)}</b></div>`;
+    out.innerHTML = '';
+    out.appendChild(_statGrid([
+      { label: 'ms / beat',    value: msBeat.toFixed(2)    },
+      { label: 'ms / note',    value: msNote.toFixed(2)    },
+      { label: 'ticks / note', value: ticksNote.toFixed(2) },
+      { label: 'NPS',          value: nps.toFixed(2), color: nps > 20 ? '#ff6655' : nps > 12 ? '#ffaa33' : '#44dd88' },
+    ]));
   }
 
   bpmIn.addEventListener('input', recalc);
@@ -572,7 +608,7 @@ function _toolBpmSync(c) {
     for (let i = 0; i < 4; i++) chart.bt[i].forEach(n => { n.y = snap(n.y); });
     for (let i = 0; i < 2; i++) chart.fx[i].forEach(n => { n.y = snap(n.y); });
     if (typeof render === 'function') render();
-    out.innerHTML += '<div class="tool-result-item tool-result-ok">✓ Snapped all notes</div>';
+    out.appendChild(_h('div', 'tool-result-item tool-result-ok', '✓ Snapped all notes'));
   });
 
   sec.appendChild(_row('BPM:', bpmIn));
@@ -1007,14 +1043,14 @@ function _toolValidity(c) {
         row.addEventListener('click', () => {
           // Navigate using exact tick if available, else measure start
           const t = issue.tick != null ? issue.tick : issue.measure * TICKS_PER_MEASURE;
-          if (window.renderer && renderer.playTick !== undefined) {
+          if (renderer && renderer.playTick !== undefined) {
             renderer.playTick = Math.max(0, t);
             const colLen = (renderer.measPerCol ?? 1) * TICKS_PER_MEASURE;
             const col    = Math.floor(t / colLen);
             if (col < renderer.scrollCol || col >= renderer.scrollCol + (renderer.numCols ?? 1)) {
               renderer.scrollCol = Math.max(0, col - Math.floor((renderer.numCols ?? 1) / 2));
             }
-            if (window.gameView) { gameView.playTick = renderer.playTick; if (typeof gameView.draw==='function') gameView.draw(); }
+            if (gameView) { gameView.playTick = renderer.playTick; if (typeof gameView.draw==='function') gameView.draw(); }
             if (typeof updateSeekbar === 'function') updateSeekbar(renderer.playTick);
             if (typeof updateRadar   === 'function') updateRadar();
             if (typeof render        === 'function') render();
@@ -2772,8 +2808,8 @@ function _hoReason(s) {
 
   // ── Stretch ────────────────────────────────────────────────────────────────
   if (s.stretch > 0) {
-    reasons.push('Full-span stretch: BT-A and BT-D both appear here, forcing the ring fingers to reach the outermost lanes simultaneously. This is tiring to sustain and increases drop risk at high BPM.');
-    suggests.push('Shift BT-A or BT-D hits to BT-B / BT-C so the hand span stays comfortable, or offset them so they never coincide in the same beat.');
+    reasons.push('Full-span stretch with laser: BT-A and BT-D both appear while a laser is moving, requiring the ring fingers to span the outermost lanes while a hand is also rotating the VOL knob. This is a demanding combination at high BPM.');
+    suggests.push('Shift BT-A or BT-D hits to BT-B / BT-C during the laser section, or time the stretch notes so they fall before or after the moving laser segment.');
   }
 
   // ── Chord density ──────────────────────────────────────────────────────────
@@ -3382,9 +3418,27 @@ function _toolHandOpt(c) {
       combos.sort((a, b) => b.lanes.length - a.lanes.length);
       const topCombos = combos.slice(0, 12);
 
-      // Stretch penalty (BT-A and BT-D both appear in this measure)
-      const stretch = chart.bt[0].some(n => n.y >= startT && n.y < endT) &&
-                      chart.bt[3].some(n => n.y >= startT && n.y < endT) ? 10 : 0;
+      // Stretch penalty: BT-A + BT-D coexist AND a moving laser is active in this measure
+      const hasBtAD = chart.bt[0].some(n => n.y >= startT && n.y < endT) &&
+                      chart.bt[3].some(n => n.y >= startT && n.y < endT);
+      let stretchWithLaser = false;
+      if (hasBtAD) {
+        outer: for (let s = 0; s < 2; s++) {
+          for (const sec of chart.lasers[s]) {
+            let segStart = sec.y;
+            for (let pi = 0; pi < sec.points.length - 1; pi++) {
+              const p0 = sec.points[pi];
+              const segEnd = segStart + p0.ry;
+              if (p0.v !== sec.points[pi + 1].v && segEnd > startT && segStart < endT) {
+                stretchWithLaser = true;
+                break outer;
+              }
+              segStart = segEnd;
+            }
+          }
+        }
+      }
+      const stretch = stretchWithLaser ? 10 : 0;
 
       const noteCount = laneCount.slice(0, 4).reduce((a, b) => a + b, 0);
       const total     = simScore + noteCount + stretch;
@@ -3599,7 +3653,7 @@ function _toolScale(c) {
     const lbl = document.createElement('span'); lbl.textContent = ' ' + name;
     btn.appendChild(lbl);
     btn.addEventListener('click', () => {
-      if (!(typeof chart !== "undefined" && chart) || !window.renderer) return;
+      if (!(typeof chart !== "undefined" && chart) || !renderer) return;
       if (typeof saveUndo === 'function') saveUndo('Insert Pattern: ' + name);
       const startTick = renderer.playTick || 0;
       grid.forEach((row, ri) => {
@@ -4460,7 +4514,7 @@ function _toolPatternLib(c) {
   }
 
   function _insertPattern(pat) {
-    if (!(typeof chart !== "undefined" && chart) || !window.renderer) return;
+    if (!(typeof chart !== "undefined" && chart) || !renderer) return;
     if (typeof saveUndo === 'function') saveUndo('Insert Pattern: ' + pat.name);
     const startTick = renderer.playTick || 0;
     if (pat.btNotes) {
@@ -4484,7 +4538,7 @@ function _toolPatternLib(c) {
     const name = prompt('Pattern name:');
     if (!name) return;
     // Capture from selection or full chart if no selection
-    const hasSel = window.sel && sel.active;
+    const hasSel = sel && sel.active;
     const startT = hasSel ? Math.min(sel.startTick, sel.endTick) : 0;
     const endT   = hasSel ? Math.max(sel.startTick, sel.endTick) : chart.totalMeasures * TICKS_PER_MEASURE;
     const spanTicks = endT - startT;
@@ -4505,8 +4559,8 @@ function _toolPatternLib(c) {
    19. Audio Event Anchoring
    ═══════════════════════════════════════════════════════════════════════════ */
 function _toolAudioAnchor(c) {
-  const _ch  = () => { try { return (typeof chart    !== 'undefined') ? chart    : null; } catch(_){return null;} };
-  const _buf = () => { try { return (typeof audioBuffer !== 'undefined') ? audioBuffer : null; } catch(_){return null;} };
+  const _ch  = () => chart;
+  const _buf = () => audioBuffer;
 
   const wrap = document.createElement('div');
   wrap.style.cssText = 'display:flex;flex-direction:column;gap:6px;font-size:11px';
@@ -4638,6 +4692,15 @@ function _toolAudioAnchor(c) {
   });
 
   wrap.append(mkRow(detectBtn, statusDiv));
+
+  // Refresh status when audio loads while this tool is open (e.g. ksonpack auto-load)
+  const _aaOnAudioReady = () => refreshStatus();
+  window.addEventListener('vibe:audio-ready', _aaOnAudioReady);
+  const _aaObserver = new MutationObserver(() => {
+    if (!document.contains(c)) { window.removeEventListener('vibe:audio-ready', _aaOnAudioReady); _aaObserver.disconnect(); }
+  });
+  _aaObserver.observe(document.body, { childList: true, subtree: true });
+
   wrap.append(mkRow('Threshold', thrSlider, thrVal));
   wrap.append(mkRow('Min gap', mgnSlider, mgnVal));
   wrap.appendChild(mkSep());
@@ -4668,11 +4731,64 @@ function _toolAudioAnchor(c) {
   wrap.appendChild(placeHdr);
 
   const laneLabels = ['BT-A','BT-B','BT-C','BT-D','FX-L','FX-R'];
+
+  // Predefined patterns: each is [label, laneIndex[]]
+  // Indices: BT-A=0 BT-B=1 BT-C=2 BT-D=3 FX-L=4 FX-R=5
+  const PATTERNS = [
+    ['Alternating A/C',       [0,2]],
+    ['Alternating B/D',       [1,3]],
+    ['Stairs Up (A→D)',       [0,1,2,3]],
+    ['Stairs Down (D→A)',     [3,2,1,0]],
+    ['Zigzag Outer (A D B C)',[0,3,1,2]],
+    ['Zigzag Inner (B C A D)',[1,2,0,3]],
+    ['Hand Trill L (A B)',    [0,1]],
+    ['Hand Trill R (C D)',    [2,3]],
+    ['FX Alternate (L R)',    [4,5]],
+    ['Spread (A C B D)',      [0,2,1,3]],
+  ];
+
+  // ── Mode selector ─────────────────────────────────────────────────────────
+  const modeSel = document.createElement('select');
+  modeSel.style.cssText='background:#12122a;color:#ccd;border:1px solid #334;padding:2px 6px;border-radius:4px;font-size:10px;flex:1';
+  [['single','Single Lane'],['random','Random'],['pattern','Pattern']].forEach(([v,l])=>{
+    const o=document.createElement('option'); o.value=v; o.textContent=l; modeSel.appendChild(o);
+  });
+  wrap.appendChild(mkRow('Mode', modeSel));
+
+  // ── Single-lane row ───────────────────────────────────────────────────────
   const laneSel = document.createElement('select');
   laneSel.style.cssText='background:#12122a;color:#ccd;border:1px solid #334;padding:2px 6px;border-radius:4px;font-size:10px;flex:1';
   laneLabels.forEach((l,i)=>{ const o=document.createElement('option'); o.value=i; o.textContent=l; laneSel.appendChild(o); });
-  wrap.appendChild(mkRow('Lane', laneSel));
+  const laneRow = mkRow('Lane', laneSel);
+  wrap.appendChild(laneRow);
 
+  // ── Random-group row ──────────────────────────────────────────────────────
+  const randGrpSel = document.createElement('select');
+  randGrpSel.style.cssText='background:#12122a;color:#ccd;border:1px solid #334;padding:2px 6px;border-radius:4px;font-size:10px;flex:1';
+  [['bt','BT lanes (A–D)'],['fx','FX lanes (L–R)'],['all','All lanes']].forEach(([v,l])=>{
+    const o=document.createElement('option'); o.value=v; o.textContent=l; randGrpSel.appendChild(o);
+  });
+  const randRow = mkRow('Random from', randGrpSel);
+  randRow.style.display='none';
+  wrap.appendChild(randRow);
+
+  // ── Pattern selector row ──────────────────────────────────────────────────
+  const patSel = document.createElement('select');
+  patSel.style.cssText='background:#12122a;color:#ccd;border:1px solid #334;padding:2px 6px;border-radius:4px;font-size:10px;flex:1';
+  PATTERNS.forEach(([label],i)=>{ const o=document.createElement('option'); o.value=i; o.textContent=label; patSel.appendChild(o); });
+  const patRow = mkRow('Pattern', patSel);
+  patRow.style.display='none';
+  wrap.appendChild(patRow);
+
+  // Show/hide rows when mode changes
+  modeSel.addEventListener('change', () => {
+    const m = modeSel.value;
+    laneRow.style.display = m==='single'  ? '' : 'none';
+    randRow.style.display = m==='random'  ? '' : 'none';
+    patRow.style.display  = m==='pattern' ? '' : 'none';
+  });
+
+  // ── Region selector ───────────────────────────────────────────────────────
   const regionSel = document.createElement('select');
   regionSel.style.cssText='background:#12122a;color:#ccd;border:1px solid #334;padding:2px 6px;border-radius:4px;font-size:10px;flex:1';
   [['all','Entire chart'],['sel','Current selection']].forEach(([v,l])=>{ const o=document.createElement('option'); o.value=v; o.textContent=l; regionSel.appendChild(o); });
@@ -4686,27 +4802,67 @@ function _toolAudioAnchor(c) {
     if (!ticks?.length) { placeMsg.textContent='⚠ No transients. Detect first.'; placeMsg.style.color='#f87'; return; }
     const ch = _ch();
     if (!ch) { placeMsg.textContent='⚠ No chart loaded.'; placeMsg.style.color='#f87'; return; }
-    const laneIdx = +laneSel.value;
-    const useSelection = regionSel.value === 'sel' && window.sel?.active;
+
+    const mode = modeSel.value;
+    const useSelection = regionSel.value === 'sel' && sel?.active;
     let lo = 0, hi = Infinity;
     if (useSelection) {
-      lo = Math.min(window.sel.startTick, window.sel.endTick);
-      hi = Math.max(window.sel.startTick, window.sel.endTick);
+      lo = Math.min(sel.startTick, sel.endTick);
+      hi = Math.max(sel.startTick, sel.endTick);
+    }
+
+    // Build the ordered list of ticks in range
+    const inRange = ticks.filter(t => t >= lo && t <= hi);
+    if (!inRange.length) {
+      placeMsg.style.color='#f87';
+      placeMsg.textContent='⚠ No transients in the selected region.';
+      return;
     }
 
     if (typeof saveUndo === 'function') saveUndo('Place Notes at Transients');
+
+    // Helpers to add a note by lane index (0-3 = BT, 4-5 = FX)
+    const addNote = (laneIdx, tick) => {
+      if (laneIdx < 4) ch.addBtNote(laneIdx, tick, 0);
+      else             ch.addFxNote(laneIdx - 4, tick, 0);
+    };
+
     let placed = 0;
-    for (const tick of ticks) {
-      if (tick < lo || tick > hi) continue;
-      if (laneIdx < 4) {
-        ch.addBtNote(laneIdx, tick, 0);
-      } else {
-        ch.addFxNote(laneIdx - 4, tick, 0);
+    let modeLabel = '';
+
+    if (mode === 'single') {
+      // ── Original behaviour ──────────────────────────────────────────────
+      const laneIdx = +laneSel.value;
+      for (const tick of inRange) { addNote(laneIdx, tick); placed++; }
+      modeLabel = laneLabels[laneIdx];
+
+    } else if (mode === 'random') {
+      // ── Random pick from group each transient ───────────────────────────
+      const grp = randGrpSel.value;
+      const pool = grp==='bt'  ? [0,1,2,3]
+                 : grp==='fx'  ? [4,5]
+                 :               [0,1,2,3,4,5];
+      for (const tick of inRange) {
+        const laneIdx = pool[Math.floor(Math.random() * pool.length)];
+        addNote(laneIdx, tick);
+        placed++;
       }
-      placed++;
+      modeLabel = `random ${grp.toUpperCase()}`;
+
+    } else if (mode === 'pattern') {
+      // ── Cycle through predefined pattern sequence ───────────────────────
+      const patIdx = +patSel.value;
+      const seq    = PATTERNS[patIdx][1];
+      for (let i = 0; i < inRange.length; i++) {
+        const laneIdx = seq[i % seq.length];
+        addNote(laneIdx, inRange[i]);
+        placed++;
+      }
+      modeLabel = PATTERNS[patIdx][0];
     }
+
     placeMsg.style.color = '#8f8';
-    placeMsg.textContent = `✓ Placed ${placed} chip notes on ${laneLabels[laneIdx]}`;
+    placeMsg.textContent = `✓ Placed ${placed} notes — ${modeLabel}`;
     if (typeof render === 'function') render();
   });
 
@@ -4740,8 +4896,8 @@ function _toolAudioAnchor(c) {
       const secStr = secs?.[i]!=null ? secs[i].toFixed(3)+'s' : '';
       row.innerHTML=`<span style="color:#ffaa55;min-width:28px">T${i+1}</span><span style="min-width:60px">M${m} B${b}</span><span style="color:#778">${secStr}</span>`;
       row.addEventListener('click', () => {
-        if (window.renderer) {
-          window.renderer.playTick = tick;
+        if (renderer) {
+          renderer.playTick = tick;
           if (typeof updateSeekbar === 'function') updateSeekbar(tick);
           if (typeof render === 'function') render();
         }
@@ -4762,9 +4918,9 @@ function _toolAudioAnchor(c) {
    ═══════════════════════════════════════════════════════════════════════════ */
 function _toolWaveformAlign(c) {
   // ── Safe accessors (let vars in app.js — not window props) ────────────────
-  const _ch  = () => { try { return (typeof chart        !== 'undefined') ? chart        : null; } catch(_){return null;} };
-  const _r   = () => { try { return (typeof renderer     !== 'undefined') ? renderer     : null; } catch(_){return null;} };
-  const _buf = () => { try { return (typeof audioBuffer  !== 'undefined') ? audioBuffer  : null; } catch(_){return null;} };
+  const _ch  = () => chart;
+  const _r   = () => renderer;
+  const _buf = () => audioBuffer;
 
   // ── Tool state ────────────────────────────────────────────────────────────
   let peaks         = null;   // Float32Array 0-1 normalised
@@ -5060,6 +5216,20 @@ function _toolWaveformAlign(c) {
     statusDiv.style.color = '#f87';
   }
 
+  // Refresh status when audio loads while this tool is open (e.g. ksonpack auto-load)
+  const _onAudioReady = () => {
+    if (!peaks) {
+      statusDiv.textContent = 'Audio present — click Decode to load waveform.';
+      statusDiv.style.color = '#aac';
+    }
+  };
+  window.addEventListener('vibe:audio-ready', _onAudioReady);
+  // Clean up listener when the container is removed from the DOM
+  const _waObserver = new MutationObserver(() => {
+    if (!document.contains(c)) { window.removeEventListener('vibe:audio-ready', _onAudioReady); _waObserver.disconnect(); }
+  });
+  _waObserver.observe(document.body, { childList: true, subtree: true });
+
   wrap.append(mkRow(decodeBtn, statusDiv));
   wrap.appendChild(mkSep());
 
@@ -5233,6 +5403,555 @@ function _toolWaveformAlign(c) {
   if (initialBuf) {
     requestAnimationFrame(() => decodeBtn.click());
   }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   21. Chart Validator — unified Integrity + Ergonomics + Export Preflight
+   ═══════════════════════════════════════════════════════════════════════════ */
+function _toolChartValidator(c) {
+  // Tab bar
+  const TAB_DEFS = [
+    { id: 'integrity',   label: '✓ Integrity'   },
+    { id: 'ergonomics',  label: '◈ Ergonomics'  },
+    { id: 'export',      label: '▶ Export'       },
+  ];
+  let activeTab = 'integrity';
+
+  const tabBar = _h('div', '');
+  tabBar.style.cssText = 'display:flex;gap:4px;margin-bottom:8px;border-bottom:1px solid #1e1e40;padding-bottom:6px;';
+
+  const panels = {};
+
+  TAB_DEFS.forEach(t => {
+    const btn = document.createElement('button');
+    btn.textContent = t.label;
+    btn.style.cssText = 'flex:1;background:#07071a;border:1px solid #1e1e40;border-radius:4px;color:#8888bb;padding:4px 6px;font-size:10px;cursor:pointer;transition:color 0.15s,border-color 0.15s';
+    btn.addEventListener('click', () => {
+      activeTab = t.id;
+      updateTabs();
+    });
+    tabBar.appendChild(btn);
+    panels[t.id] = { btn };
+  });
+
+  function updateTabs() {
+    TAB_DEFS.forEach(t => {
+      const on = t.id === activeTab;
+      panels[t.id].btn.style.borderColor = on ? '#5566ee' : '#1e1e40';
+      panels[t.id].btn.style.color       = on ? '#aabbff' : '#8888bb';
+      panels[t.id].btn.style.background  = on ? '#0d0d2a' : '#07071a';
+      panels[t.id].panelEl.style.display = on ? '' : 'none';
+    });
+  }
+
+  c.appendChild(tabBar);
+
+  // ── Integrity tab (was _toolValidity) ─────────────────────────────────────
+  {
+    const panel = _h('div', '');
+    const runBtn   = _btn('Run Checks');
+    const fixBtn   = _btn('Auto Fix');
+    fixBtn.style.cssText = 'margin-left:6px;background:#1a3a1a;border-color:#3a7a3a;color:#88ff88';
+    const results = _h('div', 'tool-result-box');
+    results.style.maxHeight = '240px'; results.style.overflowY = 'auto';
+    const btnRow = _h('div', '');
+    btnRow.style.cssText = 'display:flex;gap:6px;margin-bottom:4px';
+    btnRow.appendChild(runBtn); btnRow.appendChild(fixBtn);
+    panel.appendChild(btnRow); panel.appendChild(results);
+
+    runBtn.addEventListener('click', () => {
+      results.innerHTML = '';
+      if (!(typeof chart !== "undefined" && chart)) { results.innerHTML = '<div class="tool-result-item tool-result-err">No chart loaded</div>'; return; }
+      const issues = [];
+
+      for (let i = 0; i < 4; i++) {
+        const arr = chart.bt[i];
+        for (let j = 0; j < arr.length - 1; j++) {
+          const n = arr[j], nx = arr[j+1];
+          if (n.y + Math.max(n.len, 1) > nx.y)
+            issues.push({ type:'err', msg:`BT-${['A','B','C','D'][i]} overlap at ${_tickToMB(n.y)}`, measure: Math.floor(n.y/TICKS_PER_MEASURE), tick:n.y });
+        }
+      }
+      for (let i = 0; i < 2; i++) {
+        const arr = chart.fx[i];
+        for (let j = 0; j < arr.length - 1; j++) {
+          const n = arr[j], nx = arr[j+1];
+          if (n.y + Math.max(n.len, 1) > nx.y)
+            issues.push({ type:'err', msg:`FX-${['L','R'][i]} overlap at ${_tickToMB(n.y)}`, measure: Math.floor(n.y/TICKS_PER_MEASURE), tick:n.y });
+        }
+      }
+      for (let s = 0; s < 2; s++) {
+        chart.lasers[s].forEach((sec2, si) => {
+          if (sec2.points.length < 2)
+            issues.push({ type:'err', msg:`VOL-${['L','R'][s]} section ${si} has <2 points`, measure: Math.floor(sec2.y/TICKS_PER_MEASURE) });
+          sec2.points.forEach((p, pi) => {
+            if (p.v < 0 || p.v > 1)
+              issues.push({ type:'err', msg:`VOL-${['L','R'][s]} sec ${si} pt ${pi} v=${p.v.toFixed(3)} OOB`, measure: Math.floor(sec2.y/TICKS_PER_MEASURE) });
+          });
+        });
+        const secs = (chart.lasers[s]||[]).slice().sort((a,b)=>a.y-b.y);
+        for (let i = 0; i < secs.length-1; i++) {
+          const A=secs[i], lp=A.points[A.points.length-1], aEnd=A.y+(lp?.ry??0), B=secs[i+1];
+          if (B.y < aEnd) issues.push({ type:'err', msg:`⛔ VOL-${['L','R'][s]} sections overlap (${A.y}–${aEnd} vs ${B.y})`, measure:Math.floor(A.y/TICKS_PER_MEASURE) });
+        }
+        (chart.lasers[s]||[]).forEach((sec2,si) => {
+          const lp=sec2.points[sec2.points.length-1], dur=lp?.ry??0;
+          if (dur===0) issues.push({ type:'err', msg:`⛔ VOL-${['L','R'][s]} section ${si} zero-duration`, measure:Math.floor(sec2.y/TICKS_PER_MEASURE), tick:sec2.y });
+        });
+      }
+      const chipMap = new Map();
+      const addChip = (t,side) => { if (!chipMap.has(t)) chipMap.set(t,{l:0,r:0}); chipMap.get(t)[side===0?'l':'r']++; };
+      for (let i=0;i<4;i++) chart.bt[i].forEach(n=>{if(n.len===0)addChip(n.y,i<2?0:1);});
+      for (let i=0;i<2;i++) chart.fx[i].forEach(n=>{if(n.len===0)addChip(n.y,i);});
+      chipMap.forEach((counts,tick) => {
+        if (counts.l>3) issues.push({ type:'err', msg:`⛔ Left hand ${counts.l} chips at ${_tickToMB(tick)} (max 3)`, measure:Math.floor(tick/TICKS_PER_MEASURE), tick });
+        if (counts.r>3) issues.push({ type:'err', msg:`⛔ Right hand ${counts.r} chips at ${_tickToMB(tick)} (max 3)`, measure:Math.floor(tick/TICKS_PER_MEASURE), tick });
+      });
+      for (let s=0;s<2;s++) {
+        (chart.lasers[s]||[]).forEach(sec2=>{
+          for (let pi=0;pi<sec2.points.length-1;pi++) {
+            const p0=sec2.points[pi],p1=sec2.points[pi+1],dt=p1.ry-p0.ry,dv=Math.abs(p1.v-p0.v);
+            if (dt<=6&&dv>=0.25) {
+              const slamTick=sec2.y+p0.ry;
+              const sideBtn=s===0?[chart.bt[0],chart.bt[1],chart.fx[0]]:[chart.bt[2],chart.bt[3],chart.fx[1]];
+              if (sideBtn.some(arr=>arr.some(n=>n.len===0&&Math.abs(n.y-slamTick)<=6)))
+                issues.push({ type:'warn', msg:`⚠ VOL-${['L','R'][s]} slam at ${_tickToMB(slamTick)} + same-hand chip`, measure:Math.floor(slamTick/TICKS_PER_MEASURE), tick:slamTick });
+            }
+          }
+        });
+      }
+      if (!chart.meta.title) issues.push({ type:'warn', msg:'No title set', measure:null });
+      if (!chart.bpmEvents.some(e=>e.y===0)) issues.push({ type:'warn', msg:'No BPM event at tick 0', measure:0 });
+
+      if (issues.length===0) { results.innerHTML='<div class="tool-result-item tool-result-ok">✓ No issues — chart is clean</div>'; return; }
+      issues.sort((a,b)=>a.type===b.type?0:a.type==='err'?-1:1);
+      if (typeof addChartAnnotation==='function') {
+        issues.filter(i=>i.measure!=null).slice(0,10).forEach(issue=>{
+          addChartAnnotation({ tick:issue.measure*TICKS_PER_MEASURE, label:issue.msg.replace(/^[⛔⚠]\s*/,'').slice(0,35), severity:issue.type==='err'?'error':'warn', source:'chart-validator' });
+        });
+        if (typeof render==='function') render();
+      }
+      const errCount=issues.filter(i=>i.type==='err').length, warnCount=issues.filter(i=>i.type==='warn').length;
+      const sumRow=_h('div','tool-result-item','');
+      sumRow.style.cssText='background:#1a0808;border-color:#882233;color:#ff8888;font-weight:700;margin-bottom:6px';
+      sumRow.textContent=`${errCount>0?`⛔ ${errCount} error${errCount>1?'s':''}`:''}`+`${errCount>0&&warnCount>0?' · ':''}`+`${warnCount>0?`⚠ ${warnCount} warning${warnCount>1?'s':''}`:''}`;
+      results.appendChild(sumRow);
+      issues.forEach(issue=>{
+        const cls=issue.type==='err'?'tool-result-err':'tool-result-warn';
+        const row=_h('div',`tool-result-item ${cls}`);
+        row.textContent=issue.msg;
+        if (issue.measure!=null) {
+          row.style.cursor='pointer';
+          const nav=document.createElement('span'); nav.style.cssText='float:right;opacity:0.45;font-size:10px;margin-left:6px'; nav.textContent='→';
+          row.appendChild(nav);
+          row.addEventListener('click',()=>{
+            const t=issue.tick!=null?issue.tick:issue.measure*TICKS_PER_MEASURE;
+            if (renderer&&renderer.playTick!==undefined) {
+              renderer.playTick=Math.max(0,t);
+              const colLen=(renderer.measPerCol??1)*TICKS_PER_MEASURE, col=Math.floor(t/colLen);
+              if (col<renderer.scrollCol||col>=renderer.scrollCol+(renderer.numCols??1)) renderer.scrollCol=Math.max(0,col-Math.floor((renderer.numCols??1)/2));
+              if (gameView){gameView.playTick=renderer.playTick;if(typeof gameView.draw==='function')gameView.draw();}
+              if (typeof updateSeekbar==='function') updateSeekbar(renderer.playTick);
+              if (typeof render==='function') render();
+            }
+          });
+        }
+        results.appendChild(row);
+      });
+    });
+
+    fixBtn.addEventListener('click',()=>{
+      results.innerHTML='';
+      if (!(typeof chart!=='undefined'&&chart)){ results.innerHTML='<div class="tool-result-item tool-result-err">No chart loaded</div>'; return; }
+      if (typeof saveUndo==='function') saveUndo('Auto Fix');
+      let fixed=0;
+      for (let i=0;i<4;i++) {
+        chart.bt[i].sort((a,b)=>a.y-b.y);
+        for (let j=0;j<chart.bt[i].length-1;j++) {
+          const n=chart.bt[i][j],nx=chart.bt[i][j+1];
+          if (n.y+Math.max(n.len,1)>nx.y){ n.len=Math.max(0,nx.y-1-n.y); fixed++; }
+        }
+      }
+      for (let i=0;i<2;i++) {
+        chart.fx[i].sort((a,b)=>a.y-b.y);
+        for (let j=0;j<chart.fx[i].length-1;j++) {
+          const n=chart.fx[i][j],nx=chart.fx[i][j+1];
+          if (n.y+Math.max(n.len,1)>nx.y){ n.len=Math.max(0,nx.y-1-n.y); fixed++; }
+        }
+      }
+      for (let s=0;s<2;s++) {
+        const before=chart.lasers[s].length;
+        chart.lasers[s]=chart.lasers[s].filter(sec2=>sec2.points.length>=2);
+        fixed+=before-chart.lasers[s].length;
+        chart.lasers[s].forEach(sec2=>sec2.points.forEach(p=>{ if(p.v<0||p.v>1){p.v=Math.max(0,Math.min(1,p.v));fixed++;} }));
+        const b2=chart.lasers[s].length;
+        chart.lasers[s]=chart.lasers[s].filter(sec2=>(sec2.points[sec2.points.length-1]?.ry??0)>0);
+        fixed+=b2-chart.lasers[s].length;
+        chart.lasers[s].sort((a,b)=>a.y-b.y);
+        for (let i=0;i<chart.lasers[s].length-1;i++) {
+          const A=chart.lasers[s][i],lp=A.points[A.points.length-1],aEnd=A.y+(lp?.ry??0),B=chart.lasers[s][i+1];
+          if (B.y<aEnd&&lp){ lp.ry=Math.max(0,B.y-A.y-1); fixed++; }
+        }
+        chart.lasers[s]=chart.lasers[s].filter(sec2=>(sec2.points[sec2.points.length-1]?.ry??0)>0);
+      }
+      if (typeof render==='function') render();
+      results.innerHTML=fixed>0?`<div class="tool-result-item tool-result-ok">Auto Fix applied ${fixed} correction${fixed!==1?'s':''}.</div>`:`<div class="tool-result-item tool-result-ok">No fixable issues found.</div>`;
+    });
+
+    panels['integrity'].panelEl = panel;
+    c.appendChild(panel);
+    setTimeout(() => runBtn.click(), 80);
+  }
+
+  // ── Ergonomics tab (was _toolCollision) ───────────────────────────────────
+  {
+    const panel = _h('div', '');
+    const runBtn = _btn('Detect Ergonomic Issues');
+    const results = _h('div', 'tool-result-box');
+    results.style.maxHeight = '240px'; results.style.overflowY = 'auto';
+
+    runBtn.addEventListener('click', () => {
+      results.innerHTML = '';
+      if (!(typeof chart !== "undefined" && chart)) return;
+      const issues = [];
+      const RESOLUTION = 6;
+      const totalTicks = (chart.totalMeasures || 64) * TICKS_PER_MEASURE;
+      // max tick gap between laser sections that still makes buttons-in-gap impossible
+      const LASER_GAP_LIMIT = 12;
+
+      // Returns true if any laser has a non-static (moving) segment active at tick t.
+      // A segment is moving when its start and end positions differ (p0.v !== p1.v).
+      function isLaserMoving(t) {
+        for (let s = 0; s < 2; s++) {
+          for (const sec of chart.lasers[s]) {
+            let segStart = sec.y;
+            for (let pi = 0; pi < sec.points.length - 1; pi++) {
+              const p0 = sec.points[pi];
+              const segEnd = segStart + p0.ry;
+              if (t >= segStart && t < segEnd && p0.v !== sec.points[pi + 1].v) return true;
+              segStart = segEnd;
+            }
+          }
+        }
+        return false;
+      }
+
+      // Rule 1 & 2: stretch / overload only illegal when a laser is also moving
+      for (let t = 0; t < totalTicks; t += RESOLUTION) {
+        const activeBt = [false,false,false,false];
+        const activeFx = [false,false];
+        for (let i=0;i<4;i++) activeBt[i]=chart.bt[i].some(n=>n.len>0&&t>=n.y&&t<n.y+n.len);
+        for (let i=0;i<2;i++) activeFx[i]=chart.fx[i].some(n=>n.len>0&&t>=n.y&&t<n.y+n.len);
+        const simBt=activeBt.filter(Boolean).length, simFx=activeFx.filter(Boolean).length;
+        const total=simBt+simFx;
+        const m=Math.floor(t/TICKS_PER_MEASURE), beat=Math.floor((t%TICKS_PER_MEASURE)/TICKS_PER_BEAT)+1;
+        const moving = isLaserMoving(t);
+        if (total >= 5 && moving) {
+          issues.push({ type:'err', msg:`5+ simultaneous holds + moving laser at M${m+1} B${beat} (impossible)`, measure:m });
+        } else if (activeBt[0] && activeBt[3] && moving) {
+          issues.push({ type:'warn', msg:`BT-A+D extreme stretch during laser at M${m+1} B${beat}`, measure:m });
+        }
+      }
+
+      // Rule 3: button(s) pressed inside a near-zero gap between two laser sections
+      // on the same side — the hand physically cannot reach both knob and button.
+      for (let s = 0; s < 2; s++) {
+        const side = chart.lasers[s];
+        for (let i = 0; i < side.length - 1; i++) {
+          const A = side[i];
+          const lastPt = A.points[A.points.length - 1];
+          const aEnd = A.y + (lastPt?.ry ?? 0);
+          const B = side[i + 1];
+          const gap = B.y - aEnd;
+          if (gap >= 0 && gap <= LASER_GAP_LIMIT) {
+            let hasButton = false;
+            for (let li = 0; li < 4 && !hasButton; li++)
+              hasButton = chart.bt[li].some(n => n.y > aEnd && n.y < B.y);
+            for (let li = 0; li < 2 && !hasButton; li++)
+              hasButton = chart.fx[li].some(n => n.y > aEnd && n.y < B.y);
+            if (hasButton) {
+              const m = Math.floor(aEnd / TICKS_PER_MEASURE);
+              const beat = Math.floor((aEnd % TICKS_PER_MEASURE) / TICKS_PER_BEAT) + 1;
+              const sideName = s === 0 ? 'L' : 'R';
+              issues.push({ type:'err', msg:`Button in ${gap}-tick laser-${sideName} gap at M${m+1} B${beat} (physically impossible)`, measure:m });
+            }
+          }
+        }
+      }
+
+      issues.sort((a, b) => a.measure - b.measure);
+      const deduped = [];
+      issues.forEach(iss => {
+        const last=deduped[deduped.length-1];
+        if (last&&last.msg===iss.msg&&Math.abs(iss.measure-last.measure)<2) return;
+        deduped.push(iss);
+      });
+
+      if (deduped.length===0) { results.innerHTML='<div class="tool-result-item tool-result-ok">✓ No ergonomic issues detected</div>'; return; }
+      deduped.forEach(iss => {
+        const row=_h('div',`tool-result-item tool-result-${iss.type==='err'?'err':'warn'}`);
+        row.textContent=iss.msg; row.style.cursor='pointer';
+        row.addEventListener('click',()=>_goToMeasure(iss.measure));
+        results.appendChild(row);
+      });
+      results.insertBefore(_h('div','tool-result-item',`Found ${deduped.length} issue(s):`),results.firstChild);
+    });
+
+    panel.appendChild(runBtn); panel.appendChild(results);
+    panels['ergonomics'].panelEl = panel;
+    c.appendChild(panel);
+  }
+
+  // ── Export tab (was _toolExportValidate) ──────────────────────────────────
+  {
+    const panel = _h('div', '');
+    const runBtn = _btn('Run Pre-flight Checks');
+    const results = _h('div', 'tool-result-box');
+    const summary = _h('div', 'tool-export-summary');
+
+    runBtn.addEventListener('click', () => {
+      results.innerHTML=''; summary.innerHTML='';
+      if (!(typeof chart!=="undefined"&&chart)){ results.innerHTML='<div class="tool-result-item tool-result-err">No chart loaded</div>'; return; }
+      const checks=[], ch=chart;
+      function chk(label,pass,warn,detail) { checks.push({ label, type:pass?'ok':warn?'warn':'err', icon:pass?'✓':warn?'⚠':'✗', detail }); }
+
+      const totalNotes=_noteCount();
+      const hasLaserBad=ch.lasers.some(side=>side.some(s=>s.points.length<2));
+      const hasVBad=ch.lasers.some(side=>side.some(s=>s.points.some(p=>p.v<0||p.v>1)));
+      const hasShortNotes=[0,1,2,3].some(i=>ch.bt[i].some(n=>n.len>0&&n.len<3))||[0,1].some(i=>ch.fx[i].some(n=>n.len>0&&n.len<3));
+      let btOverlap=false;
+      for (let i=0;i<4;i++){const arr=ch.bt[i];for(let j=0;j<arr.length-1;j++){if(arr[j].y+Math.max(arr[j].len,1)>arr[j+1].y){btOverlap=true;break;}}}
+      let fxOverlap=false;
+      for (let i=0;i<2;i++){const arr=ch.fx[i];for(let j=0;j<arr.length-1;j++){if(arr[j].y+Math.max(arr[j].len,1)>arr[j+1].y){fxOverlap=true;break;}}}
+
+      chk('Title not empty',            !!ch.meta.title,                      false,  ch.meta.title||'(empty)');
+      chk('Artist not empty',           !!ch.meta.artist,                     false,  ch.meta.artist||'(empty)');
+      chk('BPM event at tick 0',        ch.bpmEvents.some(e=>e.y===0),        false,  `${ch.bpmEvents.length} BPM event(s)`);
+      chk('At least 10 notes',          totalNotes>=10,                       totalNotes>=1&&totalNotes<10, `${totalNotes} notes`);
+      chk('No overlapping BT notes',    !btOverlap,                           false,  btOverlap?'Overlaps found':'OK');
+      chk('No overlapping FX notes',    !fxOverlap,                           false,  fxOverlap?'Overlaps found':'OK');
+      chk('Laser sections ≥2 points',   !hasLaserBad,                         false,  hasLaserBad?'Bad sections found':'OK');
+      chk('Laser v values in [0,1]',    !hasVBad,                             false,  hasVBad?'Out-of-range values':'OK');
+      chk('Level is 1–20',              ch.meta.level>=1&&ch.meta.level<=20,  false,  `Level: ${ch.meta.level}`);
+      chk('totalMeasures > 0',          ch.totalMeasures>0,                   false,  `${ch.totalMeasures} measures`);
+      chk('Audio file specified',        !!ch.meta.music,                     true,   ch.meta.music||'(none)');
+      chk('No impossibly short notes',   !hasShortNotes,                      false,  hasShortNotes?'Notes < 3 ticks found':'OK');
+
+      checks.forEach(chk2=>{
+        const row=_h('div',`tool-result-item tool-result-${chk2.type}`);
+        row.innerHTML=`<span>${chk2.icon}</span> <b>${chk2.label}</b> — <span style="color:#8888aa;font-size:10px">${chk2.detail}</span>`;
+        results.appendChild(row);
+      });
+      const errCount=checks.filter(c2=>c2.type==='err').length, warnCount=checks.filter(c2=>c2.type==='warn').length;
+      let status, cls;
+      if (errCount>0)       { status=`✗ ERRORS (${errCount} error${errCount>1?'s':''}, ${warnCount} warning${warnCount!==1?'s':''})`; cls='tool-result-err'; }
+      else if (warnCount>0) { status=`⚠ WARNINGS (${warnCount} warning${warnCount!==1?'s':''})`; cls='tool-result-warn'; }
+      else                  { status='✓ READY TO EXPORT'; cls='tool-result-ok'; }
+      summary.className=`tool-export-summary tool-result-item ${cls}`;
+      summary.textContent=status;
+    });
+
+    panel.appendChild(runBtn); panel.appendChild(summary); panel.appendChild(results);
+    panels['export'].panelEl = panel;
+    c.appendChild(panel);
+  }
+
+  updateTabs();
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   22. Chart Statistics — note counts, density, laser coverage
+   ═══════════════════════════════════════════════════════════════════════════ */
+function _toolChartStats(c) {
+  const sec = _section('Chart Statistics');
+  c.appendChild(sec);
+
+  const results   = _h('div', '');
+  const fullRes   = _h('div', 'tool-result-box');
+  fullRes.style.cssText = 'margin-top:8px;max-height:200px;overflow-y:auto';
+
+  const refreshBtn = _btn('↺ Refresh');
+  refreshBtn.style.cssText = 'margin-bottom:8px;font-size:10px';
+  sec.appendChild(refreshBtn);
+  sec.appendChild(results);
+  sec.appendChild(fullRes);
+
+  function compute() {
+    results.innerHTML = ''; fullRes.innerHTML = '';
+    if (!(typeof chart !== 'undefined' && chart)) {
+      fullRes.innerHTML = '<div class="tool-result-item tool-result-err">No chart loaded</div>'; return;
+    }
+    const ch = chart;
+    const totalMeas  = ch.totalMeasures || 1;
+    const totalTicks = totalMeas * TICKS_PER_MEASURE;
+
+    const btTotal  = [0,1,2,3].reduce((s,i)=>s+ch.bt[i].length, 0);
+    const fxTotal  = [0,1].reduce((s,i)=>s+ch.fx[i].length, 0);
+    const btChips  = [0,1,2,3].reduce((s,i)=>s+ch.bt[i].filter(n=>n.len===0).length, 0);
+    const btHolds  = btTotal - btChips;
+    const fxChips  = [0,1].reduce((s,i)=>s+ch.fx[i].filter(n=>n.len===0).length, 0);
+    const fxHolds  = fxTotal - fxChips;
+    const lptsL    = ch.lasers[0].reduce((s,sec2)=>s+sec2.points.length, 0);
+    const lptsR    = ch.lasers[1].reduce((s,sec2)=>s+sec2.points.length, 0);
+
+    const calcCov = secs => {
+      let cov = 0;
+      secs.forEach(sec2 => { const lp = sec2.points[sec2.points.length-1]; cov += lp?.ry ?? 0; });
+      return totalTicks > 0 ? Math.min(100, cov/totalTicks*100).toFixed(1) : '0.0';
+    };
+    const coverL = calcCov(ch.lasers[0]);
+    const coverR = calcCov(ch.lasers[1]);
+
+    const bpms   = ch.bpmEvents.map(e=>e.bpm);
+    const bpmMin = bpms.length ? Math.min(...bpms) : 0;
+    const bpmMax = bpms.length ? Math.max(...bpms) : 0;
+    const bpmStr = bpmMin === bpmMax ? bpmMin.toFixed(1) : `${bpmMin.toFixed(0)}–${bpmMax.toFixed(0)}`;
+
+    const allTicks = [];
+    for (let i=0;i<4;i++) ch.bt[i].forEach(n=>allTicks.push(n.y));
+    for (let i=0;i<2;i++) ch.fx[i].forEach(n=>allTicks.push(n.y));
+    let peakDens = 0;
+    for (let m=0;m<totalMeas;m++) {
+      const s=m*TICKS_PER_MEASURE, e=s+TICKS_PER_MEASURE;
+      const cnt=allTicks.filter(t=>t>=s&&t<e).length;
+      if (cnt>peakDens) peakDens=cnt;
+    }
+
+    results.appendChild(_statGrid([
+      { label: 'BT Notes',  value: btTotal,   color: '#c8c8ff' },
+      { label: 'BT Chips',  value: btChips,   color: '#9999ee' },
+      { label: 'BT Holds',  value: btHolds,   color: '#7777cc' },
+      { label: 'FX Notes',  value: fxTotal,   color: '#ffd700' },
+      { label: 'VOL-L pts', value: lptsL,     color: '#3388ff' },
+      { label: 'VOL-R pts', value: lptsR,     color: '#ff2266' },
+      { label: 'BPM',       value: bpmStr,    color: '#ffdd44' },
+      { label: 'Measures',  value: totalMeas, color: '#aabbff' },
+    ]));
+
+    const details = [
+      { label: 'FX Chips / Holds',    value: `${fxChips} / ${fxHolds}` },
+      { label: 'VOL-L coverage',       value: `${coverL}%  (${ch.lasers[0].length} section${ch.lasers[0].length!==1?'s':''})` },
+      { label: 'VOL-R coverage',       value: `${coverR}%  (${ch.lasers[1].length} section${ch.lasers[1].length!==1?'s':''})` },
+      { label: 'Peak density',         value: `${peakDens} notes/measure` },
+      { label: 'Total note events',    value: allTicks.length },
+      { label: 'BPM events',           value: ch.bpmEvents.length },
+      { label: 'Chart sections',       value: (ch.sections||[]).length },
+    ];
+    details.forEach(({ label, value }) => {
+      const kv = _h('div', 'tool-kv', '');
+      kv.innerHTML = `<span class="tool-kv-key">${label}</span><span class="tool-kv-val">${value}</span>`;
+      fullRes.appendChild(kv);
+    });
+  }
+
+  refreshBtn.addEventListener('click', compute);
+  setTimeout(compute, 50);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   23. Laser Fixer — detect and correct laser position drift / structure issues
+   ═══════════════════════════════════════════════════════════════════════════ */
+function _toolLaserFixer(c) {
+  const sec = _section('Laser Fixer');
+  c.appendChild(sec);
+
+  const desc = _h('div','','Detect and fix laser section structural issues: out-of-range values, negative ry offsets, unsorted points, and empty sections.');
+  desc.style.cssText = 'font-size:9px;color:#556;line-height:1.5;margin-bottom:6px';
+  sec.appendChild(desc);
+
+  const runBtn = _btn('Scan Lasers');
+  const fixBtn = _btn('Fix All Issues');
+  fixBtn.style.cssText = 'margin-left:6px;background:#1a3a1a;border-color:#3a7a3a;color:#88ff88';
+
+  const results = _h('div', 'tool-result-box');
+  results.style.maxHeight = '220px'; results.style.overflowY = 'auto';
+
+  const btnRow = _h('div','');
+  btnRow.style.cssText = 'display:flex;gap:6px;margin-bottom:6px';
+  btnRow.appendChild(runBtn); btnRow.appendChild(fixBtn);
+  sec.appendChild(btnRow); sec.appendChild(results);
+
+  function scanLasers(ch) {
+    const issues = [];
+    for (let s = 0; s < 2; s++) {
+      const side = ['VOL-L','VOL-R'][s];
+      ch.lasers[s].forEach((sec2, si) => {
+        // Check points are sorted by ry
+        const pts = sec2.points;
+        for (let pi = 0; pi < pts.length; pi++) {
+          if (pts[pi].ry < 0) issues.push({ side:s, sec:sec2, si, pi, type:'negative-ry', msg:`${side} sec ${si} pt ${pi}: negative ry=${pts[pi].ry}` });
+        }
+        for (let pi = 0; pi < pts.length - 1; pi++) {
+          if (pts[pi].ry > pts[pi+1].ry) issues.push({ side:s, sec:sec2, si, pi, type:'unsorted', msg:`${side} sec ${si}: pts not sorted at ${pi}→${pi+1}` });
+          if (pts[pi].ry === pts[pi+1].ry && pi < pts.length - 2) issues.push({ side:s, sec:sec2, si, pi, type:'duplicate-ry', msg:`${side} sec ${si}: duplicate ry=${pts[pi].ry} at ${pi}` });
+        }
+        // v out of range
+        pts.forEach((p, pi) => {
+          if (p.v < 0 || p.v > 1) issues.push({ side:s, sec:sec2, si, pi, type:'v-oob', msg:`${side} sec ${si} pt ${pi}: v=${p.v.toFixed(4)} outside [0,1]` });
+        });
+        // sec.y negative
+        if (sec2.y < 0) issues.push({ side:s, sec:sec2, si, pi:null, type:'negative-y', msg:`${side} sec ${si}: negative y=${sec2.y}` });
+        // empty / single-point
+        if (pts.length < 2) issues.push({ side:s, sec:sec2, si, pi:null, type:'short', msg:`${side} sec ${si}: only ${pts.length} point(s)` });
+      });
+    }
+    return issues;
+  }
+
+  runBtn.addEventListener('click', () => {
+    results.innerHTML = '';
+    if (!(typeof chart !== "undefined" && chart)) { results.innerHTML = '<div class="tool-result-item tool-result-err">No chart loaded</div>'; return; }
+    const issues = scanLasers(chart);
+    if (issues.length === 0) { results.innerHTML = '<div class="tool-result-item tool-result-ok">✓ No laser structure issues found</div>'; return; }
+    results.appendChild(_h('div','tool-result-item',`Found ${issues.length} issue(s):`));
+    issues.forEach(iss => {
+      const row = _h('div', `tool-result-item tool-result-${iss.type==='v-oob'||iss.type==='negative-y'||iss.type==='negative-ry'?'err':'warn'}`);
+      row.textContent = iss.msg;
+      if (iss.sec) {
+        row.style.cursor = 'pointer';
+        row.addEventListener('click', () => _goToMeasure(Math.floor(iss.sec.y / TICKS_PER_MEASURE)));
+      }
+      results.appendChild(row);
+    });
+  });
+
+  fixBtn.addEventListener('click', () => {
+    results.innerHTML = '';
+    if (!(typeof chart !== "undefined" && chart)) { results.innerHTML = '<div class="tool-result-item tool-result-err">No chart loaded</div>'; return; }
+    if (typeof saveUndo === 'function') saveUndo('Laser Fixer');
+    let fixed = 0;
+    for (let s = 0; s < 2; s++) {
+      // Clamp v to [0,1]
+      chart.lasers[s].forEach(sec2 => sec2.points.forEach(p => {
+        if (p.v < 0 || p.v > 1) { p.v = Math.max(0, Math.min(1, p.v)); fixed++; }
+      }));
+      // Clamp negative ry to 0
+      chart.lasers[s].forEach(sec2 => sec2.points.forEach(p => {
+        if (p.ry < 0) { p.ry = 0; fixed++; }
+      }));
+      // Sort points by ry
+      chart.lasers[s].forEach(sec2 => {
+        const before = JSON.stringify(sec2.points.map(p=>p.ry));
+        sec2.points.sort((a,b) => a.ry - b.ry);
+        if (JSON.stringify(sec2.points.map(p=>p.ry)) !== before) fixed++;
+      });
+      // Remove duplicate ry entries (keep first)
+      chart.lasers[s].forEach(sec2 => {
+        const seen = new Set();
+        const before = sec2.points.length;
+        sec2.points = sec2.points.filter(p => { if (seen.has(p.ry)) return false; seen.add(p.ry); return true; });
+        fixed += before - sec2.points.length;
+      });
+      // Remove sections with <2 points or negative y
+      const before = chart.lasers[s].length;
+      chart.lasers[s] = chart.lasers[s].filter(sec2 => sec2.points.length >= 2 && sec2.y >= 0);
+      fixed += before - chart.lasers[s].length;
+      // Sort sections by y
+      chart.lasers[s].sort((a,b) => a.y - b.y);
+    }
+    if (typeof render === 'function') render();
+    results.innerHTML = `<div class="tool-result-item tool-result-ok">Fixed ${fixed} issue${fixed!==1?'s':''}. Re-scan to verify.</div>`;
+  });
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

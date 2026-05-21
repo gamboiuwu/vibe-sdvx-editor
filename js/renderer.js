@@ -1,32 +1,32 @@
-'use strict';
+import { ChartData, TICKS_PER_BEAT, TICKS_PER_MEASURE, BEATS_PER_MEASURE } from './chart.js';
 
 // ── Layout constants ──────────────────────────────────────────────────────────
 // Lasers overlay the full column area (BT + side extensions).
 // Column layout: [ruler] [laser-L ext] [BT-A BT-B BT-C BT-D] [laser-R ext]
 
-const BT_W      = 24;                                        // px per BT lane
-const BT_COUNT  = 4;
-const SEP       = 1;                                         // separator between BT lanes
-const TRACK_W   = BT_COUNT * BT_W + (BT_COUNT - 1) * SEP;  // 99 px
-const EXTEND_W  = 50;                                        // laser side extension (~½ TRACK_W)
-const RULER_W   = 26;
-const COL_GAP   = 12;
+export const BT_W      = 24;                                        // px per BT lane
+export const BT_COUNT  = 4;
+export const SEP       = 1;                                         // separator between BT lanes
+export const TRACK_W   = BT_COUNT * BT_W + (BT_COUNT - 1) * SEP;  // 99 px
+export const EXTEND_W  = 50;                                        // laser side extension (~½ TRACK_W)
+export const RULER_W   = 26;
+export const COL_GAP   = 12;
 
-const BT_AREA_X    = RULER_W + EXTEND_W;                          // left edge of BT-A
-const SINGLE_COL_W = RULER_W + EXTEND_W + TRACK_W + EXTEND_W;    // 225 px
+export const BT_AREA_X    = RULER_W + EXTEND_W;                          // left edge of BT-A
+export const SINGLE_COL_W = RULER_W + EXTEND_W + TRACK_W + EXTEND_W;    // 225 px
 
 // BT-lane x positions (relative to column left edge)
-const LANES  = ['BT-A', 'BT-B', 'BT-C', 'BT-D'];
-const LANE_X = LANES.map((_, i) => BT_AREA_X + i * (BT_W + SEP));
+export const LANES  = ['BT-A', 'BT-B', 'BT-C', 'BT-D'];
+export const LANE_X = LANES.map((_, i) => BT_AREA_X + i * (BT_W + SEP));
 
 // FX overlay spans — FX-L=BT-A+BT-B, FX-R=BT-C+BT-D
-const FX_SPAN = [
+export const FX_SPAN = [
   { li: 0, lx: () => LANE_X[0], rw: () => BT_W + SEP + BT_W },
   { li: 1, lx: () => LANE_X[2], rw: () => BT_W + SEP + BT_W },
 ];
 
 // ── Colors ────────────────────────────────────────────────────────────────────
-const C = {
+export const C = {
   bg:         '#080810',
   bgBt:       '#0c0c1c',
   bgLL:       '#010509',
@@ -58,17 +58,20 @@ const C = {
 
 // ── Runtime-mutable laser appearance ─────────────────────────────────────────
 // These override C.laserL/R/Lg/Rg/Le/Re at draw time.
-const laserColors = {
+export const laserColors = {
   L:  C.laserL,  Lg: C.laserLg, Le: C.laserLe,
   R:  C.laserR,  Rg: C.laserRg, Re: C.laserRe,
 };
 // Opacity applied via globalAlpha during laser fill (0–1, default 0.7)
-let laserOpacity = 0.7;
+export let laserOpacity = 0.7;
 // Wide-laser mode: doubles laser ribbon width
-let laserWideMode = false;
+export let laserWideMode = false;
+
+export function setLaserOpacity(v)   { laserOpacity  = v; }
+export function setLaserWideMode(v)  { laserWideMode = v; }
 
 // ── SDVX laser color presets ──────────────────────────────────────────────────
-const LASER_PRESETS = {
+export const LASER_PRESETS = {
   'sdvx-default': { L:'#0088ff', Lg:'#0088ff88', Le:'#66bbff', R:'#ff1177', Rg:'#ff117788', Re:'#ff88cc' },
   'blue-red':     { L:'#0077ff', Lg:'#0077ff88', Le:'#55aaff', R:'#ff2200', Rg:'#ff220088', Re:'#ff6655' },
   'yellow-green': { L:'#ffcc00', Lg:'#ffcc0088', Le:'#ffe055', R:'#00cc44', Rg:'#00cc4488', Re:'#55ee88' },
@@ -76,13 +79,13 @@ const LASER_PRESETS = {
   'white-white':  { L:'#ddddff', Lg:'#ddddff88', Le:'#ffffff', R:'#ddddff', Rg:'#ddddff88', Re:'#ffffff' },
 };
 
-function applyLaserPreset(presetKey) {
+export function applyLaserPreset(presetKey) {
   const p = LASER_PRESETS[presetKey];
   if (!p) return;
   Object.assign(laserColors, p);
 }
 
-function setLaserColorCustom(side, hex) {
+export function setLaserColorCustom(side, hex) {
   if (side === 0) {
     laserColors.L  = hex;
     laserColors.Lg = hex + '88';
@@ -103,7 +106,7 @@ function _lightenHex(hex, amt) {
 }
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
-class Renderer {
+export class Renderer {
   constructor(canvas) {
     this.canvas        = canvas;
     this.ctx           = canvas.getContext('2d');
@@ -606,6 +609,30 @@ class Renderer {
       ctx.fillStyle = '#bb44ff';
       ctx.fillText(`${ev.num}/${ev.den}`, ox + 2, y - 2 - 9); // offset up from BPM row
     }
+
+    // Section label bands in ruler
+    for (const sec of (this.chart?.sections ?? [])) {
+      if (sec.endY <= startY || sec.y >= endY) continue;
+      const yBot = this._pyAt(Math.max(sec.y,    startY), startY); // section start → lower pixel
+      const yTop = this._pyAt(Math.min(sec.endY, endY),   startY); // section end   → higher pixel
+      const bh   = yBot - yTop;
+      if (bh < 1) continue;
+      const col = sec.color || '#4488ff';
+      // Transparent fill
+      ctx.fillStyle = col + '28';
+      ctx.fillRect(ox, yTop, RULER_W - 1, bh);
+      // Solid left accent bar
+      ctx.fillStyle = col;
+      ctx.fillRect(ox, yTop, 3, bh);
+      // Section label (at section start, capped at 4 chars for narrow ruler)
+      if (bh >= 14) {
+        ctx.font      = '7px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillStyle = col;
+        ctx.fillText((sec.label || '').substring(0, 5), ox + 4, yBot - 3);
+        ctx.textAlign = 'right'; // restore
+      }
+    }
   }
 
   _drawColEventOverlay(ox, startY, endY) {
@@ -1062,6 +1089,26 @@ class Renderer {
     const { ctx } = this;
     const BASE_HALF = BT_W * 0.425; // normal ribbon half-width
 
+    // ── Laser X snap grid — faint vertical guide lines when snap is active ──
+    if (this.showLaserDots && typeof laserXSnap !== 'undefined' && laserXSnap > 0) {
+      ctx.save();
+      ctx.globalAlpha = 0.25;
+      ctx.strokeStyle = '#ffcc44';
+      ctx.lineWidth   = 0.8;
+      ctx.setLineDash([3, 4]);
+      const snapV = laserXSnap;
+      for (let v = 0; v <= 1.0001; v += snapV) {
+        const xN = ox + BT_AREA_X + v * TRACK_W;          // normal lane
+        const xW = ox + RULER_W   + v * (EXTEND_W + TRACK_W + EXTEND_W); // wide lane
+        for (const xLine of [xN, xW]) {
+          ctx.beginPath(); ctx.moveTo(xLine, 0); ctx.lineTo(xLine, this.colH); ctx.stroke();
+        }
+      }
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+
     for (let side = 0; side < 2; side++) {
       const color = side === 0 ? laserColors.L  : laserColors.R;
       const glow  = side === 0 ? laserColors.Lg : laserColors.Rg;
@@ -1504,7 +1551,7 @@ Renderer.prototype.drawSelection = function(sel) {
   }
 };
 
-function buildLaneHeader() {
+export function buildLaneHeader() {
   // Hidden in multi-column mode
 }
 

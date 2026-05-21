@@ -1,11 +1,10 @@
-'use strict';
 
 // ── Localization (i18n) ──────────────────────────────────────────────────────
 // Translation strings keyed by locale code. English is the master / fallback.
 // To add UI text to localization: give the element data-i18n="key.subkey".
 // For attribute text (placeholder, title): use data-i18n-attr="placeholder:key|title:key".
 
-const I18N = {
+export const I18N = {
   en: {
     // ── Top-bar menus ──
     'menu.file':         'File ▾',
@@ -620,13 +619,13 @@ const I18N = {
   },
 };
 
-let _currentLocale = 'en';
+export let _currentLocale = 'en';
 
-function t(key) {
+export function t(key) {
   return I18N[_currentLocale]?.[key] ?? I18N.en[key] ?? key;
 }
 
-function applyLocalization(lang) {
+export function applyLocalization(lang) {
   _currentLocale = (lang && I18N[lang]) ? lang : 'en';
   document.documentElement.lang = _currentLocale;
 

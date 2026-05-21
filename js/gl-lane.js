@@ -1,4 +1,3 @@
-'use strict';
 
 // ── Phase 1 WebGL2 lane renderer ────────────────────────────────────────────
 // Renders ONLY the lane runway: background gradient, BT/FX + VOL trapezoid
@@ -15,14 +14,19 @@
 // On Phase 2 (notes) and Phase 3 (lasers) we'll add more shader programs
 // next to the one here without touching this module's API.
 
-class GLLaneRenderer {
+export class GLLaneRenderer {
   constructor(canvas) {
     this.canvas = canvas;
     const gl = canvas.getContext('webgl2', {
       alpha: true,
       antialias: true,
       premultipliedAlpha: false,
-      preserveDrawingBuffer: false,
+      // Must be true so drawImage() / toDataURL() can read the buffer after
+      // compositing — PowerGlitch relies on this to snapshot the lane for its
+      // displacement layers. False (the default) clears the buffer immediately
+      // after each frame is committed to the compositor, producing a blank
+      // canvas in every glitch-layer snapshot.
+      preserveDrawingBuffer: true,
     });
     if (!gl) { this.gl = null; this.ok = false; return; }
     this.gl = gl;

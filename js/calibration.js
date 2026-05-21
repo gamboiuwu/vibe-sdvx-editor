@@ -1,11 +1,11 @@
-'use strict';
+import { TICKS_PER_BEAT, BEATS_PER_MEASURE } from './chart.js';
 
 // ── CalibrationWindow ─────────────────────────────────────────────────────────
 // Floating calibration editor: load audio, set Beat 1.0 marker, output offset.
 // Usage:
 //   calibrationWindow.open(audioBuffer, chart, (markerSec) => { /* apply */ });
 
-class CalibrationWindow {
+export class CalibrationWindow {
   constructor() {
     this._audioBuffer  = null;
     this._chart        = null;
@@ -75,6 +75,8 @@ class CalibrationWindow {
     this._bpmValue    = chart?.bpmEvents?.[0]?.bpm ?? 120;
     this._bpmDetected = null;
     this._bpmDetecting = false;
+    this._tapTempoTimes = [];
+    if (this._tapTempoReset) { clearTimeout(this._tapTempoReset); this._tapTempoReset = null; }
     this._totalSec     = audioBuffer.duration;
     this._calibMarker  = null;
     this._loopStart    = null;
@@ -268,6 +270,13 @@ class CalibrationWindow {
 
     const bpmDetectBtn = mkBtn('🔍 Auto-Detect', 'Analyze waveform to estimate BPM', 'cal-bpm-detect-btn');
 
+    const tapTempoBtn = mkBtn('🥁 Tap Tempo', 'Tap repeatedly (or press T) to measure BPM from your tapping rhythm', 'cal-tap-tempo-btn');
+
+    const tapTempoLbl = document.createElement('span');
+    tapTempoLbl.id = 'cal-tap-tempo-lbl';
+    tapTempoLbl.style.cssText = 'font-size:11px;color:#aaaaee;min-width:165px;white-space:nowrap;';
+    tapTempoLbl.textContent = 'Tap: click to start';
+
     const bpmSuggestionLbl = document.createElement('span');
     bpmSuggestionLbl.id = 'cal-bpm-suggestion';
     bpmSuggestionLbl.style.cssText = 'font-size:12px;color:#aaffaa;display:none;white-space:nowrap;';
@@ -455,6 +464,9 @@ class CalibrationWindow {
       this._bpmDetected = null;
       this._draw();
     });
+
+    // Tap Tempo
+    tapTempoBtn.addEventListener('click', () => this._handleTapTempo());
 
     // Dismiss suggestion
     bpmDismissBtn.addEventListener('click', () => {
@@ -928,6 +940,65 @@ class CalibrationWindow {
   }
 
   // ── Tap Tempo ──────────────────────────────────────────────────────────────
+  // User taps the button (or T key) repeatedly to the beat. After ≥2 taps the
+  // average inter-tap interval determines the BPM. After ≥4 taps the result is
+  // promoted to a confirmable suggestion (reusing the same suggestion UI as
+  // auto-detect). The tap sequence auto-resets after 3 s of inactivity.
+  _handleTapTempo() {
+    const now = performance.now();
+
+    // Start fresh if the last tap was more than 3 seconds ago
+    if (this._tapTempoTimes.length > 0 &&
+        now - this._tapTempoTimes[this._tapTempoTimes.length - 1] > 3000) {
+      this._tapTempoTimes = [];
+    }
+
+    this._tapTempoTimes.push(now);
+    if (this._tapTempoTimes.length > 16) this._tapTempoTimes.shift(); // rolling window
+
+    // Reset inactivity timer
+    if (this._tapTempoReset) clearTimeout(this._tapTempoReset);
+    this._tapTempoReset = setTimeout(() => {
+      this._tapTempoTimes = [];
+      this._tapTempoReset = null;
+      const lbl = document.getElementById('cal-tap-tempo-lbl');
+      if (lbl) lbl.textContent = 'Tap: click to start';
+    }, 3000);
+
+    const count = this._tapTempoTimes.length;
+    const lbl   = document.getElementById('cal-tap-tempo-lbl');
+
+    if (count < 2) {
+      if (lbl) lbl.textContent = 'Tap: 1 — keep tapping…';
+      return;
+    }
+
+    // Average inter-tap interval in ms
+    let totalMs = 0;
+    for (let i = 1; i < count; i++) {
+      totalMs += this._tapTempoTimes[i] - this._tapTempoTimes[i - 1];
+    }
+    const avgMs = totalMs / (count - 1);
+    if (avgMs < 10) return; // guard against double-fire
+
+    let bpm = 60000 / avgMs;
+    // Bring into 60–300 range (half/double as needed)
+    while (bpm > 300) bpm /= 2;
+    while (bpm < 60)  bpm *= 2;
+    bpm = Math.round(bpm * 2) / 2; // round to nearest 0.5 BPM
+
+    if (lbl) lbl.textContent = `Tap: ${count} | ${bpm.toFixed(1)} BPM`;
+
+    // After 4+ taps promote to a confirmable suggestion
+    if (count >= 4) {
+      this._bpmDetected = bpm;
+      const sug = document.getElementById('cal-bpm-suggestion');
+      const cnf = document.getElementById('cal-bpm-confirm-btn');
+      const dsm = document.getElementById('cal-bpm-dismiss-btn');
+      if (sug) { sug.textContent = `Tap tempo: ~${bpm.toFixed(1)} BPM`; sug.style.display = 'inline'; }
+      if (cnf) cnf.style.display = 'inline';
+      if (dsm) dsm.style.display = 'inline';
+    }
 
   _handleTap() {
     const now = performance.now();
@@ -1083,8 +1154,8 @@ class CalibrationWindow {
     const acNow     = this._acCtx.currentTime;
     const audioNow  = this._startOff + (acNow - this._startAcTime);
 
-    const BEATS = typeof BEATS_PER_MEASURE !== 'undefined' ? BEATS_PER_MEASURE : 4;
-    const TPBEAT = typeof TICKS_PER_BEAT   !== 'undefined' ? TICKS_PER_BEAT    : 48;
+    const BEATS = BEATS_PER_MEASURE;
+    const TPBEAT = TICKS_PER_BEAT;
     const MAX_ITER = 512; // guard against infinite loop if BPM is 0
 
     let iter = 0;
@@ -1120,6 +1191,10 @@ class CalibrationWindow {
   // ── Close ──────────────────────────────────────────────────────────────────
   _close(apply) {
     this._stop();
+    if (this._rafId) { cancelAnimationFrame(this._rafId); this._rafId = null; }
+    if (this._clickTimer) { clearTimeout(this._clickTimer); this._clickTimer = null; }
+    if (this._tapTempoReset) { clearTimeout(this._tapTempoReset); this._tapTempoReset = null; }
+    this._tapTempoTimes = [];
     if (this._rafId)      { cancelAnimationFrame(this._rafId); this._rafId = null; }
     if (this._clickTimer) { clearTimeout(this._clickTimer);    this._clickTimer = null; }
     if (this._tapTimeout) { clearTimeout(this._tapTimeout);    this._tapTimeout = null; }
@@ -1140,4 +1215,4 @@ class CalibrationWindow {
 }
 
 // Global singleton — one calibration session at a time
-const calibrationWindow = new CalibrationWindow();
+export const calibrationWindow = new CalibrationWindow();
