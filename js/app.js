@@ -59,8 +59,18 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.20';
+const APP_VERSION = '0.0.21';
 const CHANGELOG = [
+  {
+    version: '0.0.21',
+    title: 'Section-Relative Paste',
+    entries: [
+      ['add', '<strong>Paste at Section Start</strong> — right-click menu now includes a <em>Paste at Section…</em> submenu that lists every named chart section. Selecting one pastes the clipboard contents at that section\'s start tick, offset-matched exactly as with normal paste.'],
+      ['add', 'Section names and tick positions are shown in the submenu (e.g. <em>Intro — m1:b1</em>) so the target is always unambiguous.'],
+      ['add', 'If no sections are defined the submenu shows a hint to add sections via <strong>Window → Chart Sections…</strong>'],
+      ['add', 'Section-relative paste is undo-able via <kbd>Ctrl+Z</kbd> like all other paste operations.'],
+    ],
+  },
   {
     version: '0.0.20',
     title: 'Chart Section Labels',
@@ -3820,6 +3830,27 @@ function selPaste() {
   render();
 }
 
+// v0.0.21: Paste clipboard at an explicit target tick (section-relative paste).
+function selPasteAtTick(targetTick) {
+  if (!sel.clipboard) return;
+  saveUndo('Pasted at Section');
+  const at = Math.max(0, Math.round(targetTick));
+  const { bt, fx, lasers, vel = [], glitch = [] } = sel.clipboard;
+  for (let li = 0; li < 4; li++) bt[li].forEach(n => chart.addBtNote(li, at + n.y, n.len));
+  for (let li = 0; li < 2; li++) fx[li].forEach(n => chart.addFxNote(li, at + n.y, n.len));
+  for (let s = 0; s < 2; s++) {
+    lasers[s].forEach(sec => {
+      chart.lasers[s].push({ y: at + sec.y, points: sec.points.map(p => ({...p})), wide: sec.wide });
+    });
+    chart.lasers[s].sort((a, b) => a.y - b.y);
+  }
+  vel.forEach(ev => chart.addScrollSpeedEvent(at + ev.y, ev.speed, ev.interp ?? 'step'));
+  glitch.forEach(ev => chart.addGlitchEvent(at + ev.y, ev.level));
+  if (vel.length) updateScrollSpeedEventList();
+  if (glitch.length) { updateGlitchEventList(); _glitchAppliedLevel = -1; _updateGlitchFromTick(renderer?.playTick ?? 0); }
+  render();
+}
+
 function selMirror(what) {
   if (!sel.active) return;
   saveUndo(`Mirrored ${what.toUpperCase()}`);
@@ -4330,6 +4361,9 @@ function ensureCtxMenu() {
     <div class="ctx-item" data-act="cut">Cut</div>
     <div class="ctx-item" data-act="copy">Copy</div>
     <div class="ctx-item" data-act="paste">Paste</div>
+    <div class="ctx-item ctx-has-sub" id="ctx-paste-section-root">Paste at Section… <span style="font-size:9px;color:#aaa">▶</span>
+      <div class="ctx-sub" id="ctx-section-sub"></div>
+    </div>
     <div class="ctx-sep"></div>
     <div class="ctx-item" data-act="add-bpm">Add BPM Change…</div>
     <div class="ctx-item" data-act="add-timesig">Add Time Sig…</div>
@@ -4398,6 +4432,11 @@ function ensureCtxMenu() {
     if (act === 'cut')          selCut();
     else if (act === 'copy')    selCopy();
     else if (act === 'paste')   selPaste();
+    else if (act.startsWith('paste-section-')) {
+      const idx = parseInt(act.slice('paste-section-'.length), 10);
+      const secs = [...(chart?.sections ?? [])].sort((a, b) => a.y - b.y);
+      if (secs[idx]) selPasteAtTick(secs[idx].y);
+    }
     else if (act === 'add-bpm')      openBpmModalAtCtx();
     else if (act === 'add-timesig')  openTimesigModalAtCtx();
     else if (act === 'add-velocity') openScrollSpeedModalAtCtx();
@@ -4468,9 +4507,31 @@ function updateCtxMenuExperimentalLabels() {
   if (snapTrEl)   snapTrEl.textContent   = (prefs.snapToTransients  ? '✓' : '✕') + ' Snap to Transients';
 }
 
+// v0.0.21: refresh the "Paste at Section…" submenu with current section list.
+function _refreshSectionPasteSubmenu() {
+  const sub = document.getElementById('ctx-section-sub');
+  const root = document.getElementById('ctx-paste-section-root');
+  if (!sub) return;
+  const secs = [...(chart?.sections ?? [])].sort((a, b) => a.y - b.y);
+  const hasClip = !!sel.clipboard;
+  if (root) root.style.opacity = hasClip ? '' : '0.4';
+  if (!secs.length) {
+    sub.innerHTML = `<div class="ctx-item" style="color:#888;cursor:default;font-style:italic">No sections — add via Window → Chart Sections…</div>`;
+    return;
+  }
+  sub.innerHTML = secs.map((s, i) => {
+    const m = Math.floor(s.y / TICKS_PER_MEASURE) + 1;
+    const b = Math.floor((s.y % TICKS_PER_MEASURE) / TICKS_PER_BEAT) + 1;
+    const label = s.label || `Section ${i + 1}`;
+    const dot = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${s.color};margin-right:6px;flex-shrink:0"></span>`;
+    return `<div class="ctx-item" data-act="paste-section-${i}">${dot}${label} <span style="color:#888;font-size:10px;margin-left:6px">m${m}:b${b}</span></div>`;
+  }).join('');
+}
+
 function showCtxMenu(x, y) {
   ensureCtxMenu();
   updateCtxMenuExperimentalLabels();
+  _refreshSectionPasteSubmenu();
   ctxMenuEl.style.display = 'block';
   const tw = ctxMenuEl.offsetWidth || 160, th = ctxMenuEl.offsetHeight || 200;
   ctxMenuEl.style.left = Math.min(x, window.innerWidth  - tw - 8) + 'px';
