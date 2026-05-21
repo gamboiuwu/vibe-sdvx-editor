@@ -222,7 +222,7 @@ export class VelocityEnvelopeEditor {
     win.appendChild(glitchSection);
 
     document.body.appendChild(win);
-    dockRegister('velenv', win, 'Envelope Control', '◈', 'float', { floatW: 660, floatH: 340 });
+    dockRegister('velenv', win, 'Envelope Control', '◈', 'float', { nativeFloat: true, floatW: 660, floatH: 340 });
     this._win    = win;
     this._canvas = canvas;
     this._ctx    = canvas.getContext('2d');
