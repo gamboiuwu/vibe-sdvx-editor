@@ -62,6 +62,17 @@ console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px
 const APP_VERSION = '0.0.21';
 const CHANGELOG = [
   {
+    version: '0.0.24',
+    title: 'KSM-Style Laser Rendering',
+    entries: [
+      ['chg', '<strong>Laser ribbons now match KSM Editor / SDVX in-game appearance</strong> — anchor dots are no longer drawn during normal viewing or playback. They appear only when the laser tool is active, the section is being edited, an anchor is selected, or the <em>Show envelope points always</em> preference is enabled. This matches KSM Editor\'s clean ribbon look.'],
+      ['chg', 'Ribbon half-width tuned from <code>0.425 × BT_W</code> down to <code>0.38 × BT_W</code> so the laser proportions visually match KSM Editor and the official Sound Voltex lane geometry.'],
+      ['chg', 'Outline stroke removed from the normal-state ribbon — KSM-style flat-color ribbons. The outline now appears only on the section the user is actively editing, providing a clear visual signal when in laser-edit mode.'],
+      ['add', '<strong>SDVX-style inner highlight</strong> — a thin brighter stripe is now rendered along the center of each laser ribbon (in high-quality mode), reproducing the characteristic SDVX laser glow effect without the heavy outline.'],
+      ['fix', 'Anchor dots are now correctly hidden during playback / 2D viewing when not in laser-edit mode (previously they were always drawn regardless of <code>showLaserDots</code>).'],
+    ],
+  },
+  {
     version: '0.0.23',
     title: 'Pattern Snippet Library',
     entries: [
@@ -3782,6 +3793,10 @@ function setTool(t) {
   // Update context palette (dock.js)
   if (typeof updateContextPalette === 'function') updateContextPalette(t);
   syncLaserXSnapUI();
+  // Redraw the chart so laser anchor dots (which are gated on showLaserDots)
+  // appear/disappear immediately when switching tools instead of waiting for
+  // the next mouse move on the canvas.
+  render();
 }
 
 let _renderScheduled = false;
