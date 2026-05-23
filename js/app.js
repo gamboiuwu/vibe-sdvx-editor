@@ -5414,6 +5414,19 @@ function updateSelStatus() {
 function onRightClick(e) {
   e.preventDefault();
 
+  // Right-click outside an open floating menu → close it and stop.
+  {
+    const interpMenu = document.getElementById('laser-interp-menu');
+    if (interpMenu && interpMenu.style.display !== 'none' && !interpMenu.contains(e.target)) {
+      interpMenu.style.display = 'none';
+      return;
+    }
+    if (ctxMenuEl && ctxMenuEl.style.display !== 'none' && !ctxMenuEl.contains(e.target)) {
+      ctxMenuEl.style.display = 'none';
+      return;
+    }
+  }
+
   // Cmd/Ctrl+right-click → open the context menu. The clicked tick is
   // saved so measure-aware items ("Add BPM Change…", "Add Time Sig…")
   // can pre-fill their modal.
