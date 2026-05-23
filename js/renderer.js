@@ -1088,7 +1088,15 @@ export class Renderer {
   //   • Anchor dots ONLY when showLaserDots = true (laser tool active)
   _drawColLasers(ox, startY, endY) {
     const { ctx } = this;
-    const BASE_HALF = BT_W * 0.425; // normal ribbon half-width
+    // KSM-style ribbon half-width: thinner than before (0.425 → 0.38) to match
+    // the KSM Editor / SDVX in-game appearance. Wide-laser sections double this.
+    const BASE_HALF = BT_W * 0.38; // normal ribbon half-width
+    // Anchor dots should only appear when the user is actually editing lasers
+    // (matches KSM Editor behavior). They show when:
+    //  • the laser tool is active (this.showLaserDots), OR
+    //  • the user enabled the persistent "show envelope points" preference, OR
+    //  • the section is the currently-being-edited active section.
+    const prefShowDots = !!(typeof window !== 'undefined' && window.prefs?.showLaserDots);
 
     // ── Laser X snap grid — faint vertical guide lines when snap is active ──
     if (this.showLaserDots && typeof laserXSnap !== 'undefined' && laserXSnap > 0) {
@@ -1278,7 +1286,56 @@ export class Renderer {
             // Out-of-range segments get a red tint
             ctx.fillStyle = r.some(s => s.outOfRange) ? '#ff444488' : color;
             ctx.fill();
-            ctx.strokeStyle = edge; ctx.lineWidth = 0.8; ctx.stroke();
+            // KSM-style: only stroke outline when section is actively being edited.
+            // The plain ribbon should be a flat solid color like KSM Editor.
+            const isEditing = (sec === this.activeLaserSec) && this.showLaserDots;
+            if (isEditing) {
+              ctx.strokeStyle = edge; ctx.lineWidth = 0.8; ctx.stroke();
+            }
+            // SDVX-style inner highlight: a thin bright stripe along the ribbon
+            // center gives the lasers their characteristic glow without an
+            // outline. Drawn only in high-quality mode.
+            if (hq2d) {
+              const innerHalf = HALF * 0.35;
+              ctx.save();
+              ctx.globalAlpha = laserOpacity * 0.55;
+              ctx.beginPath();
+              ctx.moveTo(r[0].x0 - innerHalf, r[0].y0);
+              for (let i = 0; i < r.length; i++) {
+                const s  = r[i];
+                const lx = s.x1 - innerHalf, ly = s.y1;
+                if (s.interp === 'bezier') {
+                  const ctrlY = s.y0 + (s.y1 - s.y0) * s.curve;
+                  ctx.bezierCurveTo(s.x0 - innerHalf, ctrlY, lx, ctrlY, lx, ly);
+                } else if (i < r.length - 1) {
+                  const ns   = r[i + 1];
+                  const midX = (lx + ns.x0 - innerHalf) / 2, midY = (ly + ns.y0) / 2;
+                  ctx.quadraticCurveTo(lx, ly, midX, midY);
+                } else {
+                  ctx.lineTo(lx, ly);
+                }
+              }
+              const last2 = r[r.length - 1];
+              ctx.lineTo(last2.x1 + innerHalf, last2.y1);
+              for (let i = r.length - 1; i >= 0; i--) {
+                const s  = r[i];
+                const rx = s.x0 + innerHalf, ry2 = s.y0;
+                if (s.interp === 'bezier') {
+                  const ctrlY = s.y0 + (s.y1 - s.y0) * s.curve;
+                  ctx.bezierCurveTo(s.x1 + innerHalf, ctrlY, rx, ctrlY, rx, ry2);
+                } else if (i > 0) {
+                  const ps   = r[i - 1];
+                  const midX = (rx + ps.x1 + innerHalf) / 2, midY = (ry2 + ps.y1) / 2;
+                  ctx.quadraticCurveTo(rx, ry2, midX, midY);
+                } else {
+                  ctx.lineTo(rx, ry2);
+                }
+              }
+              ctx.closePath();
+              ctx.fillStyle = edge;
+              ctx.fill();
+              ctx.restore();
+            }
           }
         }
 
@@ -1325,9 +1382,20 @@ export class Renderer {
           ctx.restore();
         }
 
-        // ── Anchor dots: hollow (unselected) or filled+glow (selected) ──────
-        {
-          const isActiveSec = (sec === this.activeLaserSec) && this.showLaserDots;
+        // ── Anchor dots: KSM-style behavior ──
+        // Only show anchor dots when the user is actively editing this laser.
+        // KSM Editor hides anchors during normal viewing/playback for a clean
+        // ribbon appearance.  Dots appear when:
+        //  • laser tool is active (this.showLaserDots), OR
+        //  • the user enabled "Show envelope points always" preference, OR
+        //  • this specific section is the currently-edited section
+        const sectionEditing = (sec === this.activeLaserSec);
+        const anyPointSelected = this.selectedLaserPoint &&
+          this.selectedLaserPoint.side === side &&
+          this.selectedLaserPoint.sec  === sec;
+        const drawDots = this.showLaserDots || prefShowDots || sectionEditing || anyPointSelected;
+        if (drawDots) {
+          const isActiveSec = sectionEditing && this.showLaserDots;
           ctx.save();
           for (let pi = 0; pi < pts.length; pi++) {
             const t = sec.y + pts[pi].ry;
@@ -1374,7 +1442,7 @@ export class Renderer {
           }
           ctx.globalAlpha = 1;
           ctx.restore();
-        }
+        } // end if (drawDots)
       }
 
       // ── Pen-tool preview line ───────────────────────────────────────────────

@@ -17,6 +17,14 @@
 \
 [v0.0.23 SHIPPED] Pattern Snippet Library: Floating panel (Window -> Pattern Snippets...) for saving and reusing named note patterns. Save any selection, name it, and it persists in localStorage. Click to load into clipboard and paste with Ctrl+V. Right-click context menu includes "Save as Snippet..." option. Double-click to rename snippets. Filter/search bar for large libraries.\
 \
+[v0.0.24 SHIPPED] KSM-Style Laser Rendering: 2D editor lasers now match the KSM Editor / SDVX in-game appearance. Anchor dots no longer draw during normal viewing or playback - they appear only when the laser tool is active, the section is being edited, an anchor is selected, or the "Show envelope points always" preference is enabled. Ribbon half-width retuned from 0.425*BT_W to 0.38*BT_W to match KSM Editor proportions. The always-visible outline stroke was removed (it now only renders on the section being edited), giving the flat-color KSM ribbon look. A thin SDVX-style inner highlight stripe was added along the ribbon center for the characteristic laser glow. Fixes the long-standing bug where anchor dots were drawn unconditionally regardless of the showLaserDots flag.\
+\
+=== UPDATES ===\
+\
+2026-05-22: Verified v0.0.22 (Per-Note FX + Chromatic Aberration Glitch) and v0.0.23 (Pattern Snippet Library) integration. Both features are intact: Pattern Snippets panel is wired through Window menu and right-click context menu; per-note FX overrides survive in chart data and FX hold labels reflect the per-note effect type; SVG feColorMatrix filter for chromatic aberration is correctly applied to the game preview during glitch events. No regressions found in app.js / renderer.js startup paths.\
+\
+2026-05-22: Fixed laser rendering to match KSM Editor and SDVX in-game appearance. Root-cause was that the anchor-dot drawing block in renderer.js _drawColLasers had no outer guard checking showLaserDots, so dots were always drawn even during playback or when other tools were active. Wrapped the block with a drawDots gate that respects showLaserDots, the user preference, active-section state, and selected-point state. Also removed the always-visible 0.8px outline stroke that gave ribbons an "outlined" rather than KSM-flat look, retuned ribbon half-width, and added an SDVX inner-highlight stripe. Shipped as v0.0.24 on the Experimental fork.\
+\
 Point 1 (BPM Calibration Panel)\
 \pard\pardeftab720\sa240\partightenfactor0
 Calibration Mode should include a dedicated BPM analysis and BPM entry section that works alongside waveform-based timing alignment. Right now calibration focuses only on offset and start point alignment, but BPM is equally important because it defines how musical time is structured once the chart is synced.\

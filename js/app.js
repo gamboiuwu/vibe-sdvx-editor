@@ -8,7 +8,7 @@ import { calibrationWindow } from './calibration.js';
 import { t, applyLocalization } from './i18n.js';
 import { velEnvEditor, getVelEnvEditor, openVelEnvEditor, toggleVelEnvEditor } from './velenv.js';
 import { dockInit, dockRegister, dockApplyLayout, dockToggle } from './dock.js';
-import { openToolsWindow } from './tools.js';
+import { openToolsWindow, savePatternFromSelection } from './tools.js';
 import { openHeatmapWindow, updateHeatmap } from './heatmap.js';
 import { updateRadar, openRadarWindow } from './radar.js';
 import { openHandSimWindow } from './handsim.js';
@@ -61,6 +61,17 @@ console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px
 // ── Version & Changelog ───────────────────────────────────────────────────────
 const APP_VERSION = '0.0.21';
 const CHANGELOG = [
+  {
+    version: '0.0.24',
+    title: 'KSM-Style Laser Rendering',
+    entries: [
+      ['chg', '<strong>Laser ribbons now match KSM Editor / SDVX in-game appearance</strong> — anchor dots are no longer drawn during normal viewing or playback. They appear only when the laser tool is active, the section is being edited, an anchor is selected, or the <em>Show envelope points always</em> preference is enabled. This matches KSM Editor\'s clean ribbon look.'],
+      ['chg', 'Ribbon half-width tuned from <code>0.425 × BT_W</code> down to <code>0.38 × BT_W</code> so the laser proportions visually match KSM Editor and the official Sound Voltex lane geometry.'],
+      ['chg', 'Outline stroke removed from the normal-state ribbon — KSM-style flat-color ribbons. The outline now appears only on the section the user is actively editing, providing a clear visual signal when in laser-edit mode.'],
+      ['add', '<strong>SDVX-style inner highlight</strong> — a thin brighter stripe is now rendered along the center of each laser ribbon (in high-quality mode), reproducing the characteristic SDVX laser glow effect without the heavy outline.'],
+      ['fix', 'Anchor dots are now correctly hidden during playback / 2D viewing when not in laser-edit mode (previously they were always drawn regardless of <code>showLaserDots</code>).'],
+    ],
+  },
   {
     version: '0.0.23',
     title: 'Pattern Snippet Library',
@@ -3782,6 +3793,10 @@ function setTool(t) {
   // Update context palette (dock.js)
   if (typeof updateContextPalette === 'function') updateContextPalette(t);
   syncLaserXSnapUI();
+  // Redraw the chart so laser anchor dots (which are gated on showLaserDots)
+  // appear/disappear immediately when switching tools instead of waiting for
+  // the next mouse move on the canvas.
+  render();
 }
 
 let _renderScheduled = false;
@@ -4542,7 +4557,7 @@ function ensureCtxMenu() {
       if (secs[idx]) selPasteAtTick(secs[idx].y);
     }
     else if (act === 'save-snippet') {
-      if (typeof SnippetLibrary !== 'undefined') SnippetLibrary.saveFromSelection();
+      savePatternFromSelection();
     }
     else if (act === 'add-bpm')      openBpmModalAtCtx();
     else if (act === 'add-timesig')  openTimesigModalAtCtx();
@@ -9099,181 +9114,4 @@ const ChartSections = (function() {
   }
 })();
 
-// ── v0.0.23: Pattern Snippet Library ─────────────────────────────────────────
-const SnippetLibrary = (function() {
-  const STORAGE_KEY = 'vibe_editr_snippets';
-  const panel   = document.getElementById('snippets-panel');
-  const list    = document.getElementById('snp-list');
-  const btnSave = document.getElementById('snp-save-sel');
-  const btnClose= document.getElementById('snp-close');
-  const btnOpen = document.getElementById('btn-snippets-panel');
-  const search  = document.getElementById('snp-search');
-
-  let snippets = [];
-  let filterQ  = '';
-
-  function loadStorage() {
-    try { snippets = JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch(_) { snippets = []; }
-  }
-  function persist() {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(snippets)); } catch(_) {}
-  }
-  function countNotes(clip) {
-    let n = 0;
-    (clip.bt     || []).forEach(l => n += l.length);
-    (clip.fx     || []).forEach(l => n += l.length);
-    (clip.lasers || []).forEach(arr => (arr || []).forEach(s => n += (s.points?.length || 1)));
-    return n;
-  }
-  function ticksToLabel(t) {
-    const m = Math.floor((t || 0) / 192);
-    const b = Math.floor(((t || 0) % 192) / 48);
-    if (m > 0) return `${m}m ${b}b`;
-    return `${Math.max(b, 1)}b`;
-  }
-  function refresh() {
-    if (!list) return;
-    const q = filterQ.toLowerCase();
-    const shown = q ? snippets.filter(s => s.name.toLowerCase().includes(q)) : snippets;
-    if (!shown.length) {
-      list.innerHTML = `<div class="bm-empty">` +
-        (q ? `No snippets matching "<em>${q}</em>".`
-           : 'No snippets yet.<br>Select a region and click <em>Save Selection</em>.') +
-        `</div>`;
-      return;
-    }
-    list.innerHTML = shown.map(s => {
-      const noteStr = `${s.noteCount} note${s.noteCount !== 1 ? 's' : ''}`;
-      const durStr  = ticksToLabel(s.dur);
-      return `<div class="bm-item snp-item" data-id="${s.id}">
-        <div class="snp-info" style="flex:1;min-width:0;cursor:pointer">
-          <div class="snp-name">${s.name.replace(/</g,'&lt;')}</div>
-          <div class="snp-meta">${noteStr} &middot; ${durStr}</div>
-        </div>
-        <button class="snp-load fp-btn" data-id="${s.id}" title="Load into clipboard (then Ctrl+V to paste)">&#9166;</button>
-        <button class="bm-del" data-id="${s.id}" title="Delete snippet">&#10005;</button>
-      </div>`;
-    }).join('');
-
-    list.querySelectorAll('.snp-item').forEach(el => {
-      const id = el.dataset.id;
-      el.querySelector('.snp-info')?.addEventListener('click', () => loadSnippet(id));
-      el.querySelector('.snp-load')?.addEventListener('click', ev => {
-        ev.stopPropagation(); loadSnippet(id);
-      });
-      el.querySelector('.bm-del')?.addEventListener('click', ev => {
-        ev.stopPropagation();
-        snippets = snippets.filter(s => s.id !== id);
-        persist(); refresh();
-      });
-      el.querySelector('.snp-name')?.addEventListener('dblclick', ev => {
-        ev.stopPropagation();
-        const sn = snippets.find(s => s.id === id);
-        if (!sn) return;
-        const name = prompt('Rename snippet:', sn.name);
-        if (name !== null && name.trim()) { sn.name = name.trim(); persist(); refresh(); }
-      });
-    });
-  }
-
-  function loadSnippet(id) {
-    const sn = snippets.find(s => s.id === id);
-    if (!sn) return;
-    sel.clipboard = {
-      bt:     JSON.parse(JSON.stringify(sn.bt)),
-      fx:     JSON.parse(JSON.stringify(sn.fx)),
-      lasers: JSON.parse(JSON.stringify(sn.lasers)),
-      vel:    JSON.parse(JSON.stringify(sn.vel    || [])),
-      glitch: JSON.parse(JSON.stringify(sn.glitch || [])),
-      dur:    sn.dur,
-    };
-    _snpToast(`"${sn.name}" loaded — press Ctrl+V to paste`);
-  }
-
-  function saveFromSelection() {
-    if (!sel.active) { _snpToast('Select a region first (middle-mouse drag)'); return; }
-    selCopy();
-    const clip = sel.clipboard;
-    if (!clip) return;
-    _promptSave(clip);
-  }
-
-  function saveFromClipboard() {
-    const clip = sel.clipboard;
-    if (!clip) { _snpToast('Clipboard is empty — copy something first'); return; }
-    _promptSave(clip);
-  }
-
-  function _promptSave(clip) {
-    const defaultName = `Pattern ${snippets.length + 1}`;
-    const name = prompt('Name this snippet:', defaultName);
-    if (name === null) return;
-    const id = 'snp_' + Date.now();
-    snippets.unshift({
-      id,
-      name:      name.trim() || defaultName,
-      created:   Date.now(),
-      dur:       clip.dur || 0,
-      noteCount: countNotes(clip),
-      bt:        JSON.parse(JSON.stringify(clip.bt)),
-      fx:        JSON.parse(JSON.stringify(clip.fx)),
-      lasers:    JSON.parse(JSON.stringify(clip.lasers)),
-      vel:       JSON.parse(JSON.stringify(clip.vel    || [])),
-      glitch:    JSON.parse(JSON.stringify(clip.glitch || [])),
-    });
-    persist(); refresh();
-    _snpToast(`Saved snippet "${name.trim() || defaultName}"`);
-    if (panel && panel.style.display === 'none') panel.style.display = 'flex';
-  }
-
-  function _snpToast(msg) {
-    let t = document.getElementById('snp-toast');
-    if (!t) {
-      t = document.createElement('div');
-      t.id = 'snp-toast';
-      t.style.cssText = 'position:fixed;bottom:54px;left:50%;transform:translateX(-50%);' +
-        'background:#16162a;border:1px solid #00cfff;color:#00cfff;padding:8px 18px;' +
-        'border-radius:6px;font-size:13px;font-weight:600;z-index:9999;' +
-        'pointer-events:none;opacity:0;transition:opacity 0.15s';
-      document.body.appendChild(t);
-    }
-    t.textContent = msg;
-    t.style.opacity = '1';
-    clearTimeout(t._to);
-    t._to = setTimeout(() => { t.style.opacity = '0'; }, 2200);
-  }
-
-  function toggle() {
-    if (!panel) return;
-    if (panel.style.display === 'none') { loadStorage(); refresh(); panel.style.display = 'flex'; }
-    else panel.style.display = 'none';
-  }
-
-  btnSave?.addEventListener('click', saveFromSelection);
-  btnClose?.addEventListener('click', () => { if (panel) panel.style.display = 'none'; });
-  btnOpen?.addEventListener('click', toggle);
-  search?.addEventListener('input', () => { filterQ = search.value; refresh(); });
-
-  // Drag header
-  const header = panel?.querySelector('.fp-header');
-  if (header) {
-    let dragging = false, ox = 0, oy = 0;
-    header.addEventListener('mousedown', e => {
-      if (e.target.tagName === 'BUTTON') return;
-      dragging = true;
-      const r = panel.getBoundingClientRect();
-      ox = e.clientX - r.left; oy = e.clientY - r.top;
-      e.preventDefault();
-    });
-    window.addEventListener('mousemove', e => {
-      if (!dragging) return;
-      panel.style.left  = (e.clientX - ox) + 'px';
-      panel.style.top   = (e.clientY - oy) + 'px';
-      panel.style.right = 'auto';
-    });
-    window.addEventListener('mouseup', () => { dragging = false; });
-  }
-
-  loadStorage();
-  return { saveFromSelection, saveFromClipboard, loadSnippet, toggle, refresh };
-})();
+// Pattern Library lives in tools.js (savePatternFromSelection exported)

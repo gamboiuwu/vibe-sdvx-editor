@@ -4456,100 +4456,157 @@ function _toolSymmetry(c) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   17. Pattern Library
+   17. Pattern Library  (v0.0.23 — unified snippet store)
    ═══════════════════════════════════════════════════════════════════════════ */
-const PATTERN_LIB_KEY = 'vibe_editr_patterns';
+const PATTERN_LIB_KEY = 'vibe_editr_snippets';
+
+let _patLibRefresh = null; // called by save-snippet context-menu action
+
+function _countClipNotes(clip) {
+  let n = 0;
+  (clip.bt     || []).forEach(l => n += l.length);
+  (clip.fx     || []).forEach(l => n += l.length);
+  (clip.lasers || []).forEach(arr => (arr || []).forEach(s => n += (s.points?.length || 1)));
+  return n;
+}
+function _ticksLabel(t) {
+  const m = Math.floor((t || 0) / 192), b = Math.floor(((t || 0) % 192) / 48);
+  return m > 0 ? `${m}m ${b}b` : `${Math.max(b, 1)}b`;
+}
+function _getPatterns() {
+  try { return JSON.parse(localStorage.getItem(PATTERN_LIB_KEY) || '[]'); } catch { return []; }
+}
+function _savePatterns(pats) {
+  try { localStorage.setItem(PATTERN_LIB_KEY, JSON.stringify(pats)); } catch {}
+}
+
+export function savePatternFromSelection() {
+  if (!chart) return;
+  if (!(sel && sel.active)) { alert('Select a region first (middle-mouse drag).'); return; }
+  const name = prompt('Name this pattern:', `Pattern ${_getPatterns().length + 1}`);
+  if (!name) return;
+  const lo = Math.min(sel.startTick, sel.endTick);
+  const hi = Math.max(sel.startTick, sel.endTick);
+  const clip = {
+    bt:     chart.bt.map(l => l.filter(n => n.y >= lo && n.y <= hi).map(n => ({...n, y: n.y - lo}))),
+    fx:     chart.fx.map(l => l.filter(n => n.y >= lo && n.y <= hi).map(n => ({...n, y: n.y - lo}))),
+    lasers: chart.lasers.map(arr => arr.filter(s => s.y >= lo && s.y <= hi).map(s => ({...s, y: s.y - lo, points: s.points.map(p => ({...p}))}))),
+    vel:    (chart.scrollSpeedEvents ?? []).filter(e => e.y >= lo && e.y <= hi).map(e => ({...e, y: e.y - lo})),
+    glitch: (chart.glitchEvents ?? []).filter(e => e.y >= lo && e.y <= hi).map(e => ({...e, y: e.y - lo})),
+    dur:    hi - lo,
+  };
+  const pats = _getPatterns();
+  pats.unshift({ id: 'snp_' + Date.now(), name: name.trim(), created: Date.now(), dur: clip.dur, noteCount: _countClipNotes(clip), ...clip });
+  _savePatterns(pats);
+  if (_patLibRefresh) _patLibRefresh();
+}
 
 function _toolPatternLib(c) {
-  const sec = _section('Pattern Library');
-  c.appendChild(sec);
+  let filterQ = '';
 
+  // search bar
+  const searchInput = document.createElement('input');
+  searchInput.type = 'text';
+  searchInput.placeholder = 'Filter patterns…';
+  searchInput.style.cssText = 'width:100%;background:#111;border:1px solid #333;color:#ddd;border-radius:3px;padding:3px 7px;font-size:11px;outline:none;box-sizing:border-box;margin-bottom:6px';
+  searchInput.addEventListener('input', () => { filterQ = searchInput.value; renderList(); });
+  c.appendChild(searchInput);
+
+  // list
   const listEl = _h('div', 'tool-result-box');
-  listEl.style.maxHeight = '200px'; listEl.style.overflowY = 'auto';
-
-  function getPatterns() {
-    try { return JSON.parse(localStorage.getItem(PATTERN_LIB_KEY) || '[]'); } catch { return []; }
-  }
-  function savePatterns(pats) {
-    localStorage.setItem(PATTERN_LIB_KEY, JSON.stringify(pats));
-  }
+  listEl.style.maxHeight = '220px'; listEl.style.overflowY = 'auto';
 
   function renderList() {
     listEl.innerHTML = '';
-    const pats = getPatterns();
-    if (pats.length === 0) { listEl.innerHTML = '<div class="tool-result-item">No saved patterns.</div>'; return; }
-    pats.forEach((pat, i) => {
+    const pats = _getPatterns();
+    const q = filterQ.toLowerCase();
+    const shown = q ? pats.filter(p => p.name.toLowerCase().includes(q)) : pats;
+    if (!shown.length) {
+      listEl.appendChild(_h('div', 'tool-result-item', q ? `No patterns matching "${q}".` : 'No saved patterns yet.'));
+      return;
+    }
+    shown.forEach(pat => {
       const row = _h('div', 'tool-result-item');
-      row.style.display = 'flex'; row.style.alignItems = 'center'; row.style.gap = '6px';
-      // Mini dot preview
+      row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:4px 6px';
+
+      // mini canvas preview
       const preview = document.createElement('canvas');
       preview.width = 32; preview.height = 16;
+      preview.style.cssText = 'flex-shrink:0;border:1px solid #2a2a44;border-radius:2px';
       const pctx = preview.getContext('2d');
-      const spanTicks = pat.spanTicks || 192;
-      if (pat.btNotes) {
-        pat.btNotes.forEach((arr, li) => {
-          arr.forEach(n => {
-            const x = Math.floor((n.y / spanTicks) * 30);
-            const y = li * 4;
-            pctx.fillStyle = '#00cfff';
-            pctx.fillRect(x, y, 2, 3);
-          });
-        });
-      }
-      const nameSpan = _h('span', '', pat.name);
-      nameSpan.style.flex = '1';
-      const insBtn = document.createElement('button');
-      insBtn.textContent = 'Insert'; insBtn.className = 'tool-btn-action'; insBtn.style.fontSize = '10px'; insBtn.style.padding = '2px 7px';
-      insBtn.addEventListener('click', () => _insertPattern(pat));
-      const delBtn = document.createElement('button');
-      delBtn.textContent = '✕'; delBtn.style.cssText = 'font-size:10px;padding:2px 5px;background:#2a0a0a;border:1px solid #882233;color:#ffaaaa;cursor:pointer;border-radius:3px';
-      delBtn.addEventListener('click', () => {
-        const pats2 = getPatterns(); pats2.splice(i, 1); savePatterns(pats2); renderList();
+      pctx.fillStyle = '#0d0d22'; pctx.fillRect(0, 0, 32, 16);
+      const spanTicks = pat.dur || pat.spanTicks || 192;
+      (pat.bt || pat.btNotes || []).forEach((arr, li) => arr.forEach(n => {
+        pctx.fillStyle = '#00cfff';
+        pctx.fillRect(Math.floor((n.y / spanTicks) * 30), li * 4, 2, 3);
+      }));
+      (pat.fx || pat.fxNotes || []).forEach((arr, li) => arr.forEach(n => {
+        pctx.fillStyle = '#ff8800';
+        pctx.fillRect(Math.floor((n.y / spanTicks) * 30), 12 + li * 2, 2, 2);
+      }));
+
+      // info
+      const info = document.createElement('div');
+      info.style.cssText = 'flex:1;min-width:0';
+      const nameEl = document.createElement('div');
+      nameEl.textContent = pat.name;
+      nameEl.style.cssText = 'font-size:11px;color:#f0f0ff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+      nameEl.title = 'Double-click to rename';
+      nameEl.addEventListener('dblclick', () => {
+        const all = _getPatterns(), p = all.find(x => x.id === pat.id);
+        if (!p) return;
+        const n = prompt('Rename pattern:', p.name);
+        if (n !== null && n.trim()) { p.name = n.trim(); _savePatterns(all); renderList(); }
       });
-      row.appendChild(preview); row.appendChild(nameSpan); row.appendChild(insBtn); row.appendChild(delBtn);
+      const nc = pat.noteCount ?? _countClipNotes({ bt: pat.bt || pat.btNotes || [], fx: pat.fx || pat.fxNotes || [], lasers: pat.lasers || [] });
+      const meta = _h('div', '', `${nc} note${nc !== 1 ? 's' : ''} · ${_ticksLabel(spanTicks)}`);
+      meta.style.cssText = 'font-size:10px;color:#6668a0;margin-top:1px';
+      info.appendChild(nameEl); info.appendChild(meta);
+
+      // insert button — places at playhead AND loads clipboard
+      const insBtn = document.createElement('button');
+      insBtn.innerHTML = '&#9166;'; insBtn.title = 'Insert at playhead (also loads clipboard)';
+      insBtn.className = 'tool-btn-action';
+      insBtn.style.cssText = 'font-size:12px;padding:2px 6px;flex-shrink:0';
+      insBtn.addEventListener('click', () => {
+        const p = _getPatterns().find(x => x.id === pat.id);
+        if (!p || !chart) return;
+        const btSrc  = p.bt     || p.btNotes  || [[], [], [], []];
+        const fxSrc  = p.fx     || p.fxNotes  || [[], []];
+        const lasSrc = p.lasers || [[], []];
+        sel.clipboard = {
+          bt: JSON.parse(JSON.stringify(btSrc)), fx: JSON.parse(JSON.stringify(fxSrc)),
+          lasers: JSON.parse(JSON.stringify(lasSrc)),
+          vel: JSON.parse(JSON.stringify(p.vel || [])), glitch: JSON.parse(JSON.stringify(p.glitch || [])),
+          dur: p.dur || p.spanTicks || 0,
+        };
+        if (typeof saveUndo === 'function') saveUndo('Insert Pattern: ' + p.name);
+        const startTick = renderer?.playTick || 0;
+        btSrc.forEach((arr, li) => { if (!chart.bt[li]) return; arr.forEach(n => chart.bt[li].push({ y: startTick + n.y, len: n.len })); chart.bt[li].sort((a,b) => a.y - b.y); });
+        fxSrc.forEach((arr, li) => { if (!chart.fx[li]) return; arr.forEach(n => chart.fx[li].push({ y: startTick + n.y, len: n.len })); chart.fx[li].sort((a,b) => a.y - b.y); });
+        if (typeof render === 'function') render();
+      });
+
+      // delete button
+      const delBtn = document.createElement('button');
+      delBtn.textContent = '✕'; delBtn.title = 'Delete pattern';
+      delBtn.style.cssText = 'font-size:10px;padding:2px 5px;background:#2a0a0a;border:1px solid #882233;color:#ffaaaa;cursor:pointer;border-radius:3px;flex-shrink:0';
+      delBtn.addEventListener('click', () => {
+        const all = _getPatterns(), idx = all.findIndex(x => x.id === pat.id);
+        if (idx !== -1) { all.splice(idx, 1); _savePatterns(all); renderList(); }
+      });
+
+      row.appendChild(preview); row.appendChild(info); row.appendChild(insBtn); row.appendChild(delBtn);
       listEl.appendChild(row);
     });
   }
 
-  function _insertPattern(pat) {
-    if (!(typeof chart !== "undefined" && chart) || !renderer) return;
-    if (typeof saveUndo === 'function') saveUndo('Insert Pattern: ' + pat.name);
-    const startTick = renderer.playTick || 0;
-    if (pat.btNotes) {
-      pat.btNotes.forEach((arr, li) => {
-        arr.forEach(n => { chart.bt[li].push({ y: startTick + n.y, len: n.len }); });
-        chart.bt[li].sort((a,b) => a.y - b.y);
-      });
-    }
-    if (pat.fxNotes) {
-      pat.fxNotes.forEach((arr, li) => {
-        arr.forEach(n => { chart.fx[li].push({ y: startTick + n.y, len: n.len }); });
-        chart.fx[li].sort((a,b) => a.y - b.y);
-      });
-    }
-    if (typeof render === 'function') render();
-  }
-
   const saveBtn = _btn('Save Current Selection');
-  saveBtn.addEventListener('click', () => {
-    if (!(typeof chart !== "undefined" && chart)) return;
-    const name = prompt('Pattern name:');
-    if (!name) return;
-    // Capture from selection or full chart if no selection
-    const hasSel = sel && sel.active;
-    const startT = hasSel ? Math.min(sel.startTick, sel.endTick) : 0;
-    const endT   = hasSel ? Math.max(sel.startTick, sel.endTick) : chart.totalMeasures * TICKS_PER_MEASURE;
-    const spanTicks = endT - startT;
-    const btNotes = chart.bt.map(arr => arr.filter(n => n.y >= startT && n.y < endT).map(n => ({ y: n.y - startT, len: n.len })));
-    const fxNotes = chart.fx.map(arr => arr.filter(n => n.y >= startT && n.y < endT).map(n => ({ y: n.y - startT, len: n.len })));
-    const pats = getPatterns();
-    pats.push({ name, btNotes, fxNotes, spanTicks });
-    savePatterns(pats);
-    renderList();
-  });
+  saveBtn.addEventListener('click', () => { savePatternFromSelection(); renderList(); });
 
-  sec.appendChild(saveBtn);
-  sec.appendChild(listEl);
+  c.appendChild(saveBtn);
+  c.appendChild(listEl);
+  _patLibRefresh = renderList;
   renderList();
 }
 
