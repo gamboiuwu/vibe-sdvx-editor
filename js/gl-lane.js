@@ -199,7 +199,7 @@ export class GLLaneRenderer {
     // bottom half: MIDDLE → BOT
     this._quad(0, midY, w, midY, w, h,    0, h,    MIDDLE, MIDDLE, BOT, BOT);
 
-    // ── 2. Trapezoid coordinates (rotated if tilt) ─────────────────────
+    // ── 2. Trapezoid coordinates — shared regardless of laneVisible ────
     const OFF = (typeof GameView !== 'undefined' && GameView.LASER_LANE_OFFSET)
               || 0.25;
     const lx0  = gv._screenX(0,    p.cutoffY, p);
@@ -212,6 +212,12 @@ export class GLLaneRenderer {
     const vrx1 = gv._screenX(1+OFF, p.judgeY,  p);
 
     const cTop = p.cutoffY, cBot = p.judgeY;
+    // Center-split inner edges (constant x — do not vary with y).
+    // When splitPx=0, cxL=cxR=cx and the two halves share the same edge.
+    const cxL = p.cxL ?? p.cx;
+    const cxR = p.cxR ?? p.cx;
+
+    if (p.laneVisible !== false) {
     const VOL_TOP = [0.012, 0.012, 0.071, 1]; // #030312
     const VOL_BOT = [0.031, 0.031, 0.125, 1]; // #080820
 
@@ -227,21 +233,32 @@ export class GLLaneRenderer {
       const [c0,c1] = T(vrx1, cBot), [d0,d1] = T(rx1,  cBot);
       this._quad(a0,a1, b0,b1, c0,c1, d0,d1, VOL_TOP, VOL_TOP, VOL_BOT, VOL_BOT);
     }
-    // BT/FX main lane: 3-stop gradient via two stacked quads (mid at 60%)
+    // BT/FX main lane — split into left and right halves when center_split
+    // is active.  Each half is a 3-stop gradient expressed as two stacked
+    // quads (mid at 60%).  When splitPx=0 the two halves share a common
+    // inner edge (cxL=cxR) and together look like the original single panel.
     const LANE_TOP = [0.024, 0.024, 0.094, 1]; // #060618
     const LANE_MID = [0.051, 0.051, 0.157, 1]; // #0d0d28
     const LANE_BOT = [0.071, 0.075, 0.227, 1]; // #12133a
     const midT = cTop + (cBot - cTop) * 0.6;
+    const midL = gv._screenX(0, midT, p), midR = gv._screenX(1, midT, p);
+    // Left half (outer edge → cxL)
     {
-      const [a0,a1] = T(lx0, cTop);
-      const [b0,b1] = T(rx0, cTop);
-      // points on the lane edges at the mid Y
-      const midL = gv._screenX(0, midT, p), midR = gv._screenX(1, midT, p);
-      const [c0,c1] = T(midR, midT), [d0,d1] = T(midL, midT);
-      this._quad(a0,a1, b0,b1, c0,c1, d0,d1, LANE_TOP, LANE_TOP, LANE_MID, LANE_MID);
-      const [e0,e1] = T(midL, midT), [f0,f1] = T(midR, midT);
-      const [g0,g1] = T(rx1,  cBot), [h0,h1] = T(lx1,  cBot);
-      this._quad(e0,e1, f0,f1, g0,g1, h0,h1, LANE_MID, LANE_MID, LANE_BOT, LANE_BOT);
+      const [a,b] = T(lx0,  cTop), [c,d] = T(cxL, cTop);
+      const [e,f] = T(cxL,  midT), [g,h] = T(midL, midT);
+      this._quad(a,b, c,d, e,f, g,h, LANE_TOP, LANE_TOP, LANE_MID, LANE_MID);
+      const [i,j] = T(midL, midT), [k,l] = T(cxL, midT);
+      const [m,n] = T(cxL,  cBot), [o,q] = T(lx1, cBot);
+      this._quad(i,j, k,l, m,n, o,q, LANE_MID, LANE_MID, LANE_BOT, LANE_BOT);
+    }
+    // Right half (cxR → outer edge)
+    {
+      const [a,b] = T(cxR,  cTop), [c,d] = T(rx0, cTop);
+      const [e,f] = T(midR, midT), [g,h] = T(cxR, midT);
+      this._quad(a,b, c,d, e,f, g,h, LANE_TOP, LANE_TOP, LANE_MID, LANE_MID);
+      const [i,j] = T(cxR,  midT), [k,l] = T(midR, midT);
+      const [m,n] = T(rx1,  cBot), [o,q] = T(cxR,  cBot);
+      this._quad(i,j, k,l, m,n, o,q, LANE_MID, LANE_MID, LANE_BOT, LANE_BOT);
     }
 
     // ── 3. VOL outer boundary lines ────────────────────────────────────
@@ -275,8 +292,6 @@ export class GLLaneRenderer {
     // Left glow: from vlx1 inward toward volLeft+40px
     const drawSideGlow = (innerX, outerX, c0, c1) => {
       const x0 = Math.min(innerX, outerX), x1 = Math.max(innerX, outerX);
-      // Color at innerX (inside lane side, near critical line) = c0 (strong),
-      // at outerX (further from lane) = c1 (transparent).
       const innerIsLeft = outerX < innerX;
       const aTop = innerIsLeft ? c1 : c0, aBot = innerIsLeft ? c1 : c0;
       const bTop = innerIsLeft ? c0 : c1, bBot = innerIsLeft ? c0 : c1;
@@ -287,7 +302,7 @@ export class GLLaneRenderer {
       drawSideGlow(vrx1, volRight + 40, lcRZero, lcR);
     }
 
-    // ── 5. Scrolling grid (beat / measure lines) ───────────────────────
+    // ── 5. Scrolling grid — two segments per line when split is active ─
     const TPM = 192, TPB = 48;
     const VT = gv.VISIBLE_TICKS;
     const tick = gv.playTick;
@@ -301,22 +316,37 @@ export class GLLaneRenderer {
       const col = isMeasure ? [0.376, 0.376, 0.667, 1]   // #6060aa
                             : [0.133, 0.133, 0.290, 1];  // #22224a
       const lw = isMeasure ? 1.5 : 0.8;
-      const [x0, y0] = T(gv._screenX(0, sy, p), sy);
-      const [x1, y1] = T(gv._screenX(1, sy, p), sy);
-      this._line(x0, y0, x1, y1, lw, col);
+      const [x0L, y0L] = T(gv._screenX(0, sy, p), sy);
+      const [x1L, y1L] = T(cxL, sy);
+      this._line(x0L, y0L, x1L, y1L, lw, col);
+      const [x0R, y0R] = T(cxR, sy);
+      const [x1R, y1R] = T(gv._screenX(1, sy, p), sy);
+      this._line(x0R, y0R, x1R, y1R, lw, col);
     }
 
-    // ── 6. Vertical lane dividers (5 lines: edges + 3 interior) ────────
+    // ── 6. Vertical dividers — edges + interior + split-centre lines ───
+    // Dividers at n=0,0.25,0.5,0.75,1 plus an extra pair at the inner
+    // split edges (cxL and cxR) when center_split is active.
+    const DIV_EDGE = [0.314, 0.314, 0.627, 1]; // #5050a0
+    const DIV_INT  = [0.157, 0.157, 0.345, 1]; // #282858
     for (let i = 0; i <= 4; i++) {
       const n = i / 4;
       const edge = (i === 0 || i === 4);
-      const col = edge ? [0.314, 0.314, 0.627, 1]   // #5050a0
-                       : [0.157, 0.157, 0.345, 1];  // #282858
+      const col = edge ? DIV_EDGE : DIV_INT;
       const lw = edge ? 1.5 : 0.8;
       const [x0, y0] = T(gv._screenX(n, p.cutoffY, p), p.cutoffY);
       const [x1, y1] = T(gv._screenX(n, p.judgeY,  p), p.judgeY);
       this._line(x0, y0, x1, y1, lw, col);
     }
+    // Inner split-centre edges (only visible when splitPx > 0)
+    if ((p.splitPx ?? 0) > 0.5) {
+      const [ax, ay] = T(cxL, cTop), [bx, by] = T(cxL, cBot);
+      this._line(ax, ay, bx, by, 1, DIV_EDGE);
+      const [cx2, cy2] = T(cxR, cTop), [dx2, dy2] = T(cxR, cBot);
+      this._line(cx2, cy2, dx2, dy2, 1, DIV_EDGE);
+    }
+
+    } // end if (p.laneVisible !== false)
 
     // ── 7. Notes (Phase 2) — emitted into the same vertex buffer ───────
     if (chart) this._emitNotes(p, gv, chart, im);
