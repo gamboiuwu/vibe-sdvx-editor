@@ -4934,7 +4934,9 @@ function onMouseDown(e) {
   }
 
   // ── FX hold click: open param popup (left-click, not during playback) ────
-  if (e.button === 0 && renderer && !playing) {
+  // Skip when a placement tool is active — don't intercept BT/laser note clicks.
+  if (e.button === 0 && renderer && !playing &&
+      tool !== 'bt' && tool !== 'laser-l' && tool !== 'laser-r') {
     const fxHit = _findFxHoldAt(e.offsetX, e.offsetY);
     if (fxHit !== null) {
       if (_fxPopupFixedLane === fxHit.li) {
@@ -5198,7 +5200,8 @@ function onMouseMove(e) {
     }
 
     // ── FX hold highlight (hover only — popup fixed by click) ─────────────
-    if (renderer && _fxPopupFixedLane === null) {
+    if (renderer && _fxPopupFixedLane === null &&
+        tool !== 'bt' && tool !== 'laser-l' && tool !== 'laser-r') {
       const fxHit = _findFxHoldAt(e.offsetX, e.offsetY);
       const prevFxHold = renderer._hoveredFxHold;
       renderer._hoveredFxHold = fxHit ? { li: fxHit.li, note: fxHit.note } : null;
@@ -5411,6 +5414,19 @@ function updateSelStatus() {
 function onRightClick(e) {
   e.preventDefault();
 
+  // Right-click outside an open floating menu → close it and stop.
+  {
+    const interpMenu = document.getElementById('laser-interp-menu');
+    if (interpMenu && interpMenu.style.display !== 'none' && !interpMenu.contains(e.target)) {
+      interpMenu.style.display = 'none';
+      return;
+    }
+    if (ctxMenuEl && ctxMenuEl.style.display !== 'none' && !ctxMenuEl.contains(e.target)) {
+      ctxMenuEl.style.display = 'none';
+      return;
+    }
+  }
+
   // Cmd/Ctrl+right-click → open the context menu. The clicked tick is
   // saved so measure-aware items ("Add BPM Change…", "Add Time Sig…")
   // can pre-fill their modal.
@@ -5421,8 +5437,8 @@ function onRightClick(e) {
     return;
   }
 
-  // Right-click on a laser anchor dot → interp menu (laser tools).
-  if (tool === 'laser-l' || tool === 'laser-r') {
+  // Shift+Right-click on a laser anchor dot → interp menu (laser tools).
+  if (e.shiftKey && (tool === 'laser-l' || tool === 'laser-r')) {
     const side = tool === 'laser-l' ? 0 : 1;
     const hit  = renderer?.getLaserPointAt(e.offsetX, e.offsetY, side);
     if (hit) {
