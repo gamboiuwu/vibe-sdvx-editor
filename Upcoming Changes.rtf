@@ -25,6 +25,10 @@
 \
 2026-05-22: Fixed laser rendering to match KSM Editor and SDVX in-game appearance. Root-cause was that the anchor-dot drawing block in renderer.js _drawColLasers had no outer guard checking showLaserDots, so dots were always drawn even during playback or when other tools were active. Wrapped the block with a drawDots gate that respects showLaserDots, the user preference, active-section state, and selected-point state. Also removed the always-visible 0.8px outline stroke that gave ribbons an "outlined" rather than KSM-flat look, retuned ribbon half-width, and added an SDVX inner-highlight stripe. Shipped as v0.0.24 on the Experimental fork.\
 \
+2026-05-24: Verified yesterday's fixes (BT/VOL-L editing unblocked from FX hold overlay; laser interp menu requiring Shift+RClick; right-click outside menus now closes them). All three guards are intact in app.js onMouseDown and onRightClick. No regressions found in laser placement, BT note placement, or right-click erase behavior.\
+\
+2026-05-24: Implemented Laser Symmetry Mirror Mode (v0.0.25). New toggle in View menu (Shift+M shortcut). When enabled, placing a laser point on one side auto-creates a mirrored point on the opposite side with value (1 - v). Both the active section and the mirror section are tracked independently so extensions work correctly. Escape and tool-switch both clear the mirror state cleanly. A persistent "MIRROR" badge in the chart canvas corner shows the mode is active. APP_VERSION updated from 0.0.21 to 0.0.25 to match the CHANGELOG. Also confirmed Point 8 (Waveform Preview Strip) is actually SHIPPED via the Waveform Align tool in the Tools Hub (see Point 8 status update below).\
+\
 Point 1 (BPM Calibration Panel)\
 \pard\pardeftab720\sa240\partightenfactor0
 Calibration Mode should include a dedicated BPM analysis and BPM entry section that works alongside waveform-based timing alignment. Right now calibration focuses only on offset and start point alignment, but BPM is equally important because it defines how musical time is structured once the chart is synced.\
@@ -79,7 +83,13 @@ Status: NOT YET STARTED\
 Point 8 (New Recommended: Waveform Preview Strip in 2D Edit View)\
 \pard\pardeftab720\sa240\partightenfactor0
 \cf0 \outl0\strokewidth0 \strokec2 The 2D chart editor currently shows only notes, lasers, and grid lines. A valuable addition would be a thin waveform strip rendered along the bottom or left edge of the edit canvas that shows the audio waveform amplitude in sync with the chart timeline. This would allow chartists to visually align notes to audio transients without switching to the Calibration window. The strip should be toggleable, semi-transparent, and use the same tick coordinate system as the rest of the editor so it scrolls in lockstep with the chart. The waveform data would be derived from the already-loaded audioBuffer using offline peak analysis, cached as a compact array of peak pairs, and redrawn only when the visible column range changes. This is a read-only visual aid and does not modify any chart data or timing model.\
-Status: NOT YET STARTED\
+Status: SHIPPED — Implemented via the Waveform Align tool in the Tools Hub (Audio category). The tool decodes the loaded audio into a peak array, renders it as a semi-transparent amplitude strip overlaid on the BT track area, with beat-grid overlay and transient markers. Toggle "Show waveform on editor lanes" in the tool panel. Color modes available: Gradient, Blue, Green, White.\
+\
+\
+Point 9 (New Recommended: Laser Symmetry Mirror Mode)\
+\pard\pardeftab720\sa240\partightenfactor0
+\cf0 \outl0\strokewidth0 \strokec2 Many SDVX charts feature symmetric laser patterns where VOL-L and VOL-R mirror each other (one moves left while the other moves right). This is tedious to author manually because both sides must be placed point-by-point with inverted X values. A Laser Mirror Mode toggle (View menu or Shift+M) should auto-create the mirrored laser on the opposite side whenever the user places a laser point, computing the mirrored value as (1 - v). When the primary section is extended with a new anchor, the mirror section extends simultaneously. The mode is toggled independently of the active tool so it persists while switching between the left and right laser tools. A small persistent badge in the chart canvas corner makes the mode state immediately visible.\
+Status: SHIPPED in v0.0.25. Implemented as laserMirrorMode flag + _mirrorLaserSec tracking variable in app.js. Toggle wired to View menu checkbox and Shift+M keyboard shortcut. Badge rendered via _updateMirrorHud() into a div overlaying the canvas-wrap. Mirror section cleared on Escape.\
 \pard\pardeftab720\sa240\partightenfactor0
 \cf0 \outl0\strokewidth0 \
 }
