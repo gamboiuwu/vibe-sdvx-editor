@@ -59,8 +59,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.21';
+const APP_VERSION = '0.0.26';
 const CHANGELOG = [
+  {
+    version: '0.0.26',
+    title: 'Laser Symmetry Mirror Mode',
+    entries: [
+      ['add', '<strong>Laser Mirror Mode</strong> — new toggle (<strong>View → Laser Mirror Mode</strong> or <kbd>Shift+M</kbd>) that automatically creates a mirrored laser on the opposite side whenever you place a laser point. Left laser values are reflected (v → 1−v) to the right side and vice versa, making symmetric patterns quick to author.'],
+      ['add', 'A persistent <strong>⟺ MIRROR</strong> badge appears in the top-left of the chart canvas while mirror mode is active, so the state is always visible.'],
+      ['add', 'Mirror mode correctly tracks the active section on both sides — extending a laser segment on one side simultaneously extends the mirrored segment on the other. Pressing <kbd>Escape</kbd> or switching tool clears both the active and mirror sections cleanly.'],
+    ],
+  },
   {
     version: '0.0.25',
     title: 'KSM/KSON Camera Effects on WebGL Lanes',
@@ -310,6 +319,10 @@ let tool     = 'select';
 let snap     = 12;
 // Laser X-axis snap: 0 = free, otherwise snap v to nearest multiple
 let laserXSnap = 0;
+// Laser Mirror Mode: when true, placing a laser point auto-creates a mirrored point on the opposite side
+let laserMirrorMode = false;
+// Active mirror-side laser section (opposite side of the one being drawn)
+let _mirrorLaserSec = null;
 
 const drag = { active: false, lane: -1, laneType: '', startTick: 0, side: 0, localX: 0, laserSec: null };
 export const sel  = { active: false, dragging: false, startTick: 0, endTick: 0, clipboard: null };
@@ -5081,15 +5094,37 @@ function onMouseDown(e) {
         // Detect horizontal laser (same position as previous point)
         const isHorizontal = lastPt && Math.abs(v - lastPt.v) < 0.001;
         sec.points.push({ ry, v, slam: isHorizontal, interp: 'linear', curve: 0.5 });
+        // Mirror Mode: extend the opposite-side section too
+        if (laserMirrorMode && _mirrorLaserSec) {
+          const mv  = Math.max(0, Math.min(1, 1 - v));
+          const mSec = _mirrorLaserSec.sec;
+          const mLastPt = mSec.points[mSec.points.length - 1];
+          const mLastRy = mLastPt?.ry ?? -1;
+          const mRy = Math.round(tick) - mSec.y;
+          if (mRy > mLastRy) {
+            const mHoriz = mLastPt && Math.abs(mv - mLastPt.v) < 0.001;
+            mSec.points.push({ ry: mRy, v: mv, slam: mHoriz, interp: 'linear', curve: 0.5 });
+          }
+        }
       } else {
         // Clicked at or before the last point — finish current section, start new
         _activeLaserSec = null;
         if (renderer) { renderer.activeLaserSec = null; renderer._laserPreview = null; }
+        _mirrorLaserSec = null;
         const newSec = { y: tick, points: [{ ry: 0, v, slam: false, interp: 'linear', curve: 0.5 }], wide };
         chart.lasers[side].push(newSec);
         chart.lasers[side].sort((a, b) => a.y - b.y);
         _activeLaserSec = { sec: newSec, side };
         if (renderer) renderer.activeLaserSec = newSec;
+        // Mirror Mode: start a fresh mirror section on the opposite side
+        if (laserMirrorMode) {
+          const mirSide = 1 - side;
+          const mv = Math.max(0, Math.min(1, 1 - v));
+          const mirSec = { y: tick, points: [{ ry: 0, v: mv, slam: false, interp: 'linear', curve: 0.5 }], wide };
+          chart.lasers[mirSide].push(mirSec);
+          chart.lasers[mirSide].sort((a, b) => a.y - b.y);
+          _mirrorLaserSec = { sec: mirSec, side: mirSide };
+        }
       }
     } else {
       // No active section (or switched side) — start a new one
@@ -5097,11 +5132,21 @@ function onMouseDown(e) {
         _activeLaserSec = null;
         if (renderer) { renderer.activeLaserSec = null; renderer._laserPreview = null; }
       }
+      _mirrorLaserSec = null;
       const newSec = { y: tick, points: [{ ry: 0, v, slam: false, interp: 'linear', curve: 0.5 }], wide };
       chart.lasers[side].push(newSec);
       chart.lasers[side].sort((a, b) => a.y - b.y);
       _activeLaserSec = { sec: newSec, side };
       if (renderer) renderer.activeLaserSec = newSec;
+      // Mirror Mode: start a mirrored section on the opposite side simultaneously
+      if (laserMirrorMode) {
+        const mirSide = 1 - side;
+        const mv = Math.max(0, Math.min(1, 1 - v));
+        const mirSec = { y: tick, points: [{ ry: 0, v: mv, slam: false, interp: 'linear', curve: 0.5 }], wide };
+        chart.lasers[mirSide].push(mirSec);
+        chart.lasers[mirSide].sort((a, b) => a.y - b.y);
+        _mirrorLaserSec = { sec: mirSec, side: mirSide };
+      }
     }
 
     _laserSel = null;
@@ -5766,6 +5811,7 @@ function onKeyDown(e) {
         _activeLaserSec = null;
         if (renderer) { renderer.activeLaserSec = null; renderer._laserPreview = null; }
       }
+      _mirrorLaserSec = null;
       updateSelStatus(); render(); break;
 
     // Column navigation
@@ -5855,7 +5901,42 @@ function onKeyDown(e) {
     case 'G':
       if (e.shiftKey) { e.preventDefault(); openGotoBeatModal(); }
       break;
+
+    case 'm': case 'M':
+      if (!ctrl && e.shiftKey) {
+        e.preventDefault();
+        laserMirrorMode = !laserMirrorMode;
+        if (!laserMirrorMode) { _mirrorLaserSec = null; }
+        const mirrorCb = document.getElementById('laser-mirror-toggle');
+        if (mirrorCb) mirrorCb.checked = laserMirrorMode;
+        _updateMirrorHud();
+        render();
+      }
+      break;
   }
+}
+
+// ── Laser Mirror Mode HUD ─────────────────────────────────────────────────────
+// Shows a persistent badge in the top-left of the chart canvas while active.
+function _updateMirrorHud() {
+  let badge = document.getElementById('laser-mirror-hud');
+  if (!badge) {
+    badge = document.createElement('div');
+    badge.id = 'laser-mirror-hud';
+    badge.style.cssText = [
+      'position:absolute', 'top:6px', 'left:6px',
+      'background:#1255e8cc', 'color:#fff',
+      'font-size:11px', 'font-weight:700',
+      'padding:3px 8px', 'border-radius:4px',
+      'pointer-events:none', 'z-index:20',
+      'letter-spacing:0.04em', 'display:none',
+    ].join(';');
+    badge.textContent = '⟺ MIRROR';
+    const wrap = document.getElementById('canvas-wrap');
+    if (wrap) wrap.style.position = wrap.style.position || 'relative';
+    if (wrap) wrap.appendChild(badge);
+  }
+  badge.style.display = laserMirrorMode ? '' : 'none';
 }
 
 let _snapDisplayTimeout = null;
@@ -7879,6 +7960,14 @@ window.addEventListener('DOMContentLoaded', () => {
   // SV View toggle — makes 2D editor space notes by scroll distance, not raw tick
   document.getElementById('sv-view-toggle')?.addEventListener('change', e => {
     if (renderer) { renderer.svMode = e.target.checked; render(); }
+  });
+
+  // Laser Mirror Mode toggle — Shift+M also toggles this
+  document.getElementById('laser-mirror-toggle')?.addEventListener('change', e => {
+    laserMirrorMode = e.target.checked;
+    if (!laserMirrorMode) { _mirrorLaserSec = null; }
+    _updateMirrorHud();
+    render();
   });
 
   // Recover autosave from File menu
