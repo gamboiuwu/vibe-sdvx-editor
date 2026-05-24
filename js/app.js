@@ -59,15 +59,25 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.25';
+const APP_VERSION = '0.0.26';
 const CHANGELOG = [
   {
-    version: '0.0.25',
+    version: '0.0.26',
     title: 'Laser Symmetry Mirror Mode',
     entries: [
       ['add', '<strong>Laser Mirror Mode</strong> — new toggle (<strong>View → Laser Mirror Mode</strong> or <kbd>Shift+M</kbd>) that automatically creates a mirrored laser on the opposite side whenever you place a laser point. Left laser values are reflected (v → 1−v) to the right side and vice versa, making symmetric patterns quick to author.'],
       ['add', 'A persistent <strong>⟺ MIRROR</strong> badge appears in the top-left of the chart canvas while mirror mode is active, so the state is always visible.'],
       ['add', 'Mirror mode correctly tracks the active section on both sides — extending a laser segment on one side simultaneously extends the mirrored segment on the other. Pressing <kbd>Escape</kbd> or switching tool clears both the active and mirror sections cleanly.'],
+    ],
+  },
+  {
+    version: '0.0.25',
+    title: 'KSM/KSON Camera Effects on WebGL Lanes',
+    entries: [
+      ['fix', '<strong>center_split now creates a true lane split</strong> — the left half (BT-A/B, FX-L, VOL-L) and right half (BT-C/D, FX-R, VOL-R) slide apart with a visible gap in the centre. Previously center_split incorrectly shifted the entire lane sideways. Both the 2D and WebGL render paths match KSM/KSON behaviour.'],
+      ['add', '<strong>lane_toggle implemented</strong> — when a lane_toggle camera event is active the lane runway (background, panels, grid, dividers) is hidden while notes and lasers remain visible, matching KSM behaviour.'],
+      ['fix', 'Beat-grid lines and vertical dividers now draw in two half-segments (left and right of centre) so they stay within their respective lane halves when center_split is active.'],
+      ['chg', 'zoom_side offset is now independent of center_split: zoom_side shifts both halves together; center_split slides them apart from the shared centre.'],
     ],
   },
   {
@@ -1160,11 +1170,12 @@ function updateCameraFromEvents(tick) {
   }
 
   gameView._liveCamera = {
-    zoomTop  : interp('zoom_top'),
-    zoomBot  : interp('zoom_bottom'),
-    zoomSide : interp('zoom_side'),
-    tilt     : tiltDeg,
-    split    : interp('center_split'),
+    zoomTop    : interp('zoom_top'),
+    zoomBot    : interp('zoom_bottom'),
+    zoomSide   : interp('zoom_side'),
+    tilt       : tiltDeg,
+    split      : interp('center_split'),
+    laneToggle : interp('lane_toggle'),
   };
 }
 
@@ -7204,6 +7215,10 @@ function savePreferences() {
   document.getElementById('modal-prefs').style.display = 'none';
 }
 
+function savePrefsToLocalStorage() {
+  try { localStorage.setItem('vibe-editr-prefs', JSON.stringify(prefs)); } catch(_) {}
+}
+
 // ── Tiny DOM helpers used by prefs ───────────────────────────────────────────
 const _el  = id => document.getElementById(id);
 const _chk = id => document.getElementById(id)?.checked;
@@ -7217,7 +7232,7 @@ const _setVol = (id, v, lblId) => {
 };
 
 function _resetPrefsDefaults() {
-  if (!confirm('Reset all preferences to factory defaults?')) return;
+  if (!confirm(t('general.resetConfirm'))) return;
   Object.assign(prefs, {
     audioDelay: 0, tickEnabled: true, volMaster: 1, volMusic: 1, volSlam: 0.5, volTick: 0.5,
     videoDelay: 0, fpsCap: 60, highQuality: true, showLaserDir: true, showLaserDots: false,

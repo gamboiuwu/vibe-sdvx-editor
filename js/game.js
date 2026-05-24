@@ -118,8 +118,21 @@ export class GameView {
     // ── Lateral offset (zoom_side) ────────────────────────────────────────
     // Each +100 unit shifts the lane ~2 % of screen width.
     const zoomSide = lc ? (lc.zoomSide ?? 0) : 0;
-    const split    = lc ? (lc.split    ?? cam?.split ?? 0) : (cam?.split ?? 0);
-    const cx       = w / 2 + split * w * 0.003 + zoomSide * w * 0.002;
+    const cx       = w / 2 + zoomSide * w * 0.002;
+
+    // ── Center split (center_split) ───────────────────────────────────────
+    // Splits the lane into a left half (BT-A/B, FX-L, VOL-L) and a right
+    // half (BT-C/D, FX-R, VOL-R) that slide apart.  +300 = wide split.
+    const split   = lc ? (lc.split ?? cam?.split ?? 0) : (cam?.split ?? 0);
+    const splitPx = (split / 300) * laneWBot * 0.25;   // ±25 % of half-lane at max
+    const cxL     = cx - splitPx;    // centre of left half
+    const cxR     = cx + splitPx;    // centre of right half
+
+    // ── Lane toggle (lane_toggle) ─────────────────────────────────────────
+    // Value ≥ 0.5 hides the lane runway (background, panels, grid, dividers)
+    // while notes and lasers remain visible — matches KSM behaviour.
+    const laneToggle  = lc ? (lc.laneToggle ?? 0) : 0;
+    const laneVisible = laneToggle < 0.5;
 
     // ── Tilt ──────────────────────────────────────────────────────────────
     // _liveCamera.tilt is already in degrees; chart.camera.rotation is too.
@@ -145,8 +158,9 @@ export class GameView {
     // This scales with the projection so it stays consistent at all screen sizes and zoom levels.
     const cutoffY = vanishY + (judgeY - vanishY) * 0.04;
 
-    return { w, h, judgeY, vanishY, cutoffY, laneWBot, cx, tilt, K, perspBlend,
-             projMode: this.projMode };
+    return { w, h, judgeY, vanishY, cutoffY, laneWBot,
+             cx, cxL, cxR, splitPx, laneVisible,
+             tilt, K, perspBlend, projMode: this.projMode };
   }
 
   // ── Core perspective factor ───────────────────────────────────────────────
@@ -190,9 +204,15 @@ export class GameView {
   }
 
   // Tilt is applied as ctx.rotate() in draw() — no per-point shear here.
+  // When center_split is active, elements left of lane-centre (norm ≤ 0.5)
+  // use cxL and elements to the right (norm > 0.5) use cxR, creating a
+  // visible gap between the two halves exactly as KSM/KSON does.
   _screenX(norm, sy, p) {
     const hw = this._halfW(sy, p);
-    return p.cx + (norm - 0.5) * hw * 2;
+    const cx = (p.cxL !== undefined)
+      ? (norm <= 0.5 ? p.cxL : p.cxR)
+      : p.cx;
+    return cx + (norm - 0.5) * hw * 2;
   }
 
   // Convert a screen-Y back to a perspective factor (for use in laser ribbons)
@@ -409,6 +429,7 @@ export class GameView {
     const vrx1 = this._screenX(1+OFF, p.judgeY,  p);
 
     if (!useGL) {
+      if (p.laneVisible) {
       // ── VOL lane panels (darker tint, drawn first) ───────────────────────
       const volGrad = ctx.createLinearGradient(0, p.cutoffY, 0, p.judgeY);
       volGrad.addColorStop(0, '#030312');
@@ -428,17 +449,24 @@ export class GameView {
       ctx.closePath();
       ctx.fillStyle = volGrad; ctx.fill();
 
-      // ── BT/FX main lane ──────────────────────────────────────────────────
-      ctx.beginPath();
-      ctx.moveTo(lx0, p.cutoffY); ctx.lineTo(rx0, p.cutoffY);
-      ctx.lineTo(rx1, p.judgeY);  ctx.lineTo(lx1, p.judgeY);
-      ctx.closePath();
+      // ── BT/FX main lane — two half-trapezoids when center_split is active ─
+      // Left half (norm 0→0.5, inner edge at p.cxL) and right half
+      // (norm 0.5→1, inner edge at p.cxR) — gap = 2 × splitPx when active.
       const laneGrad = ctx.createLinearGradient(0, p.cutoffY, 0, p.judgeY);
       laneGrad.addColorStop(0, '#060618');
       laneGrad.addColorStop(0.6, '#0d0d28');
       laneGrad.addColorStop(1, '#12133a');
       ctx.fillStyle = laneGrad;
-      ctx.fill();
+      // Left half
+      ctx.beginPath();
+      ctx.moveTo(lx0, p.cutoffY); ctx.lineTo(p.cxL, p.cutoffY);
+      ctx.lineTo(p.cxL, p.judgeY); ctx.lineTo(lx1, p.judgeY);
+      ctx.closePath(); ctx.fill();
+      // Right half
+      ctx.beginPath();
+      ctx.moveTo(p.cxR, p.cutoffY); ctx.lineTo(rx0, p.cutoffY);
+      ctx.lineTo(rx1, p.judgeY); ctx.lineTo(p.cxR, p.judgeY);
+      ctx.closePath(); ctx.fill();
 
       // VOL outer boundary lines
       ctx.strokeStyle = '#2a2a55'; ctx.lineWidth = 1;
@@ -478,8 +506,12 @@ export class GameView {
         const isMeasure = (t % TICKS_PER_MEASURE === 0);
         ctx.strokeStyle = isMeasure ? '#6060aa' : '#22224a';
         ctx.lineWidth   = isMeasure ? 1.5 : 0.7;
+        // Draw two segments (left half and right half) so the gap stays
+        // visible when center_split is active.
         ctx.beginPath();
         ctx.moveTo(this._screenX(0, sy, p), sy);
+        ctx.lineTo(p.cxL, sy);
+        ctx.moveTo(p.cxR, sy);
         ctx.lineTo(this._screenX(1, sy, p), sy);
         ctx.stroke();
       }
@@ -495,6 +527,15 @@ export class GameView {
         ctx.lineTo(this._screenX(n, p.judgeY,  p), p.judgeY);
         ctx.stroke();
       }
+      // Inner split edges — visible when center_split is active
+      if (p.splitPx > 0.5) {
+        ctx.strokeStyle = '#5050a0'; ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(p.cxL, p.cutoffY); ctx.lineTo(p.cxL, p.judgeY);
+        ctx.moveTo(p.cxR, p.cutoffY); ctx.lineTo(p.cxR, p.judgeY);
+        ctx.stroke();
+      }
+      } // end if (p.laneVisible)
     }
 
     if (!chart) { this._drawHUD(p, tick, score, chain); return; }

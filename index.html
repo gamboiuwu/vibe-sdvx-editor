@@ -17,21 +17,21 @@
     <div class="menu-group">
       <button class="menu-btn" data-i18n="menu.file">File ▾</button>
       <div class="menu-dropdown">
-        <button class="menu-item" id="btn-new">New Chart</button>
-        <button class="menu-item" id="btn-new-tab">New Chart in New Tab  <kbd>Ctrl+T</kbd></button>
-        <button class="menu-item" id="btn-open-folder">Open Folder…</button>
+        <button class="menu-item" id="btn-new" data-i18n="file.newChart">New Chart</button>
+        <button class="menu-item" id="btn-new-tab"><span data-i18n="file.newTab">New Chart in New Tab</span>  <kbd>Ctrl+T</kbd></button>
+        <button class="menu-item" id="btn-open-folder" data-i18n="file.openFolder">Open Folder…</button>
         <div class="menu-sep"></div>
-        <button class="menu-item" id="btn-open-ksh">Open .ksh…</button>
-        <button class="menu-item" id="btn-open-kson">Open .kson…</button>
-        <button class="menu-item" id="btn-open-ksh-new-tab">Open .ksh in New Tab…</button>
-        <button class="menu-item" id="btn-open-kson-new-tab">Open .kson in New Tab…</button>
+        <button class="menu-item" id="btn-open-ksh" data-i18n="file.openKsh">Open .ksh…</button>
+        <button class="menu-item" id="btn-open-kson" data-i18n="file.openKson">Open .kson…</button>
+        <button class="menu-item" id="btn-open-ksh-new-tab" data-i18n="file.openKshTab">Open .ksh in New Tab…</button>
+        <button class="menu-item" id="btn-open-kson-new-tab" data-i18n="file.openKsonTab">Open .kson in New Tab…</button>
         <div class="menu-sep"></div>
-        <button class="menu-item" id="btn-open-ksonpack">Open .ksonpack Bundle…</button>
-        <button class="menu-item accent" id="btn-export-ksh">Export KSH</button>
-        <button class="menu-item accent" id="btn-export-kson">Export KSON</button>
-        <button class="menu-item accent" id="btn-export-ksonpack">Export All Tabs as .ksonpack…</button>
+        <button class="menu-item" id="btn-open-ksonpack" data-i18n="file.openKsonpack">Open .ksonpack Bundle…</button>
+        <button class="menu-item accent" id="btn-export-ksh" data-i18n="file.exportKsh">Export KSH</button>
+        <button class="menu-item accent" id="btn-export-kson" data-i18n="file.exportKson">Export KSON</button>
+        <button class="menu-item accent" id="btn-export-ksonpack" data-i18n="file.exportKsonpack">Export All Tabs as .ksonpack…</button>
         <div class="menu-sep"></div>
-        <button class="menu-item" id="btn-recover-autosave-file">Recover Autosave…</button>
+        <button class="menu-item" id="btn-recover-autosave-file" data-i18n="file.recover">Recover Autosave…</button>
       </div>
     </div>
 
@@ -39,44 +39,44 @@
     <div class="menu-group">
       <button class="menu-btn" data-i18n="menu.edit">Edit ▾</button>
       <div class="menu-dropdown">
-        <button class="menu-item" id="btn-undo">Undo  <kbd>Ctrl+Z</kbd></button>
-        <button class="menu-item" id="btn-redo">Redo  <kbd>Ctrl+Y</kbd></button>
+        <button class="menu-item" id="btn-undo"><span data-i18n="edit.undo">Undo</span>  <kbd>Ctrl+Z</kbd></button>
+        <button class="menu-item" id="btn-redo"><span data-i18n="edit.redo">Redo</span>  <kbd>Ctrl+Y</kbd></button>
         <div class="menu-sep"></div>
-        <button class="menu-item" id="btn-cut">Cut  <kbd>Ctrl+X</kbd></button>
-        <button class="menu-item" id="btn-copy">Copy  <kbd>Ctrl+C</kbd></button>
-        <button class="menu-item" id="btn-paste">Paste  <kbd>Ctrl+V</kbd></button>
+        <button class="menu-item" id="btn-cut"><span data-i18n="edit.cut">Cut</span>  <kbd>Ctrl+X</kbd></button>
+        <button class="menu-item" id="btn-copy"><span data-i18n="edit.copy">Copy</span>  <kbd>Ctrl+C</kbd></button>
+        <button class="menu-item" id="btn-paste"><span data-i18n="edit.paste">Paste</span>  <kbd>Ctrl+V</kbd></button>
         <div class="menu-sep"></div>
-        <div class="menu-item menu-has-sub">Mirror ▸
+        <div class="menu-item menu-has-sub"><span data-i18n="edit.mirrorMenu">Mirror ▸</span>
           <div class="menu-sub">
-            <button class="menu-item" id="btn-mirror-all">Mirror All</button>
-            <button class="menu-item" id="btn-mirror-bt">Mirror BT</button>
-            <button class="menu-item" id="btn-mirror-fx">Mirror FX</button>
-            <button class="menu-item" id="btn-mirror-vol">Mirror VOL</button>
+            <button class="menu-item" id="btn-mirror-all" data-i18n="edit.mirrorAll">Mirror All</button>
+            <button class="menu-item" id="btn-mirror-bt" data-i18n="edit.mirrorBt">Mirror BT</button>
+            <button class="menu-item" id="btn-mirror-fx" data-i18n="edit.mirrorFx">Mirror FX</button>
+            <button class="menu-item" id="btn-mirror-vol" data-i18n="edit.mirrorVol">Mirror VOL</button>
             <div class="menu-sep"></div>
-            <button class="menu-item" id="btn-tmirror-all">Temporal Mirror All</button>
-            <button class="menu-item" id="btn-tmirror-bt">Temporal Mirror BT</button>
-            <button class="menu-item" id="btn-tmirror-vol">Temporal Mirror VOL</button>
+            <button class="menu-item" id="btn-tmirror-all" data-i18n="edit.tmirrorAll">Temporal Mirror All</button>
+            <button class="menu-item" id="btn-tmirror-bt" data-i18n="edit.tmirrorBt">Temporal Mirror BT</button>
+            <button class="menu-item" id="btn-tmirror-vol" data-i18n="edit.tmirrorVol">Temporal Mirror VOL</button>
             <div class="menu-sep"></div>
-            <button class="menu-item" id="btn-swap-lasers">Swap VOL-L ↔ VOL-R</button>
+            <button class="menu-item" id="btn-swap-lasers" data-i18n="edit.swapLasers">Swap VOL-L ↔ VOL-R</button>
           </div>
         </div>
-        <div class="menu-item menu-has-sub">Adjust Speed ▸
+        <div class="menu-item menu-has-sub"><span data-i18n="edit.adjustSpeed">Adjust Speed ▸</span>
           <div class="menu-sub">
-            <button class="menu-item" id="btn-speed-half">½× slower (expand ticks)</button>
-            <button class="menu-item" id="btn-speed-double">2× faster (compress ticks)</button>
+            <button class="menu-item" id="btn-speed-half" data-i18n="edit.speedHalf">½× slower (expand ticks)</button>
+            <button class="menu-item" id="btn-speed-double" data-i18n="edit.speedDouble">2× faster (compress ticks)</button>
           </div>
         </div>
         <div class="menu-sep"></div>
-        <div class="menu-item menu-has-sub">Modify ▸
+        <div class="menu-item menu-has-sub"><span data-i18n="edit.modify">Modify ▸</span>
           <div class="menu-sub">
-            <button class="menu-item" id="btn-sran-all" title="Randomly shuffle BT lanes, FX lanes and VOL sides">S-Ran (All)</button>
-            <button class="menu-item" id="btn-sran-bt"  title="Randomly shuffle BT note lanes only">S-Ran BT</button>
-            <button class="menu-item" id="btn-sran-fx"  title="Randomly swap FX lanes">S-Ran FX</button>
-            <button class="menu-item" id="btn-sran-vol" title="Randomly swap VOL laser sides">S-Ran VOL</button>
+            <button class="menu-item" id="btn-sran-all" title="Randomly shuffle BT lanes, FX lanes and VOL sides" data-i18n="edit.sranAll">S-Ran (All)</button>
+            <button class="menu-item" id="btn-sran-bt"  title="Randomly shuffle BT note lanes only" data-i18n="edit.sranBt">S-Ran BT</button>
+            <button class="menu-item" id="btn-sran-fx"  title="Randomly swap FX lanes" data-i18n="edit.sranFx">S-Ran FX</button>
+            <button class="menu-item" id="btn-sran-vol" title="Randomly swap VOL laser sides" data-i18n="edit.sranVol">S-Ran VOL</button>
           </div>
         </div>
         <div class="menu-sep"></div>
-        <button class="menu-item danger-item" id="btn-ripple-delete">Delete &amp; Shift  <kbd>Shift+Del</kbd></button>
+        <button class="menu-item danger-item" id="btn-ripple-delete"><span data-i18n="edit.rippleDelete">Delete &amp; Shift</span>  <kbd>Shift+Del</kbd></button>
       </div>
     </div>
 
@@ -84,16 +84,16 @@
     <div class="menu-group">
       <button class="menu-btn" data-i18n="menu.chart">Chart ▾</button>
       <div class="menu-dropdown">
-        <button class="menu-item accent" id="btn-song-meta">Song Metadata…</button>
+        <button class="menu-item accent" id="btn-song-meta" data-i18n="chart.songMeta">Song Metadata…</button>
         <div class="menu-sep"></div>
-        <button class="menu-item" id="btn-add-bpm">Add BPM Change…</button>
-        <button class="menu-item" id="btn-add-timesig">Add Time Sig…</button>
-        <button class="menu-item" id="btn-add-scroll-speed">Add Chart Velocity…</button>
-        <button class="menu-item" id="btn-velenv-menu" title="Open the velocity envelope editor window">Velocity Envelope…  <kbd>`</kbd></button>
+        <button class="menu-item" id="btn-add-bpm" data-i18n="chart.addBpm">Add BPM Change…</button>
+        <button class="menu-item" id="btn-add-timesig" data-i18n="chart.addTimeSig">Add Time Sig…</button>
+        <button class="menu-item" id="btn-add-scroll-speed" data-i18n="chart.addVelocity">Add Chart Velocity…</button>
+        <button class="menu-item" id="btn-velenv-menu" title="Open the velocity envelope editor window"><span data-i18n="chart.velEnv">Velocity Envelope…</span>  <kbd>`</kbd></button>
         <div class="menu-sep"></div>
-        <button class="menu-item" id="btn-load-audio">Load Audio File…</button>
+        <button class="menu-item" id="btn-load-audio" data-i18n="chart.loadAudio">Load Audio File…</button>
         <div class="menu-sep"></div>
-        <label class="menu-item menu-label">Cols/Measure:
+        <label class="menu-item menu-label"><span data-i18n="chart.colsMeasure">Cols/Measure:</span>
           <input type="number" id="meas-per-col" min="1" max="16" value="4">
         </label>
       </div>
@@ -103,34 +103,34 @@
     <div class="menu-group">
       <button class="menu-btn" data-i18n="menu.view">View ▾</button>
       <div class="menu-dropdown">
-        <button class="menu-item view-mitem active" data-view="edit" id="btn-view-edit">✦ Edit View</button>
-        <button class="menu-item view-mitem" data-view="game" id="btn-view-game">▶ Game Preview</button>
-        <button class="menu-item view-mitem" data-view="split" id="btn-view-split">⧉ Split View</button>
+        <button class="menu-item view-mitem active" data-view="edit" id="btn-view-edit" data-i18n="view.editView">✦ Edit View</button>
+        <button class="menu-item view-mitem" data-view="game" id="btn-view-game" data-i18n="view.gamePreview">▶ Game Preview</button>
+        <button class="menu-item view-mitem" data-view="split" id="btn-view-split" data-i18n="view.splitView">⧉ Split View</button>
         <div class="menu-sep"></div>
-        <label class="menu-item menu-label">HiSpeed:
+        <label class="menu-item menu-label"><span data-i18n="view.hispeedLabel">HiSpeed:</span>
           <input type="range" id="chart-speed" min="0.2" max="10" step="0.05" value="1">
           <span id="chart-speed-label">1.00×</span>
         </label>
         <div class="menu-sep"></div>
-        <label class="menu-item menu-label">Zoom:
+        <label class="menu-item menu-label"><span data-i18n="view.zoomLabel">Zoom:</span>
           <input type="range" id="zoom-slider" min="20" max="500" value="100" step="5">
           <span id="zoom-label">100%</span>
         </label>
         <label class="menu-item menu-check">
-          <input type="checkbox" id="laser-wide-view"> 2× Wide Lasers
+          <input type="checkbox" id="laser-wide-view"> <span data-i18n="view.wideLasers">2× Wide Lasers</span>
         </label>
         <label class="menu-item menu-check" title="Show notes spaced by Chart Velocity — faster sections appear more spread out, like in-game">
-          <input type="checkbox" id="sv-view-toggle"> SV View (velocity spacing)
+          <input type="checkbox" id="sv-view-toggle"> <span data-i18n="view.svView">SV View (velocity spacing)</span>
         </label>
         <label class="menu-item menu-check" title="Mirror Mode — drawing a laser on one side auto-creates a mirrored laser on the opposite side (Shift+M)">
-          <input type="checkbox" id="laser-mirror-toggle"> ⟺ Laser Mirror Mode
+          <input type="checkbox" id="laser-mirror-toggle"> <span data-i18n="view.mirrorMode">⟺ Laser Mirror Mode</span>
         </label>
         <div class="menu-sep"></div>
-        <label class="menu-item menu-label">Beats/Lane:
+        <label class="menu-item menu-label"><span data-i18n="view.beatsPerLaneLabel">Beats/Lane:</span>
           <input type="range" id="beats-per-lane" min="1" max="32" step="1" value="16">
           <span id="beats-per-lane-label">16 beats</span>
         </label>
-        <label class="menu-item menu-label">Snap:
+        <label class="menu-item menu-label"><span data-i18n="view.snapLabel">Snap:</span>
           <select id="snap-select">
             <option value="48">1/4</option>
             <option value="24">1/8</option>
@@ -200,21 +200,21 @@
     <div class="menu-group">
       <button class="menu-btn" data-i18n="menu.window">Window ▾</button>
       <div class="menu-dropdown">
-        <button class="menu-item" id="btn-history-panel">History &amp; Timeline</button>
-        <button class="menu-item" id="btn-split-opts">Split View Options</button>
+        <button class="menu-item" id="btn-history-panel" data-i18n="window.history">History &amp; Timeline</button>
+        <button class="menu-item" id="btn-split-opts" data-i18n="window.splitOpts">Split View Options</button>
         <div class="menu-sep"></div>
-        <button class="menu-item" id="btn-gameplay-panel">&#9654; Gameplay…</button>
-        <button class="menu-item accent" id="btn-tools-window">&#9965; Tools Hub…</button>
-        <button class="menu-item" id="btn-radar-window">&#11042; Pattern Radar…</button>
-        <button class="menu-item" id="btn-handsim-window">&#9758; Hand Simulator…</button>
+        <button class="menu-item" id="btn-gameplay-panel" data-i18n="window.gameplay">▶ Gameplay…</button>
+        <button class="menu-item accent" id="btn-tools-window" data-i18n="window.toolsHub">⚙ Tools Hub…</button>
+        <button class="menu-item" id="btn-radar-window" data-i18n="window.patternRadar">◈ Pattern Radar…</button>
+        <button class="menu-item" id="btn-handsim-window" data-i18n="window.handSim">☞ Hand Simulator…</button>
         <div class="menu-sep"></div>
-        <button class="menu-item" id="btn-chart-stats">&#128202; Chart Statistics…</button>
-        <button class="menu-item" id="btn-heatmap-window">&#127777; Intensity Heatmap…</button>
-        <button class="menu-item" id="btn-bookmarks-panel">&#128278; Bookmarks  <kbd>Ctrl+B</kbd></button>
-        <button class="menu-item" id="btn-sections-panel">&#127370; Chart Sections…</button>
+        <button class="menu-item" id="btn-chart-stats" data-i18n="window.chartStats">📊 Chart Statistics…</button>
+        <button class="menu-item" id="btn-heatmap-window" data-i18n="window.heatmap">🌡 Intensity Heatmap…</button>
+        <button class="menu-item" id="btn-bookmarks-panel"><span data-i18n="window.bookmarks">🔖 Bookmarks</span>  <kbd>Ctrl+B</kbd></button>
+        <button class="menu-item" id="btn-sections-panel" data-i18n="window.sections">🏁 Chart Sections…</button>
         <div class="menu-sep"></div>
-        <button class="menu-item" id="btn-whats-new">&#10024; What's New…</button>
-        <button class="menu-item" id="btn-diagnostics">&#9881; System Diagnostics…</button>
+        <button class="menu-item" id="btn-whats-new" data-i18n="window.whatsNew">✨ What's New…</button>
+        <button class="menu-item" id="btn-diagnostics" data-i18n="window.diagnostics">⚙ System Diagnostics…</button>
       </div>
     </div>
   </div>
@@ -228,7 +228,7 @@
     <button class="topbar-play-btn" id="btn-play-top" title="Play/Stop [Space]" data-i18n="tool.play">▶ Play</button>
     <span class="topbar-sep"></span>
     <!-- Audio status -->
-    <span id="audio-status" style="font-size:11px;color:#6668a0">No audio</span>
+    <span id="audio-status" style="font-size:11px;color:#6668a0" data-i18n="status.noAudio">No audio</span>
     <!-- Error badge -->
     <button id="error-badge" class="error-badge" title="View error log">Errors: 0</button>
     <!-- Donate button -->
@@ -254,12 +254,12 @@
   <button class="tool-btn play-btn" id="btn-play" title="Play/Stop [Space]" data-i18n="tool.play">▶ Play</button>
   <span id="play-region-hint" style="font-size:10px;color:#6668a0;margin-left:4px"></span>
   <span class="tool-sep"></span>
-  <span style="font-size:10px;color:#5558a0;padding:0 4px">Middle-drag: Select region &nbsp;|&nbsp; Ctrl+RClick: Context menu &nbsp;|&nbsp; Esc: Clear selection</span>
+  <span style="font-size:10px;color:#5558a0;padding:0 4px" data-i18n="toolbar.hint">Middle-drag: Select region &nbsp;|&nbsp; Ctrl+RClick: Context menu &nbsp;|&nbsp; Esc: Clear selection</span>
 </div>
 
 <!-- Camera event sub-panel (shown when cam-event tool is active) -->
 <div id="cam-subpanel">
-  <span>Type:</span>
+  <span data-i18n="cam.typeLabel">Type:</span>
   <select id="cam-type-sel" style="background:#1a1a3a; color:#fff; border:1px solid #445; border-radius:3px; padding:2px 4px;">
     <option value="zoom_top">Zoom Top</option>
     <option value="zoom_bottom" selected>Zoom Bottom</option>
@@ -268,7 +268,7 @@
     <option value="center_split">Center Split</option>
     <option value="lane_toggle">Lane Toggle</option>
   </select>
-  <span>Value:</span>
+  <span data-i18n="cam.valueLabel">Value:</span>
   <input id="cam-val-inp" type="number" value="100" min="-300" max="300" step="10" style="width:60px; background:#1a1a3a; color:#fff; border:1px solid #445; border-radius:3px; padding:2px 4px;">
 </div>
 
@@ -277,25 +277,25 @@
 
   <!-- LEFT: Metadata -->
   <aside id="panel-meta">
-    <h3>Song Metadata</h3>
+    <h3 data-i18n="meta.heading">Song Metadata</h3>
     <div class="form-group">
-      <label>Title</label>
+      <label data-i18n="meta.title">Title</label>
       <input type="text" id="meta-title" placeholder="Song Title">
     </div>
     <div class="form-group">
-      <label>Artist</label>
+      <label data-i18n="meta.artist">Artist</label>
       <input type="text" id="meta-artist" placeholder="Artist Name">
     </div>
     <div class="form-group">
-      <label>Charter (Effect)</label>
+      <label data-i18n="meta.charter">Charter (Effect)</label>
       <input type="text" id="meta-effect" placeholder="Charter Name">
     </div>
     <div class="form-group">
-      <label>Illustrator</label>
+      <label data-i18n="meta.illust">Illustrator</label>
       <input type="text" id="meta-illust" placeholder="Jacket Artist">
     </div>
     <div class="form-group">
-      <label>Difficulty</label>
+      <label data-i18n="meta.diff">Difficulty</label>
       <select id="meta-diff">
         <option value="light">LIGHT</option>
         <option value="challenge">CHALLENGE</option>
@@ -304,59 +304,59 @@
       </select>
     </div>
     <div class="form-group">
-      <label>Level (1–20)</label>
+      <label data-i18n="meta.level">Level (1–20)</label>
       <input type="number" id="meta-level" min="1" max="20" value="10">
     </div>
     <div class="form-group">
-      <label>BPM</label>
+      <label data-i18n="meta.bpm">BPM</label>
       <input type="number" id="meta-bpm" min="1" max="999" step="0.01" value="180">
     </div>
     <div class="form-group">
-      <label>Music File (.ogg)</label>
+      <label data-i18n="meta.musicFile">Music File (.ogg)</label>
       <input type="text" id="meta-music" placeholder="music.ogg">
       <input type="file" id="music-file-picker" accept=".ogg,.mp3,.wav" style="display:none">
       <input type="file" id="audio-import-input" accept=".ogg,.flac,.wav,.mp3,.aac,.m4a" style="display:none">
-      <button class="small-btn" id="btn-pick-music">Browse</button>
-      <button class="small-btn" id="btn-import-audio" title="Import audio (auto-converts to OGG if needed)">📂 Import</button>
+      <button class="small-btn" id="btn-pick-music" data-i18n="meta.browse">Browse</button>
+      <button class="small-btn" id="btn-import-audio" title="Import audio (auto-converts to OGG if needed)" data-i18n="meta.import">📂 Import</button>
     </div>
     <div class="form-group">
-      <label>Music Offset (ms)</label>
+      <label data-i18n="meta.offset">Music Offset (ms)</label>
       <input type="number" id="meta-offset" value="0">
-      <button class="small-btn" id="btn-calibrate" title="Open Calibration Window to set Beat 1.0 offset">⎍ Calibrate</button>
+      <button class="small-btn" id="btn-calibrate" title="Open Calibration Window to set Beat 1.0 offset" data-i18n="meta.calibrate">⎍ Calibrate</button>
     </div>
     <div class="form-group">
-      <label>Preview Start (ms)</label>
+      <label data-i18n="meta.previewStart">Preview Start (ms)</label>
       <input type="number" id="meta-preview-start" value="0">
     </div>
     <div class="form-group">
-      <label>Preview Duration (ms)</label>
+      <label data-i18n="meta.previewDur">Preview Duration (ms)</label>
       <input type="number" id="meta-preview-dur" value="15000">
     </div>
     <div class="form-group">
-      <label>Jacket Image</label>
+      <label data-i18n="meta.jacket">Jacket Image</label>
       <input type="text" id="meta-jacket" placeholder="jacket.png">
       <input type="file" id="jacket-file-picker" accept="image/*" style="display:none">
-      <button class="small-btn" id="btn-pick-jacket">Browse</button>
+      <button class="small-btn" id="btn-pick-jacket" data-i18n="meta.browse">Browse</button>
     </div>
     <div id="jacket-preview-wrap">
       <img id="jacket-preview" src="" alt="" style="display:none">
     </div>
     <div class="form-group">
-      <label>Background</label>
+      <label data-i18n="meta.bg">Background</label>
       <input type="text" id="meta-bg" placeholder="bg.png or 0–19">
     </div>
     <div class="form-group">
-      <label>BG Layer</label>
+      <label data-i18n="meta.bgLayer">BG Layer</label>
       <input type="text" id="meta-layer" placeholder="layer.png">
     </div>
     <div class="form-group">
-      <label>Measures (auto)</label>
+      <label data-i18n="meta.measures">Measures (auto)</label>
       <span id="meta-measures-display" style="font-size:12px;color:#6668a0">64</span>
     </div>
 
-    <h3 style="margin-top:18px">Camera</h3>
+    <h3 style="margin-top:18px" data-i18n="meta.cameraHeading">Camera</h3>
     <div class="form-group">
-      <label>Tilt Type</label>
+      <label data-i18n="meta.tiltType">Tilt Type</label>
       <select id="cam-tilt">
         <option value="normal">Normal</option>
         <option value="bigger">Bigger</option>
@@ -366,19 +366,19 @@
       </select>
     </div>
     <div class="form-group">
-      <label>Zoom Top</label>
+      <label data-i18n="meta.zoomTop">Zoom Top</label>
       <input type="range" id="cam-zoom-top" min="-300" max="300" value="0">
     </div>
     <div class="form-group">
-      <label>Zoom Bottom</label>
+      <label data-i18n="meta.zoomBottom">Zoom Bottom</label>
       <input type="range" id="cam-zoom-bot" min="-300" max="300" value="0">
     </div>
     <div class="form-group">
-      <label>Rotation (°)</label>
+      <label data-i18n="meta.rotation">Rotation (°)</label>
       <input type="number" id="cam-rot" value="0" step="1" min="-360" max="360">
     </div>
     <div class="form-group">
-      <label>Center Split</label>
+      <label data-i18n="meta.centerSplit">Center Split</label>
       <input type="range" id="cam-split" min="-100" max="100" value="0">
     </div>
   </aside>
@@ -401,7 +401,7 @@
 
   <!-- RIGHT: FX Chain + Events + Shortcuts -->
   <aside id="panel-fx">
-    <h3>FX Chain</h3>
+    <h3 data-i18n="panel.fxChain">FX Chain</h3>
 
     <div class="fx-lane-section">
       <div class="fx-lane-label lane-fx-l">FX-L</div>
@@ -415,7 +415,7 @@
       <button class="add-fx-btn" data-lane="r">+ Add Effect</button>
     </div>
 
-    <h3 style="margin-top:18px">Add FX</h3>
+    <h3 style="margin-top:18px" data-i18n="panel.addFx">Add FX</h3>
     <select id="fx-type-select">
       <option value="retrigger">Retrigger</option>
       <option value="gate">Gate</option>
@@ -429,19 +429,19 @@
       <option value="sidechain">SideChain</option>
     </select>
 
-    <h3 style="margin-top:18px">BPM Events</h3>
+    <h3 style="margin-top:18px" data-i18n="panel.bpmEvents">BPM Events</h3>
     <div id="bpm-event-list"></div>
 
-    <h3 style="margin-top:12px">Time Sig Events</h3>
+    <h3 style="margin-top:12px" data-i18n="panel.timeSigEvents">Time Sig Events</h3>
     <div id="timesig-event-list"></div>
 
-    <h3 style="margin-top:12px">Camera Events</h3>
+    <h3 style="margin-top:12px" data-i18n="panel.cameraEvents">Camera Events</h3>
     <div id="camera-event-list" style="font-size:10px; max-height:120px; overflow-y:auto;"></div>
 
-    <h3 style="margin-top:12px">Stop Events</h3>
+    <h3 style="margin-top:12px" data-i18n="panel.stopEvents">Stop Events</h3>
     <div id="stop-event-list" style="font-size:10px; max-height:60px; overflow-y:auto;"></div>
 
-    <h3 style="margin-top:12px">Chart Velocity Events <span style="font-size:10px;color:#888">(KSON only)</span></h3>
+    <h3 style="margin-top:12px"><span data-i18n="panel.velEvents">Chart Velocity Events</span> <span style="font-size:10px;color:#888">(KSON only)</span></h3>
     <div style="margin-bottom:4px">
       <button id="btn-open-velenv"
         style="width:100%;font-size:10px;padding:3px 0;background:#15150a;
@@ -451,7 +451,7 @@
     </div>
     <div id="scroll-speed-event-list" style="font-size:10px; max-height:80px; overflow-y:auto;"></div>
 
-    <h3 style="margin-top:18px">Keyboard Shortcuts</h3>
+    <h3 style="margin-top:18px" data-i18n="panel.shortcuts">Keyboard Shortcuts</h3>
     <div class="shortcuts">
       <div class="shortcut-group-label">Tools</div>
       <div><kbd>1</kbd> Select</div>
