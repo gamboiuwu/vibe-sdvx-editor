@@ -7215,6 +7215,10 @@ function savePreferences() {
   document.getElementById('modal-prefs').style.display = 'none';
 }
 
+function savePrefsToLocalStorage() {
+  try { localStorage.setItem('vibe-editr-prefs', JSON.stringify(prefs)); } catch(_) {}
+}
+
 // ── Tiny DOM helpers used by prefs ───────────────────────────────────────────
 const _el  = id => document.getElementById(id);
 const _chk = id => document.getElementById(id)?.checked;
@@ -7228,7 +7232,7 @@ const _setVol = (id, v, lblId) => {
 };
 
 function _resetPrefsDefaults() {
-  if (!confirm('Reset all preferences to factory defaults?')) return;
+  if (!confirm(t('general.resetConfirm'))) return;
   Object.assign(prefs, {
     audioDelay: 0, tickEnabled: true, volMaster: 1, volMusic: 1, volSlam: 0.5, volTick: 0.5,
     videoDelay: 0, fpsCap: 60, highQuality: true, showLaserDir: true, showLaserDots: false,
