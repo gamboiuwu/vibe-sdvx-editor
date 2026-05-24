@@ -62,6 +62,16 @@ console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px
 const APP_VERSION = '0.0.21';
 const CHANGELOG = [
   {
+    version: '0.0.25',
+    title: 'KSM/KSON Camera Effects on WebGL Lanes',
+    entries: [
+      ['fix', '<strong>center_split now creates a true lane split</strong> — the left half (BT-A/B, FX-L, VOL-L) and right half (BT-C/D, FX-R, VOL-R) slide apart with a visible gap in the centre. Previously center_split incorrectly shifted the entire lane sideways. Both the 2D and WebGL render paths match KSM/KSON behaviour.'],
+      ['add', '<strong>lane_toggle implemented</strong> — when a lane_toggle camera event is active the lane runway (background, panels, grid, dividers) is hidden while notes and lasers remain visible, matching KSM behaviour.'],
+      ['fix', 'Beat-grid lines and vertical dividers now draw in two half-segments (left and right of centre) so they stay within their respective lane halves when center_split is active.'],
+      ['chg', 'zoom_side offset is now independent of center_split: zoom_side shifts both halves together; center_split slides them apart from the shared centre.'],
+    ],
+  },
+  {
     version: '0.0.24',
     title: 'KSM-Style Laser Rendering',
     entries: [
@@ -1147,11 +1157,12 @@ function updateCameraFromEvents(tick) {
   }
 
   gameView._liveCamera = {
-    zoomTop  : interp('zoom_top'),
-    zoomBot  : interp('zoom_bottom'),
-    zoomSide : interp('zoom_side'),
-    tilt     : tiltDeg,
-    split    : interp('center_split'),
+    zoomTop    : interp('zoom_top'),
+    zoomBot    : interp('zoom_bottom'),
+    zoomSide   : interp('zoom_side'),
+    tilt       : tiltDeg,
+    split      : interp('center_split'),
+    laneToggle : interp('lane_toggle'),
   };
 }
 
