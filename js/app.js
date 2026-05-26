@@ -14,6 +14,7 @@ import { updateRadar, openRadarWindow } from './radar.js';
 import { openHandSimWindow } from './handsim.js';
 import { openGameplayPanel, closeGameplayPanel, toggleGameplayPanel } from './gameplay.js';
 import { logger } from './logger.js';
+import { openFxAutoWindow, toggleFxAutoWindow, invalidateFxAuto, getFxAutoData } from './fxauto.js';
 
 // ── Pre-init error capture ─────────────────────────────────────────────────────
 // Runs before anything else so errors from ANY script (including imports,
@@ -59,8 +60,28 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.26';
+const APP_VERSION = '0.0.28';
 const CHANGELOG = [
+  {
+    version: '0.0.28',
+    title: 'FX Effect Automation Lane [Experimental]',
+    entries: [
+      ['add', '<strong>FX Effect Automation Lane</strong> — new floating panel (<strong>Window → FX Automation…</strong>) for drawing per-tick mix-level automation curves for FX-L and FX-R independently. This implements the long-requested "REAPER FX style automation lanes" from the system spec.'],
+      ['add', 'Breakpoints are placed by clicking the canvas and dragged vertically to adjust the mix value (0–100%). Right-click any breakpoint to delete it. Double-click to toggle between <em>Step</em> (instant change) and <em>Linear</em> (smooth ramp) interpolation per segment.'],
+      ['add', 'The automation curve is visualized as a colored filled area — blue for FX-L, pink for FX-R — with labeled breakpoint dots showing exact mix percentages. Measure grid lines align with the chart timeline.'],
+      ['add', 'Automation data is stored as <code>_fxAutomation</code> in the KSON custom field and survives full export/import round-trips. The 2D editor draws a thin colored automation strip overlay on each active FX hold lane.'],
+      ['add', 'Mouse-wheel zooms the automation timeline in/out (centered on cursor position). Use the FX-L / FX-R tabs to switch channels and the Clear All button to reset a channel\'s automation.'],
+    ],
+  },
+  {
+    version: '0.0.27',
+    title: 'Preferences Save Fix · i18n Expansion',
+    entries: [
+      ['fix', '<strong>Preferences Save button now works correctly</strong> — added the missing <code>savePrefsToLocalStorage()</code> function that was called in five places but never defined, causing a ReferenceError when saving preferences.'],
+      ['add', '107 new translation keys added across all 5 locales (en/es/fr/ja/zh) covering File menu, Edit menu, Chart menu, View dropdown, Window menu, metadata panel labels, camera sub-panel, right-panel headings, toolbar hint, and audio status.'],
+      ['add', '~90 previously untranslated HTML elements now carry <code>data-i18n</code> attributes. Buttons that contain <kbd> children use <span data-i18n> wrappers to preserve the keyboard shortcut badge.'],
+    ],
+  },
   {
     version: '0.0.26',
     title: 'Laser Symmetry Mirror Mode',
@@ -3848,8 +3869,9 @@ export function render() {
     // Multi-chart preview
     if (_multiMode) { _multiSyncSettings(); _multiDraw(); }
     // Update pattern radar and intensity heatmap (live, no-op if windows are hidden)
-    if (typeof updateRadar   === 'function') updateRadar();
-    if (typeof updateHeatmap === 'function') updateHeatmap();
+    if (typeof updateRadar     === 'function') updateRadar();
+    if (typeof updateHeatmap   === 'function') updateHeatmap();
+    if (typeof invalidateFxAuto === 'function') invalidateFxAuto();
   });
 }
 function snapTick(t) {
@@ -4562,6 +4584,7 @@ function ensureCtxMenu() {
         <div class="ctx-item" data-act="toggle-ghost" id="ctx-ghost-item">✓ Ghost Playback Tracing</div>
         <div class="ctx-item" data-act="toggle-physics" id="ctx-physics-item">✕ Physics Laser Smoothing</div>
         <div class="ctx-item" data-act="toggle-snap-transients" id="ctx-snap-transients-item">✕ Snap to Transients</div>
+        <div class="ctx-item" data-act="toggle-fxauto-vis" id="ctx-fxauto-item">✕ FX Automation Overlay</div>
       </div>
     </div>
   `;
@@ -4634,6 +4657,14 @@ function ensureCtxMenu() {
       updateCtxMenuExperimentalLabels();
       render();
     }
+    else if (act === 'toggle-fxauto-vis') {
+      prefs.fxAutoVis = !prefs.fxAutoVis;
+      const cb = document.getElementById('fxauto-vis-toggle');
+      if (cb) cb.checked = prefs.fxAutoVis;
+      savePrefsToLocalStorage();
+      updateCtxMenuExperimentalLabels();
+      render();
+    }
   });
 
   document.addEventListener('click', () => { if (ctxMenuEl) ctxMenuEl.style.display = 'none'; });
@@ -4646,11 +4677,13 @@ function updateCtxMenuExperimentalLabels() {
   const ghostEl    = document.getElementById('ctx-ghost-item');
   const physicsEl  = document.getElementById('ctx-physics-item');
   const snapTrEl   = document.getElementById('ctx-snap-transients-item');
+  const fxAutoEl   = document.getElementById('ctx-fxauto-item');
   if (anomalyEl)  anomalyEl.textContent  = (prefs.anomalyDetect    ? '✓' : '✕') + ' Pattern Anomaly Detection';
   if (predictEl)  predictEl.textContent  = (prefs.predictAssist    ? '✓' : '✕') + ' Predictive Chart Assist';
   if (ghostEl)    ghostEl.textContent    = (prefs.ghostTrace        ? '✓' : '✕') + ' Ghost Playback Tracing';
   if (physicsEl)  physicsEl.textContent  = (prefs.physicsLaser      ? '✓' : '✕') + ' Physics Laser Smoothing';
   if (snapTrEl)   snapTrEl.textContent   = (prefs.snapToTransients  ? '✓' : '✕') + ' Snap to Transients';
+  if (fxAutoEl)   fxAutoEl.textContent   = (prefs.fxAutoVis         ? '✓' : '✕') + ' FX Automation Overlay';
 }
 
 // v0.0.21: refresh the "Paste at Section…" submenu with current section list.
@@ -6977,6 +7010,9 @@ function initHistoryPanel() {
   document.getElementById('btn-handsim-window')?.addEventListener('click', () => {
     if (typeof openHandSimWindow === 'function') openHandSimWindow();
   });
+  document.getElementById('btn-fxauto-window')?.addEventListener('click', () => {
+    if (typeof openFxAutoWindow === 'function') openFxAutoWindow();
+  });
   document.getElementById('btn-history-panel')?.addEventListener('click', () => {
     panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
   });
@@ -7094,6 +7130,7 @@ const prefs = {
   ghostTrace:       false,
   physicsLaser:     false,
   snapToTransients: false,
+  fxAutoVis:        false,
 };
 let _autosaveTimer = null;
 
@@ -7336,6 +7373,10 @@ function applyPreferences() {
 
   // Localization
   if (typeof applyLocalization === 'function') applyLocalization(prefs.language || 'en');
+
+  // FX Automation overlay checkbox sync
+  const fxAutoVisCb = document.getElementById('fxauto-vis-toggle');
+  if (fxAutoVisCb) fxAutoVisCb.checked = !!prefs.fxAutoVis;
 }
 
 // ── IndexedDB autosave ────────────────────────────────────────────────────────
@@ -7971,6 +8012,13 @@ window.addEventListener('DOMContentLoaded', () => {
     laserMirrorMode = e.target.checked;
     if (!laserMirrorMode) { _mirrorLaserSec = null; }
     _updateMirrorHud();
+    render();
+  });
+
+  // FX Automation Overlay toggle (View menu)
+  document.getElementById('fxauto-vis-toggle')?.addEventListener('change', e => {
+    prefs.fxAutoVis = e.target.checked;
+    savePrefsToLocalStorage();
     render();
   });
 
