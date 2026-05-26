@@ -125,6 +125,17 @@ export function exportKson(chart) {
     _sections: (chart.sections && chart.sections.length)
       ? chart.sections.map(s => [s.y, s.endY, s.label || '', s.color || '#4488ff'])
       : undefined,
+    _fxAutomation: (() => {
+      const fa = chart._fxAutomation;
+      if (!fa) return undefined;
+      const hasL = fa.L && fa.L.length > 0;
+      const hasR = fa.R && fa.R.length > 0;
+      if (!hasL && !hasR) return undefined;
+      return {
+        L: (fa.L || []).map(p => [p.y, p.v, p.m === 'linear' ? 1 : 0]),
+        R: (fa.R || []).map(p => [p.y, p.v, p.m === 'linear' ? 1 : 0]),
+      };
+    })(),
     note: {
       bt: chart.bt.map(lane =>
         lane.map(n => [Math.round(n.y * KSH_TO_KSON), Math.round((n.len || 0) * KSH_TO_KSON)])
@@ -265,6 +276,18 @@ export function importKson(text) {
       color: s[3] ?? '#4488ff',
     })).filter(s => s.endY > s.y);
     chart.sections.sort((a, b) => a.y - b.y);
+  }
+
+  // FX automation (custom field)
+  if (data._fxAutomation) {
+    const parseSide = arr => Array.isArray(arr)
+      ? arr.map(p => ({ y: p[0] ?? 0, v: p[1] ?? 1, m: p[2] ? 'linear' : 'step' }))
+            .sort((a, b) => a.y - b.y)
+      : [];
+    chart._fxAutomation = {
+      L: parseSide(data._fxAutomation.L),
+      R: parseSide(data._fxAutomation.R),
+    };
   }
 
   // ── Notes: BT / FX ──────────────────────────────────────────────────────

@@ -295,6 +295,7 @@ export class Renderer {
       this._drawColGrid(ox, startY, ci);
       this._drawColEventOverlay(ox, startY, endY);
       this._drawColFxHolds(ox, startY, endY);
+      if (window.prefs?.fxAutoVis) this._drawColFxAutoOverlay(ox, startY, endY);
       this._drawColFxChips(ox, startY, endY);
       this._drawColBtNotes(ox, startY, endY);
       this._drawColLasers(ox, startY, endY);
@@ -1882,3 +1883,83 @@ Renderer.prototype.drawAnnotations = function(annotations, alphaFn) {
     });
   });
 };
+
+// ── FX Automation Overlay (v0.0.28) ──────────────────────────────────────────
+// Draws a thin colored strip along FX holds showing the automation mix level.
+// Data lives in chart._fxAutomation.{L,R} = [{y,v,m},...] (sorted by y).
+Renderer.prototype._drawColFxAutoOverlay = function(ox, startY, endY) {
+  const ctx   = this.ctx;
+  const chart = this.chart;
+  if (!chart?._fxAutomation) return;
+
+  const sideMap = [
+    { li: 0, side: 'L', color: 'rgba(0,136,255,', x: () => ox + FX_SPAN[0].lx(), w: () => FX_SPAN[0].rw() },
+    { li: 1, side: 'R', color: 'rgba(255,17,119,', x: () => ox + FX_SPAN[1].lx(), w: () => FX_SPAN[1].rw() },
+  ];
+
+  for (const { li, side, color, x, w } of sideMap) {
+    const pts = chart._fxAutomation[side] ?? [];
+    if (pts.length === 0) continue;
+    const fx  = x(); const fw = w();
+
+    // For each FX hold, draw a mix-level bar at the bottom
+    for (const n of (chart.fx[li] ?? [])) {
+      if (n.len === 0) continue;
+      const nEnd = n.y + n.len;
+      if (nEnd <= startY || n.y >= endY) continue;
+      const cStart = Math.max(n.y, startY);
+      const cEnd   = Math.min(nEnd, endY);
+
+      // Sample automation value at the start of the visible hold region
+      const mixVal = _sampleFxAuto(pts, cStart);
+
+      const yTop = this._pyAt(cEnd,   startY);
+      const yBot = this._pyAt(cStart, startY);
+      const bh   = Math.max(1, yBot - yTop);
+      const stripH = Math.max(4, Math.min(bh * 0.25, 10));
+
+      // Strip at the bottom of the hold showing the mix level
+      ctx.save();
+      ctx.globalAlpha = 0.65;
+      ctx.fillStyle = color + '0.85)';
+      ctx.fillRect(fx, yBot - stripH, fw * mixVal, stripH);
+      ctx.globalAlpha = 0.35;
+      ctx.fillStyle = color + '0.4)';
+      ctx.fillRect(fx + fw * mixVal, yBot - stripH, fw * (1 - mixVal), stripH);
+      ctx.restore();
+    }
+
+    // Draw breakpoint tick marks in the column (small triangles on the FX lane edge)
+    for (const pt of pts) {
+      if (pt.y < startY || pt.y >= endY) continue;
+      const py = this._pyAt(pt.y, startY);
+      const alpha = 0.8;
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = color + '1)';
+      // Small upward triangle marker on the left wall of FX lane
+      ctx.beginPath();
+      ctx.moveTo(fx - 1, py);
+      ctx.lineTo(fx + 5, py - 3);
+      ctx.lineTo(fx + 5, py + 3);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+};
+
+function _sampleFxAuto(pts, tick) {
+  if (!pts || pts.length === 0) return 1.0;
+  if (tick <= pts[0].y) return pts[0].v;
+  for (let i = pts.length - 1; i >= 0; i--) {
+    if (pts[i].y <= tick) {
+      const a = pts[i];
+      const b = pts[i + 1];
+      if (!b || a.m !== 'linear') return a.v;
+      const t = (tick - a.y) / (b.y - a.y);
+      return a.v + (b.v - a.v) * t;
+    }
+  }
+  return pts[pts.length - 1].v;
+}

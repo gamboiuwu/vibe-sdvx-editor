@@ -31,6 +31,10 @@
 \
 2026-05-24: Implemented Laser Symmetry Mirror Mode (v0.0.25). New toggle in View menu (Shift+M shortcut). When enabled, placing a laser point on one side auto-creates a mirrored point on the opposite side with value (1 - v). Both the active section and the mirror section are tracked independently so extensions work correctly. Escape and tool-switch both clear the mirror state cleanly. A persistent "MIRROR" badge in the chart canvas corner shows the mode is active. APP_VERSION updated from 0.0.21 to 0.0.25 to match the CHANGELOG. Also confirmed Point 8 (Waveform Preview Strip) is actually SHIPPED via the Waveform Align tool in the Tools Hub (see Point 8 status update below).\
 \
+2026-05-26: Verified v0.0.27 (Preferences Save Fix + i18n expansion). savePrefsToLocalStorage() is correctly defined at line 7218 in app.js and called in savePreferences() and five experimental toggle handlers. All 107 i18n keys are present in i18n.js across en/es/fr/ja/zh. No regressions found in app.js, renderer.js, or index.html startup paths.\
+\
+2026-05-26: Implemented FX Effect Automation Lane (v0.0.28). New floating panel (Window \'e2\'86\'92 FX Automation...) for drawing per-tick mix-level automation curves for FX-L and FX-R independently. Data structure: chart._fxAutomation = {L:[{y,v,m},...], R:[...]} stored as _fxAutomation KSON custom field. Panel built in js/fxauto.js with canvas timeline editor supporting click-to-add, vertical drag, right-click delete, double-click to toggle Step/Linear interpolation. Renderer draws colored mix-level strip overlay on active FX holds (toggled via View > FX Automation Overlay or context menu). APP_VERSION bumped to 0.0.28. Points 4 and 7 marked as SHIPPED below.\
+\
 Point 1 (BPM Calibration Panel)\
 \pard\pardeftab720\sa240\partightenfactor0
 Calibration Mode should include a dedicated BPM analysis and BPM entry section that works alongside waveform-based timing alignment. Right now calibration focuses only on offset and start point alignment, but BPM is equally important because it defines how musical time is structured once the chart is synced.\
@@ -60,7 +64,7 @@ Point 3 (Chart Section Label System)\
 
 Point 4 (New Recommended: Per-Section FX Automation Lane)\
 \pard\pardeftab720\sa240\partightenfactor0
-\cf0 \outl0\strokewidth0 \strokec2 The FX chain currently supports adding effects to FX-L and FX-R lanes, but the effect parameters (retrigger length, gate frequency, flanger rate, etc.) cannot be automated over time. The editor should add an automation lane view similar to how REAPER or Ableton handle automation: each FX effect parameter gets a thin lane below the main chart lane, with a drawn curve or step sequence representing the parameter value over time. Users should be able to draw, drag, and edit automation breakpoints directly on the chart canvas. The automation data would be stored in KSON as part of the audio.fx.ch arrays or as a new nested automation key. This matches the system description\'92s requirement for "REAPER FX style automation or effect lanes".\
+\cf0 \outl0\strokewidth0 \strokec2 Status: SHIPPED in v0.0.28. The FX Effect Automation Lane panel (Window \'e2\'86\'92 FX Automation...) allows drawing per-tick mix-level curves for FX-L and FX-R. Breakpoints can be placed by clicking, dragged vertically, deleted with right-click, and toggled between Step and Linear interpolation with double-click. The automation data is stored as _fxAutomation in KSON custom fields. The 2D editor shows a colored strip overlay on active FX holds when "FX Automation Overlay" is enabled in the View menu or Experimental context submenu.\
 \
 
 Point 5 (Section-Relative Paste Operations)\
@@ -77,8 +81,8 @@ Point 6 (New Recommended: Orthographic Mode Overhaul)\
 \
 Point 7 (New Recommended: Per-Section FX Automation Lane)\
 \pard\pardeftab720\sa240\partightenfactor0
-\cf0 \outl0\strokewidth0 \strokec2 The FX chain supports adding effects to FX-L and FX-R lanes but effect parameters (retrigger length, gate frequency, flanger rate, etc.) cannot be automated over time. The editor should add an automation lane view similar to REAPER or Ableton: each FX effect parameter gets a thin lane below the main chart lane with a drawn curve or step sequence representing the parameter value over time. Users can draw, drag, and edit automation breakpoints directly on the chart canvas. Automation data would be stored in KSON as part of the audio.fx.ch arrays or as a new nested automation key. This matches the system description\'92s \'93REAPER FX style automation or effect lanes\'94 requirement.\
-Status: NOT YET STARTED\
+\cf0 \outl0\strokewidth0 \strokec2 Status: SHIPPED in v0.0.28. See Point 4 for full implementation details. Automation lane panel accessible from Window menu. Mix-level automation stored as _fxAutomation KSON custom field. FX hold overlay visualization toggled via View menu or Experimental context submenu.\
+Status: SHIPPED in v0.0.28\
 \pard\pardeftab720\sa240\partightenfactor0
 \cf0 \outl0\strokewidth0 \strokec2 \
 \
