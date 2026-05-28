@@ -1,4 +1,4 @@
-import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS } from './chart.js';
+import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS } from './chart.js';
 import { Renderer, C, laserColors, laserOpacity, laserWideMode, LASER_PRESETS, applyLaserPreset, setLaserColorCustom, buildLaneHeader, setLaserOpacity, setLaserWideMode } from './renderer.js';
 import { GameView } from './game.js';
 import { exportKsh, importKsh, downloadText } from './ksh.js';
@@ -1053,10 +1053,17 @@ function playFrame(now) {
       _lastGameFrameTime = now;
     }
   }
-  // Multi-chart preview — advance and redraw each slot (no throttle — runs every frame)
+  // Multi-chart preview — advance and redraw each slot. Throttle to the same FPS
+  // cap as the single game view: each slot is a full WebGL+2D GameView, so drawing
+  // every RAF frame on a 120Hz+ display multiplies the cost by the slot count and
+  // is the main cause of multi-chart playback lag. Capping keeps it smooth.
   if (_multiMode && _multiViews.length) {
-    _multiSyncSettings();
-    _multiDraw();
+    const minInterval = 1000 / (prefs.fpsCap || 60);
+    if (!_lastMultiFrameTime || now - _lastMultiFrameTime >= minInterval) {
+      _multiSyncSettings();
+      _multiDraw();
+      _lastMultiFrameTime = now;
+    }
   }
   // Update radar and heatmap every playback frame regardless of view mode
   if (typeof updateRadar === 'function') updateRadar();
@@ -1065,6 +1072,7 @@ function playFrame(now) {
   requestAnimationFrame(playFrame);
 }
 let _lastGameFrameTime = 0;
+let _lastMultiFrameTime = 0;
 
 function detectSlams(prevTick, curTick) {
   for (let side = 0; side < 2; side++) {
@@ -1958,7 +1966,7 @@ function _wireMultiEditCanvas(mv) {
       const side = tool === 'laser-l' ? 0 : 1;
       const v    = snapLaserV(Math.max(0, Math.min(1, norm)));
       saveUndo(`VOL-${side === 0 ? 'L' : 'R'} at M${m} (Multi-Preview)`);
-      targetChart.addLaserPoint(side, tick, v, false, false);
+      targetChart.addLaserPoint(side, tick, v, 'auto', false);
       mv._drag.active = true; mv._drag.tool = tool; mv._drag.laserSide = side;
       afterEdit();
       return;
@@ -1988,7 +1996,7 @@ function _wireMultiEditCanvas(mv) {
       const targetChart = tabs[mv.tabIdx]?.chart;
       if (targetChart) {
         const v = snapLaserV(Math.max(0, Math.min(1, hit.norm)));
-        targetChart.addLaserPoint(mv._drag.laserSide, hit.tick, v, false, false);
+        targetChart.addLaserPoint(mv._drag.laserSide, hit.tick, v, 'auto', false);
         afterEdit();
       }
     }
@@ -5144,9 +5152,11 @@ function onMouseDown(e) {
       const lastPt = sec.points[sec.points.length - 1];
       const lastRy = lastPt?.ry ?? -1;
       if (ry > lastRy) {
-        // Detect horizontal laser (same position as previous point)
-        const isHorizontal = lastPt && Math.abs(v - lastPt.v) < 0.001;
-        sec.points.push({ ry, v, slam: isHorizontal, interp: 'linear', curve: 0.5 });
+        // Slam = near-instant horizontal move: small time gap + real position jump.
+        const isSlam = !!lastPt && (ry - lastRy) <= LASER_SLAM_TICKS &&
+                       Math.abs(v - lastPt.v) > LASER_SLAM_V_EPS;
+        if (isSlam && lastPt.interp === 'linear') lastPt.interp = 'step';
+        sec.points.push({ ry, v, slam: isSlam, interp: 'linear', curve: 0.5 });
         // Mirror Mode: extend the opposite-side section too
         if (laserMirrorMode && _mirrorLaserSec) {
           const mv  = Math.max(0, Math.min(1, 1 - v));
@@ -5155,8 +5165,10 @@ function onMouseDown(e) {
           const mLastRy = mLastPt?.ry ?? -1;
           const mRy = Math.round(tick) - mSec.y;
           if (mRy > mLastRy) {
-            const mHoriz = mLastPt && Math.abs(mv - mLastPt.v) < 0.001;
-            mSec.points.push({ ry: mRy, v: mv, slam: mHoriz, interp: 'linear', curve: 0.5 });
+            const mSlam = !!mLastPt && (mRy - mLastRy) <= LASER_SLAM_TICKS &&
+                          Math.abs(mv - mLastPt.v) > LASER_SLAM_V_EPS;
+            if (mSlam && mLastPt.interp === 'linear') mLastPt.interp = 'step';
+            mSec.points.push({ ry: mRy, v: mv, slam: mSlam, interp: 'linear', curve: 0.5 });
           }
         }
       } else {
@@ -7666,7 +7678,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const side = tool === 'laser-l' ? 0 : 1;
       const v    = snapLaserV(Math.max(0, Math.min(1, norm)));
       saveUndo(`VOL-${side === 0 ? 'L' : 'R'} at M${m} (Preview)`);
-      chart.addLaserPoint(side, tick, v, false, false);
+      chart.addLaserPoint(side, tick, v, 'auto', false);
       _geDrag.active = true; _geDrag.tool = tool; _geDrag.laserSide = side;
       render(); if (gameView) gameView.draw();
       return;
@@ -7700,7 +7712,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Extend laser while dragging
     if (_geDrag.active && (tool === 'laser-l' || tool === 'laser-r')) {
       const v = snapLaserV(Math.max(0, Math.min(1, hit.norm)));
-      chart.addLaserPoint(_geDrag.laserSide, hit.tick, v, false, false);
+      chart.addLaserPoint(_geDrag.laserSide, hit.tick, v, 'auto', false);
       render();
     }
     if (!playing) gameView.draw();
@@ -8228,6 +8240,29 @@ function _initProjectionControls() {
   }
 
   // Save Config button — persists current projection, hispeed, BT width and Judge Y to prefs
+  // ── "⚙ More" toggle: show/hide the advanced display-settings group ─────────
+  // Collapsed by default keeps the preview-controls bar one row tall so more of
+  // the preview is visible. Last state is remembered across sessions.
+  {
+    const moreBtn = document.getElementById('pvc-more-toggle');
+    const adv     = document.getElementById('pvc-advanced');
+    if (moreBtn && adv) {
+      const applyMore = (open) => {
+        adv.classList.toggle('collapsed', !open);
+        moreBtn.classList.toggle('active', open);
+        moreBtn.innerHTML = open ? '⚙ More ▴' : '⚙ More ▾';
+      };
+      let openInit = false;
+      try { openInit = localStorage.getItem('vibe-editr-pvc-more') === '1'; } catch(_) {}
+      applyMore(openInit);
+      moreBtn.addEventListener('click', () => {
+        const open = adv.classList.contains('collapsed'); // currently collapsed → opening
+        applyMore(open);
+        try { localStorage.setItem('vibe-editr-pvc-more', open ? '1' : '0'); } catch(_) {}
+      });
+    }
+  }
+
   document.getElementById('pvc-save-config')?.addEventListener('click', () => {
     if (!gameView) return;
     // Projection mode

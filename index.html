@@ -206,20 +206,22 @@
     <div class="menu-group">
       <button class="menu-btn" data-i18n="menu.window">Window ▾</button>
       <div class="menu-dropdown">
+        <div class="menu-section-title">Workspace</div>
         <button class="menu-item" id="btn-history-panel" data-i18n="window.history">History &amp; Timeline</button>
+        <button class="menu-item" id="btn-bookmarks-panel"><span data-i18n="window.bookmarks">🔖 Bookmarks</span>  <kbd>Ctrl+B</kbd></button>
+        <button class="menu-item" id="btn-sections-panel" data-i18n="window.sections">🏁 Chart Sections…</button>
         <button class="menu-item" id="btn-split-opts" data-i18n="window.splitOpts">Split View Options</button>
         <div class="menu-sep"></div>
-        <button class="menu-item" id="btn-gameplay-panel" data-i18n="window.gameplay">▶ Gameplay…</button>
+        <div class="menu-section-title">Analysis &amp; Tools</div>
         <button class="menu-item accent" id="btn-tools-window" data-i18n="window.toolsHub">⚙ Tools Hub…</button>
         <button class="menu-item" id="btn-radar-window" data-i18n="window.patternRadar">◈ Pattern Radar…</button>
+        <button class="menu-item" id="btn-heatmap-window" data-i18n="window.heatmap">🌡 Intensity Heatmap…</button>
+        <button class="menu-item" id="btn-chart-stats" data-i18n="window.chartStats">📊 Chart Statistics…</button>
         <button class="menu-item" id="btn-handsim-window" data-i18n="window.handSim">☞ Hand Simulator…</button>
         <button class="menu-item" id="btn-fxauto-window">⚡ FX Automation…</button>
         <div class="menu-sep"></div>
-        <button class="menu-item" id="btn-chart-stats" data-i18n="window.chartStats">📊 Chart Statistics…</button>
-        <button class="menu-item" id="btn-heatmap-window" data-i18n="window.heatmap">🌡 Intensity Heatmap…</button>
-        <button class="menu-item" id="btn-bookmarks-panel"><span data-i18n="window.bookmarks">🔖 Bookmarks</span>  <kbd>Ctrl+B</kbd></button>
-        <button class="menu-item" id="btn-sections-panel" data-i18n="window.sections">🏁 Chart Sections…</button>
-        <div class="menu-sep"></div>
+        <div class="menu-section-title">Playback &amp; Help</div>
+        <button class="menu-item" id="btn-gameplay-panel" data-i18n="window.gameplay">▶ Gameplay…</button>
         <button class="menu-item" id="btn-whats-new" data-i18n="window.whatsNew">✨ What's New…</button>
         <button class="menu-item" id="btn-diagnostics" data-i18n="window.diagnostics">⚙ System Diagnostics…</button>
       </div>
@@ -508,8 +510,11 @@
 
 <!-- Game view -->
 <div id="game-wrap">
-  <!-- Preview projection controls — shown when game/split view is active -->
+  <!-- Preview projection controls — shown when game/split view is active.
+       Essentials stay inline; the rest collapse under "⚙ More" to keep the bar
+       to a single row so more of the preview is visible. -->
   <div id="preview-controls">
+    <!-- ── Essentials (always visible) ── -->
     <div class="pvc-section">
       <span class="pvc-label" data-i18n="preview.projection">Projection</span>
       <div class="pvc-proj-btns">
@@ -519,51 +524,55 @@
       </div>
     </div>
     <div class="pvc-section">
-      <span class="pvc-label" data-i18n="preview.perspective">Perspective</span>
-      <input type="range" id="pvc-intensity" min="0" max="100" step="1" value="65" title="Field of view / projection strength">
-      <span id="pvc-intensity-label" class="pvc-val">65</span>
-    </div>
-    <div class="pvc-section" id="pvc-rate-section">
-      <span class="pvc-label" title="Audio &amp; chart playback speed — amber label = practice mode active">Rate</span>
-      <input type="range" id="pvc-rate" min="0.25" max="2.0" step="0.05" value="1" title="Playback rate: 0.25× (quarter speed) to 2.0× (double speed)">
-      <span id="pvc-rate-label" class="pvc-val">1.00×</span>
-    </div>
-    <div class="pvc-section">
       <span class="pvc-label" data-i18n="preview.hispeed">HiSpeed</span>
       <input type="range" id="pvc-hispeed" min="0.2" max="10" step="0.1" value="1" title="Visual scroll speed">
       <span id="pvc-hispeed-label" class="pvc-val">1.0×</span>
     </div>
     <div class="pvc-section">
-      <span class="pvc-label" data-i18n="preview.btWidth">BT Width</span>
-      <input type="range" id="pvc-bt-width" min="0.3" max="1.6" step="0.05" value="1" title="Visual BT note thickness">
-      <span id="pvc-bt-width-label" class="pvc-val">1.0×</span>
+      <button id="pvc-edit-mode" title="Toggle click-to-edit on the preview lane" style="background:#1e2a1e;color:#88dd88;border:1px solid #3a6a3a;border-radius:5px;padding:4px 8px;font-size:10px;cursor:pointer;letter-spacing:0.04em">&#9998; Edit Mode: Off</button>
     </div>
     <div class="pvc-section">
-      <span class="pvc-label" title="Drag the judgment line up/down, or adjust here">Judge Y</span>
-      <input type="range" id="pvc-judge-y" min="0.40" max="0.90" step="0.01" value="0.73" title="Judgment line vertical position (drag in game view to adjust)">
-      <span id="pvc-judge-y-label" class="pvc-val">73%</span>
-    </div>
-    <div class="pvc-section" style="border-top:1px solid #ffffff18;padding-top:6px;margin-top:2px">
-      <button id="pvc-edit-mode" title="Toggle click-to-edit on the preview lane" style="flex:1;background:#1e2a1e;color:#88dd88;border:1px solid #3a6a3a;border-radius:5px;padding:4px 8px;font-size:10px;cursor:pointer;letter-spacing:0.04em">&#9998; Edit Mode: Off</button>
-    </div>
-    <div class="pvc-section" style="border-top:1px solid #ffffff18;padding-top:6px;margin-top:2px">
-      <button id="pvc-save-config" title="Save current Projection, HiSpeed, BT Width and Judge Y as defaults" style="flex:1;background:#1e3a5f;color:#88c8ff;border:1px solid #3a6aaa;border-radius:5px;padding:4px 8px;font-size:10px;cursor:pointer;letter-spacing:0.04em">&#9632; Save Config</button>
-      <span id="pvc-save-config-label" class="pvc-val" style="color:#66bb66;opacity:0;transition:opacity 0.4s">Saved!</span>
-    </div>
-
-    <!-- WebGL renderer toggle (Phase 1: lane runway · Phase 2: notes) -->
-    <div class="pvc-section" title="Render the lane runway, grid, side glow and BT/FX notes on the GPU. Lasers and slams still use the 2D overlay; coming in Phase 3.">
-      <span class="pvc-label">WebGL Lane</span>
-      <label style="display:flex;align-items:center;gap:6px;font-size:10px;color:#aabbdd;cursor:pointer;flex:1">
-        <input type="checkbox" id="pvc-use-webgl" style="cursor:pointer">
-        <span>Experimental (Phase 3)</span>
-      </label>
-    </div>
-
-    <!-- Multi-Chart Mode -->
-    <div class="pvc-section" style="border-top:1px solid #ffffff18;padding-top:6px;margin-top:2px">
       <span class="pvc-label">Multi Chart</span>
-      <button id="pvc-multi-toggle" title="Show multiple charts side by side in the preview" style="flex:1;background:#1e2a3f;color:#aabbdd;border:1px solid #3a5a8a;border-radius:5px;padding:4px 8px;font-size:10px;cursor:pointer;letter-spacing:0.04em">&#9638; Off</button>
+      <button id="pvc-multi-toggle" title="Show multiple charts side by side in the preview" style="background:#1e2a3f;color:#aabbdd;border:1px solid #3a5a8a;border-radius:5px;padding:4px 8px;font-size:10px;cursor:pointer;letter-spacing:0.04em">&#9638; Off</button>
+    </div>
+    <div class="pvc-section" style="margin-left:auto">
+      <button id="pvc-more-toggle" title="Show / hide advanced display settings (Perspective, Rate, BT Width, Judge Y, Save Config, WebGL)" style="background:#181828;color:#aab;border:1px solid #3a3a5a;border-radius:5px;padding:4px 10px;font-size:10px;cursor:pointer;letter-spacing:0.04em">&#9881; More &#9662;</button>
+    </div>
+
+    <!-- ── Advanced (collapsible) ── -->
+    <div id="pvc-advanced" class="pvc-advanced collapsed">
+      <div class="pvc-section">
+        <span class="pvc-label" data-i18n="preview.perspective">Perspective</span>
+        <input type="range" id="pvc-intensity" min="0" max="100" step="1" value="65" title="Field of view / projection strength">
+        <span id="pvc-intensity-label" class="pvc-val">65</span>
+      </div>
+      <div class="pvc-section" id="pvc-rate-section">
+        <span class="pvc-label" title="Audio &amp; chart playback speed — amber label = practice mode active">Rate</span>
+        <input type="range" id="pvc-rate" min="0.25" max="2.0" step="0.05" value="1" title="Playback rate: 0.25× (quarter speed) to 2.0× (double speed)">
+        <span id="pvc-rate-label" class="pvc-val">1.00×</span>
+      </div>
+      <div class="pvc-section">
+        <span class="pvc-label" data-i18n="preview.btWidth">BT Width</span>
+        <input type="range" id="pvc-bt-width" min="0.3" max="1.6" step="0.05" value="1" title="Visual BT note thickness">
+        <span id="pvc-bt-width-label" class="pvc-val">1.0×</span>
+      </div>
+      <div class="pvc-section">
+        <span class="pvc-label" title="Drag the judgment line up/down, or adjust here">Judge Y</span>
+        <input type="range" id="pvc-judge-y" min="0.40" max="0.90" step="0.01" value="0.73" title="Judgment line vertical position (drag in game view to adjust)">
+        <span id="pvc-judge-y-label" class="pvc-val">73%</span>
+      </div>
+      <div class="pvc-section">
+        <button id="pvc-save-config" title="Save current Projection, HiSpeed, BT Width and Judge Y as defaults" style="background:#1e3a5f;color:#88c8ff;border:1px solid #3a6aaa;border-radius:5px;padding:4px 8px;font-size:10px;cursor:pointer;letter-spacing:0.04em">&#9632; Save Config</button>
+        <span id="pvc-save-config-label" class="pvc-val" style="color:#66bb66;opacity:0;transition:opacity 0.4s">Saved!</span>
+      </div>
+      <!-- WebGL renderer toggle (Phase 1: lane runway · Phase 2: notes) -->
+      <div class="pvc-section" title="Render the lane runway, grid, side glow and BT/FX notes on the GPU. Lasers and slams still use the 2D overlay; coming in Phase 3.">
+        <span class="pvc-label">WebGL Lane</span>
+        <label style="display:flex;align-items:center;gap:6px;font-size:10px;color:#aabbdd;cursor:pointer">
+          <input type="checkbox" id="pvc-use-webgl" style="cursor:pointer">
+          <span>Experimental (Phase 3)</span>
+        </label>
+      </div>
     </div>
 
     <!-- Multi sub-panel (hidden until active) -->

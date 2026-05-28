@@ -991,6 +991,21 @@ kbd {
   align-items: center;
   gap: 6px;
 }
+/* Collapsible "advanced" group inside the preview controls bar. Hidden by
+   default so the bar stays a single compact row and the preview gets more
+   vertical space; toggled open via the ⚙ More button. */
+.pvc-advanced {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 18px;
+  flex-basis: 100%;
+  padding-top: 6px;
+  margin-top: 2px;
+  border-top: 1px solid #ffffff18;
+}
+.pvc-advanced.collapsed { display: none; }
+#pvc-more-toggle.active { background: #25254a; color: #cdd; border-color: var(--accent); }
 .pvc-label {
   font-size: 10px;
   font-weight: 700;

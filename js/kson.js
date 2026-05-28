@@ -43,7 +43,9 @@ export function exportKson(chart) {
       const prev = i > 0 ? pts[i - 1] : null;
       const ry = Math.round(pt.ry * KSH_TO_KSON);
       let v;
-      if (pt.slam === true && prev) {
+      // Use the shared slam predicate so heuristic slams (close points without an
+      // explicit flag, e.g. older drag-placed data) export correctly too.
+      if (prev && ChartData.isPointSlam(prev, pt)) {
         // Slam at this pulse: laser jumps from prev.v to pt.v
         v = [prev.v, pt.v];
       } else {

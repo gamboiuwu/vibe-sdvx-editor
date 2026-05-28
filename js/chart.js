@@ -6,6 +6,11 @@ export const TICKS_PER_BEAT    = TICKS_PER_MEASURE / BEATS_PER_MEASURE; // 48
 // Sketch spec: "any laser ≤ 1/16 point is a SLAM" — 1/16 = 192/16 = 12 ticks
 export let LASER_SLAM_TICKS = 12; // mutable — adjusted by Gameplay preferences
 export function setLaserSlamTicks(v) { LASER_SLAM_TICKS = v; }
+// Minimum horizontal position delta (v is 0..1) for a near-instant laser move to
+// count as a SLAM. One laser char step is 1/50 = 0.02, so 0.01 means "any snapped
+// horizontal movement". A slam is a horizontal jump — two points must differ in v,
+// otherwise a pair of close-but-stationary points is just a redundant anchor.
+export const LASER_SLAM_V_EPS = 0.01;
 
 // Lane indices
 export const LANE = { LASER_L: 0, BT_A: 1, BT_B: 2, FX_L: 3, FX_R: 4, BT_C: 5, BT_D: 6, LASER_R: 7 };
@@ -237,7 +242,11 @@ export class ChartData {
     }
   }
 
-  // isSlam:  explicit slam flag (set by KSH/KSON import when adjacent laser chars detected)
+  // isSlam:  explicit slam flag (set by KSH/KSON import when adjacent laser chars
+  //          detected). Pass the string 'auto' to auto-detect a slam from the gap
+  //          to the previous point — this is what the drag/pen tools use so that
+  //          placing a laser horizontally (a near-instant left/right move) is
+  //          registered as a slam, the way Sound Voltex does it.
   // forceNew: always start a new section (used after a '-' gap in the source format)
   // interp:  outgoing interpolation type FROM this point to the next:
   //          'linear' | 'bezier' | 'step'  (defaults to 'linear')
@@ -260,7 +269,18 @@ export class ChartData {
         }
       }
       if (section) {
-        section.points.push({ ry: y - section.y, v, slam: isSlam, interp, curve });
+        const prev = section.points[section.points.length - 1];
+        let slamFlag = isSlam;
+        if (isSlam === 'auto') {
+          // Horizontal placement = slam: small time gap + real position change.
+          const dt = y - (section.y + prev.ry);
+          slamFlag = (dt >= 0) && (dt <= LASER_SLAM_TICKS) &&
+                     (Math.abs(v - prev.v) > LASER_SLAM_V_EPS);
+        }
+        // A slam jumps instantly, so the previous point holds its value until the
+        // jump — mark its outgoing interp as 'step' (matches import/export).
+        if (slamFlag && prev.interp === 'linear') prev.interp = 'step';
+        section.points.push({ ry: y - section.y, v, slam: slamFlag, interp, curve });
         return;
       }
     }
@@ -290,7 +310,10 @@ export class ChartData {
         if (p1.slam === true) {
           isSlam = true;                          // explicit flag (editor import)
         } else if (p1.slam !== false) {
-          isSlam = (p1.ry - p0.ry) <= threshold; // heuristic fallback (drag tool, etc.)
+          // heuristic fallback (legacy data lacking an explicit flag): close in
+          // time AND an actual horizontal jump
+          isSlam = (p1.ry - p0.ry) <= threshold &&
+                   Math.abs(p1.v - p0.v) > LASER_SLAM_V_EPS;
         }
         if (isSlam) {
           results.push({ y: sec.y + p0.ry, endY: sec.y + p1.ry,
@@ -306,7 +329,8 @@ export class ChartData {
   static isPointSlam(p0, p1, threshold = LASER_SLAM_TICKS) {
     if (p1.slam === true)  return true;
     if (p1.slam === false) return false;      // explicit non-slam wins over heuristic
-    return (p1.ry - p0.ry) <= threshold;
+    return (p1.ry - p0.ry) <= threshold &&
+           Math.abs(p1.v - p0.v) > LASER_SLAM_V_EPS;
   }
 
   removeLaserAt(side, y) {
