@@ -206,13 +206,13 @@
     <div class="menu-group">
       <button class="menu-btn" data-i18n="menu.window">Window ▾</button>
       <div class="menu-dropdown">
-        <div class="menu-section-title">Workspace</div>
+        <div class="menu-section-title" data-i18n="window.sectWorkspace">Workspace</div>
         <button class="menu-item" id="btn-history-panel" data-i18n="window.history">History &amp; Timeline</button>
         <button class="menu-item" id="btn-bookmarks-panel"><span data-i18n="window.bookmarks">🔖 Bookmarks</span>  <kbd>Ctrl+B</kbd></button>
         <button class="menu-item" id="btn-sections-panel" data-i18n="window.sections">🏁 Chart Sections…</button>
         <button class="menu-item" id="btn-split-opts" data-i18n="window.splitOpts">Split View Options</button>
         <div class="menu-sep"></div>
-        <div class="menu-section-title">Analysis &amp; Tools</div>
+        <div class="menu-section-title" data-i18n="window.sectAnalysis">Analysis &amp; Tools</div>
         <button class="menu-item accent" id="btn-tools-window" data-i18n="window.toolsHub">⚙ Tools Hub…</button>
         <button class="menu-item" id="btn-radar-window" data-i18n="window.patternRadar">◈ Pattern Radar…</button>
         <button class="menu-item" id="btn-heatmap-window" data-i18n="window.heatmap">🌡 Intensity Heatmap…</button>
@@ -220,7 +220,7 @@
         <button class="menu-item" id="btn-handsim-window" data-i18n="window.handSim">☞ Hand Simulator…</button>
         <button class="menu-item" id="btn-fxauto-window">⚡ FX Automation…</button>
         <div class="menu-sep"></div>
-        <div class="menu-section-title">Playback &amp; Help</div>
+        <div class="menu-section-title" data-i18n="window.sectPlayback">Playback &amp; Help</div>
         <button class="menu-item" id="btn-gameplay-panel" data-i18n="window.gameplay">▶ Gameplay…</button>
         <button class="menu-item" id="btn-whats-new" data-i18n="window.whatsNew">✨ What's New…</button>
         <button class="menu-item" id="btn-diagnostics" data-i18n="window.diagnostics">⚙ System Diagnostics…</button>
@@ -532,7 +532,7 @@
       <button id="pvc-edit-mode" title="Toggle click-to-edit on the preview lane" style="background:#1e2a1e;color:#88dd88;border:1px solid #3a6a3a;border-radius:5px;padding:4px 8px;font-size:10px;cursor:pointer;letter-spacing:0.04em">&#9998; Edit Mode: Off</button>
     </div>
     <div class="pvc-section">
-      <span class="pvc-label">Multi Chart</span>
+      <span class="pvc-label" data-i18n="preview.multiChart">Multi Chart</span>
       <button id="pvc-multi-toggle" title="Show multiple charts side by side in the preview" style="background:#1e2a3f;color:#aabbdd;border:1px solid #3a5a8a;border-radius:5px;padding:4px 8px;font-size:10px;cursor:pointer;letter-spacing:0.04em">&#9638; Off</button>
     </div>
     <div class="pvc-section" style="margin-left:auto">
@@ -547,7 +547,7 @@
         <span id="pvc-intensity-label" class="pvc-val">65</span>
       </div>
       <div class="pvc-section" id="pvc-rate-section">
-        <span class="pvc-label" title="Audio &amp; chart playback speed — amber label = practice mode active">Rate</span>
+        <span class="pvc-label" data-i18n="preview.rate" title="Audio &amp; chart playback speed — amber label = practice mode active">Rate</span>
         <input type="range" id="pvc-rate" min="0.25" max="2.0" step="0.05" value="1" title="Playback rate: 0.25× (quarter speed) to 2.0× (double speed)">
         <span id="pvc-rate-label" class="pvc-val">1.00×</span>
       </div>
@@ -557,7 +557,7 @@
         <span id="pvc-bt-width-label" class="pvc-val">1.0×</span>
       </div>
       <div class="pvc-section">
-        <span class="pvc-label" title="Drag the judgment line up/down, or adjust here">Judge Y</span>
+        <span class="pvc-label" data-i18n="preview.judgeY" title="Drag the judgment line up/down, or adjust here">Judge Y</span>
         <input type="range" id="pvc-judge-y" min="0.40" max="0.90" step="0.01" value="0.73" title="Judgment line vertical position (drag in game view to adjust)">
         <span id="pvc-judge-y-label" class="pvc-val">73%</span>
       </div>

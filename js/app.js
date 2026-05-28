@@ -8314,7 +8314,8 @@ function _initProjectionControls() {
       const applyMore = (open) => {
         adv.classList.toggle('collapsed', !open);
         moreBtn.classList.toggle('active', open);
-        moreBtn.innerHTML = open ? '⚙ More ▴' : '⚙ More ▾';
+        const label = (typeof t === 'function' ? t('preview.more') : 'More');
+        moreBtn.innerHTML = '⚙ ' + label + (open ? ' ▴' : ' ▾');
       };
       let openInit = false;
       try { openInit = localStorage.getItem('vibe-editr-pvc-more') === '1'; } catch(_) {}

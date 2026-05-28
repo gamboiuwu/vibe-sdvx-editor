@@ -125,6 +125,10 @@ export const I18N = {
     'preview.perspective':'Perspective',
     'preview.hispeed':    'HiSpeed',
     'preview.btWidth':    'BT Width',
+    'preview.rate':       'Rate',
+    'preview.judgeY':     'Judge Y',
+    'preview.multiChart': 'Multi Chart',
+    'preview.more':       'More',
     'preview.ortho':      'Ortho',
     'preview.sdvx':       'SDVX',
     'preview.hybrid':     'Hybrid',
@@ -226,6 +230,9 @@ export const I18N = {
     // ── Window menu ──
     'window.history':     'History & Timeline',
     'window.splitOpts':   'Split View Options',
+    'window.sectWorkspace': 'Workspace',
+    'window.sectAnalysis':  'Analysis & Tools',
+    'window.sectPlayback':  'Playback & Help',
     'window.gameplay':    '▶ Gameplay…',
     'window.toolsHub':    '⚙ Tools Hub…',
     'window.patternRadar':'◈ Pattern Radar…',
@@ -388,6 +395,10 @@ export const I18N = {
     'preview.perspective':'Perspectiva',
     'preview.hispeed':    'Velocidad',
     'preview.btWidth':    'Ancho BT',
+    'preview.rate':       'Ritmo',
+    'preview.judgeY':     'Línea Y',
+    'preview.multiChart': 'Multi-gráfico',
+    'preview.more':       'Más',
     'preview.ortho':      'Orto',
     'preview.sdvx':       'SDVX',
     'preview.hybrid':     'Híbrida',
@@ -454,6 +465,7 @@ export const I18N = {
     'view.fullscreen': '⛶ Pantalla completa',
 
     'window.history': 'Historial y línea de tiempo', 'window.splitOpts': 'Opciones de vista dividida',
+    'window.sectWorkspace': 'Espacio de trabajo', 'window.sectAnalysis': 'Análisis y herramientas', 'window.sectPlayback': 'Reproducción y ayuda',
     'window.gameplay': '▶ Juego…', 'window.toolsHub': '⚙ Centro de herramientas…',
     'window.patternRadar': '◈ Radar de patrones…', 'window.handSim': '☞ Simulador de manos…',
     'window.chartStats': '📊 Estadísticas de gráfico…', 'window.heatmap': '🌡 Mapa de intensidad…',
@@ -554,6 +566,7 @@ export const I18N = {
 
     'preview.projection': 'Projection', 'preview.perspective': 'Perspective',
     'preview.hispeed': 'Vitesse', 'preview.btWidth': 'Largeur BT',
+    'preview.rate': 'Cadence', 'preview.judgeY': 'Ligne Y', 'preview.multiChart': 'Multi-graphique', 'preview.more': 'Plus',
     'preview.ortho': 'Ortho', 'preview.sdvx': 'SDVX', 'preview.hybrid': 'Hybride',
 
     'tool.desc.bpm-sync':       'Calcule les temps en ms et en ticks pour tout BPM et subdivision. Utile pour vérifier la synchro audio.',
@@ -618,6 +631,7 @@ export const I18N = {
     'view.fullscreen': '⛶ Plein écran',
 
     'window.history': 'Historique et chronologie', 'window.splitOpts': 'Options vue divisée',
+    'window.sectWorkspace': 'Espace de travail', 'window.sectAnalysis': 'Analyse et outils', 'window.sectPlayback': 'Lecture et aide',
     'window.gameplay': '▶ Gameplay…', 'window.toolsHub': '⚙ Centre d\'outils…',
     'window.patternRadar': '◈ Radar de motifs…', 'window.handSim': '☞ Simulateur de mains…',
     'window.chartStats': '📊 Statistiques du graphique…', 'window.heatmap': '🌡 Carte de chaleur…',
@@ -715,6 +729,7 @@ export const I18N = {
 
     'preview.projection': '投影', 'preview.perspective': '遠近',
     'preview.hispeed': 'ハイスピード', 'preview.btWidth': 'BT 幅',
+    'preview.rate': '再生速度', 'preview.judgeY': '判定Y', 'preview.multiChart': 'マルチ譜面', 'preview.more': '詳細',
     'preview.ortho': '正射', 'preview.sdvx': 'SDVX', 'preview.hybrid': 'ハイブリッド',
 
     'tool.desc.bpm-sync':       '任意のBPMと細分でのノートタイミング（ms・tick）を計算します。オーディオ同期の確認や配置計画に便利。',
@@ -779,6 +794,7 @@ export const I18N = {
     'view.fullscreen': '⛶ フルスクリーン',
 
     'window.history': '履歴とタイムライン', 'window.splitOpts': '分割ビューオプション',
+    'window.sectWorkspace': 'ワークスペース', 'window.sectAnalysis': '解析とツール', 'window.sectPlayback': '再生とヘルプ',
     'window.gameplay': '▶ ゲームプレイ…', 'window.toolsHub': '⚙ ツールハブ…',
     'window.patternRadar': '◈ パターンレーダー…', 'window.handSim': '☞ ハンドシミュレーター…',
     'window.chartStats': '📊 譜面統計…', 'window.heatmap': '🌡 強度ヒートマップ…',
@@ -876,6 +892,7 @@ export const I18N = {
 
     'preview.projection': '投影', 'preview.perspective': '透视',
     'preview.hispeed': '速度', 'preview.btWidth': 'BT 宽度',
+    'preview.rate': '倍速', 'preview.judgeY': '判定线Y', 'preview.multiChart': '多谱面', 'preview.more': '更多',
     'preview.ortho': '正交', 'preview.sdvx': 'SDVX', 'preview.hybrid': '混合',
 
     'tool.desc.bpm-sync':       '计算任意 BPM 和细分下的音符时值（ms 和 tick）。用于验证音频同步或规划精确放置。',
@@ -940,6 +957,7 @@ export const I18N = {
     'view.fullscreen': '⛶ 全屏',
 
     'window.history': '历史与时间轴', 'window.splitOpts': '分屏选项',
+    'window.sectWorkspace': '工作区', 'window.sectAnalysis': '分析与工具', 'window.sectPlayback': '播放与帮助',
     'window.gameplay': '▶ 游戏模式…', 'window.toolsHub': '⚙ 工具中心…',
     'window.patternRadar': '◈ 模式雷达…', 'window.handSim': '☞ 手部模拟器…',
     'window.chartStats': '📊 谱面统计…', 'window.heatmap': '🌡 强度热力图…',
