@@ -128,6 +128,9 @@
         <label class="menu-item menu-check" title="Show FX Automation overlay — colored mix-level strip on FX holds reflecting the automation curve">
           <input type="checkbox" id="fxauto-vis-toggle"> ⚡ FX Automation Overlay
         </label>
+        <label class="menu-item menu-check" title="Chart Minimap — compact navigation strip showing the full chart. Click/drag to seek.">
+          <input type="checkbox" id="minimap-toggle"> ▦ Chart Minimap
+        </label>
         <div class="menu-sep"></div>
         <label class="menu-item menu-label"><span data-i18n="view.beatsPerLaneLabel">Beats/Lane:</span>
           <input type="range" id="beats-per-lane" min="1" max="32" step="1" value="16">
@@ -391,6 +394,10 @@
   <section id="panel-chart">
     <div id="canvas-wrap">
       <canvas id="chart-canvas"></canvas>
+    </div>
+    <!-- Chart Minimap (toggle via View → Chart Minimap) -->
+    <div id="chart-minimap-wrap" style="display:none">
+      <canvas id="chart-minimap-canvas"></canvas>
     </div>
     <div id="status-bar">
       <span id="status-tick">Tick: 0</span>

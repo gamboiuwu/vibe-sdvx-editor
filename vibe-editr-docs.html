@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.23 · 2026</span>
+  <span class="version">v0.0.29 · 2026</span>
 </div>
 
 <div class="toc">
@@ -439,6 +439,64 @@
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
 
 <div class="update-entry">
+  <h4><span class="ver-tag">v0.0.29</span>Chart Minimap</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Chart Minimap</strong> — a compact 52px-tall navigation strip rendered at the bottom of the 2D editor. Shows the entire chart at a glance: VOL-L (blue) and VOL-R (pink) coverage strips, FX-L/FX-R holds (orange), and BT A–D notes (white/grey rows) all mapped horizontally across the full chart duration.</li>
+    <li><span class="tag add">add</span>Click or drag on the minimap to instantly seek the playhead and scroll the editor to that chart position. The current viewport is highlighted with a white border box. A red line tracks the playhead in real time during playback.</li>
+    <li><span class="tag add">add</span>Amber vertical markers indicate BPM change events. Named chart sections appear as thin colored bands along the top edge of the minimap.</li>
+    <li><span class="tag add">add</span>Toggle via <strong>View → Chart Minimap</strong>. Visibility state persists across sessions.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.28</span>FX Effect Automation Lane <span style="font-size:11px;color:#ffcc44;font-weight:normal;">[Experimental]</span></h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>FX Effect Automation Lane panel</strong> — open via <strong>Window → FX Automation…</strong>. Draw per-tick mix-level automation curves for FX-L and FX-R independently.</li>
+    <li><span class="tag add">add</span>Breakpoints placed by clicking, dragged vertically to set mix value (0–100%). Right-click to delete a breakpoint. Double-click to toggle Step / Linear interpolation per segment.</li>
+    <li><span class="tag add">add</span>Mouse-wheel zooms the automation timeline in/out (centered on cursor position). FX-L / FX-R tabs switch channels; Clear All resets a channel.</li>
+    <li><span class="tag add">add</span>Automation data stored as <code>_fxAutomation</code> KSON custom field. The 2D editor shows a colored mix-level strip overlay on active FX holds when <strong>View → FX Automation Overlay</strong> is enabled.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.27</span>Preferences Save Fix · i18n Expansion</h4>
+  <ul>
+    <li><span class="tag fix">fix</span><strong>Preferences Save button now works correctly</strong> — added the missing <code>savePrefsToLocalStorage()</code> function that was called but never defined, causing a silent ReferenceError when saving preferences.</li>
+    <li><span class="tag add">add</span>107 new translation keys across all 5 locales (en/es/fr/ja/zh) covering File, Edit, Chart, View, Window menus, metadata labels, camera sub-panel, and toolbar hint.</li>
+    <li><span class="tag chg">chg</span>~90 previously untranslated HTML elements now carry <code>data-i18n</code> attributes. Buttons that contain <kbd> children use <span data-i18n> wrappers to preserve keyboard shortcut badges.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.26</span>Laser Symmetry Mirror Mode</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Laser Mirror Mode</strong> — toggle via <strong>View → Laser Mirror Mode</strong> or <kbd>Shift+M</kbd>. Placing a laser point on one side automatically creates a mirrored point on the other (v → 1−v), making symmetric patterns quick to author.</li>
+    <li><span class="tag add">add</span>A persistent <strong>⟺ MIRROR</strong> badge in the chart canvas corner shows when mirror mode is active.</li>
+    <li><span class="tag add">add</span>Mirror correctly tracks both laser sections — extending one side simultaneously extends the mirror. <kbd>Escape</kbd> or tool switch clears both sections cleanly.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.25</span>KSM/KSON Camera Effects on WebGL Lanes</h4>
+  <ul>
+    <li><span class="tag fix">fix</span><strong>center_split</strong> now creates a true lane split — left half (BT-A/B, FX-L, VOL-L) and right half (BT-C/D, FX-R, VOL-R) slide apart with a visible gap. Both 2D and WebGL render paths match KSM/KSON spec.</li>
+    <li><span class="tag add">add</span><strong>lane_toggle</strong> now hides the lane runway (background, panels, grid, dividers) while keeping notes and lasers visible, matching KSM behaviour.</li>
+    <li><span class="tag fix">fix</span>Beat-grid lines and vertical dividers now render in two half-segments so they stay within their respective lane halves when center_split is active.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.24</span>KSM-Style Laser Rendering</h4>
+  <ul>
+    <li><span class="tag chg">chg</span><strong>Laser ribbons now match KSM Editor / SDVX in-game appearance</strong> — anchor dots no longer draw during normal viewing or playback. They appear only when the laser tool is active, a section is being edited, a point is selected, or <em>Show envelope points always</em> is enabled in preferences.</li>
+    <li><span class="tag chg">chg</span>Ribbon half-width tuned from <code>0.425 × BT_W</code> to <code>0.38 × BT_W</code> to match KSM Editor proportions.</li>
+    <li><span class="tag chg">chg</span>Outline stroke removed from normal-state ribbons — KSM-style flat-color look. Outline now appears only on the section actively being edited.</li>
+    <li><span class="tag add">add</span><strong>SDVX-style inner highlight stripe</strong> — a thin brighter stripe along each ribbon center reproduces the characteristic SDVX laser glow.</li>
+    <li><span class="tag fix">fix</span>Anchor dots now correctly hidden during playback and non-edit states regardless of <code>showLaserDots</code> flag.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
   <h4><span class="ver-tag">v0.0.23</span>Pattern Snippet Library</h4>
   <ul>
     <li><span class="tag add">add</span><strong>Pattern Snippet Library panel</strong> — open via <strong>Window → Pattern Snippets…</strong>. Select any region in the chart, click <em>Save Selection</em>, name your pattern, and it persists across sessions in browser localStorage.</li>
@@ -666,7 +724,7 @@
 </div>
 
 <div class="note-box">
-  Looking for things still on the roadmap (strict 2D orthographic preview, per-section FX automation lanes)? See <code>Upcoming Changes.rtf</code> in the project root. Pattern Snippet Library shipped in v0.0.23; BPM tap tempo detection shipped in v0.0.18.
+  Looking for things still on the roadmap (strict 2D orthographic preview, spacebar BPM detection mode)? See <code>Upcoming Changes.rtf</code> in the project root. Chart Minimap shipped in v0.0.29; FX Automation Lane shipped in v0.0.28; Laser Mirror Mode shipped in v0.0.26.
 </div>
 </section>
 
