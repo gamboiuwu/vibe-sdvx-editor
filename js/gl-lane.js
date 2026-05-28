@@ -270,39 +270,11 @@ export class GLLaneRenderer {
       this._line(c0, c1, d0, d1, 1, BOUND);
     }
 
-    // ── 4. Side glow (gradient rectangles outside the lane) ────────────
-    // Decompose hex #XXXXXX33 colors into rgba.
-    const parseHex = hex => {
-      const h = hex.replace('#','');
-      const n = h.length === 8 ? h : h + 'ff';
-      return [
-        parseInt(n.slice(0,2), 16) / 255,
-        parseInt(n.slice(2,4), 16) / 255,
-        parseInt(n.slice(4,6), 16) / 255,
-        parseInt(n.slice(6,8), 16) / 255,
-      ];
-    };
-    const lcL = parseHex((laserColors?.L || '#1244ee') + '33');
-    const lcR = parseHex((laserColors?.R || '#dd00cc') + '33');
-    const lcLZero = [lcL[0], lcL[1], lcL[2], 0];
-    const lcRZero = [lcR[0], lcR[1], lcR[2], 0];
+    // (Side glow removed: the old blue/red gradient strips were drawn as flat
+    // screen-space rectangles that didn't follow the lane's perspective taper,
+    // so they looked misaligned against the runway.)
 
-    const volLeft  = gv._laserX(0, p.judgeY, p);
-    const volRight = gv._laserX(1, p.judgeY, p);
-    // Left glow: from vlx1 inward toward volLeft+40px
-    const drawSideGlow = (innerX, outerX, c0, c1) => {
-      const x0 = Math.min(innerX, outerX), x1 = Math.max(innerX, outerX);
-      const innerIsLeft = outerX < innerX;
-      const aTop = innerIsLeft ? c1 : c0, aBot = innerIsLeft ? c1 : c0;
-      const bTop = innerIsLeft ? c0 : c1, bBot = innerIsLeft ? c0 : c1;
-      this._quad(x0, cTop, x1, cTop, x1, cBot, x0, cBot, aTop, bTop, bBot, aBot);
-    };
-    if (im !== 'wireframe' && im !== 'simplified') {
-      drawSideGlow(vlx1, volLeft  - 40, lcLZero, lcL);
-      drawSideGlow(vrx1, volRight + 40, lcRZero, lcR);
-    }
-
-    // ── 5. Scrolling grid — two segments per line when split is active ─
+    // ── 4. Scrolling grid — two segments per line when split is active ─
     const TPM = 192, TPB = 48;
     const VT = gv.VISIBLE_TICKS;
     const tick = gv.playTick;

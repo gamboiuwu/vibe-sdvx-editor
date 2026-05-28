@@ -2103,13 +2103,22 @@ function _multiRebuild() {
 
     wrap.appendChild(header);
 
-    // Canvas
+    // Canvas stack: WebGL lane runway behind, 2D overlay (notes/lasers/HUD) on
+    // top. The lane is rendered exclusively in WebGL, so each slot needs its own
+    // GL canvas just like the single preview.
+    const canvasWrap = document.createElement('div');
+    canvasWrap.className = 'multi-canvas-wrap';
+    const glCanvas = document.createElement('canvas');
+    glCanvas.className = 'multi-gl';
     const canvas = document.createElement('canvas');
-    wrap.appendChild(canvas);
+    canvasWrap.appendChild(glCanvas);
+    canvasWrap.appendChild(canvas);
+    wrap.appendChild(canvasWrap);
     area.appendChild(wrap);
 
     // GameView
     const gv = new GameView(canvas);
+    gv.attachGL(glCanvas);
     gv.chart          = tab.chart;
     gv.hispeed        = gvRef ? gvRef.hispeed        : 1.0;
     gv.btWidthScale   = gvRef ? gvRef.btWidthScale   : 1.0;
@@ -2119,7 +2128,7 @@ function _multiRebuild() {
     gv.interpMode     = gvRef ? gvRef.interpMode     : 'standard';
     gv.playTick       = renderer.playTick;
 
-    const mv = { wrap, canvas, gv, tabIdx, mirrored: false, tickOffset: 0, hsSlider, hsVal };
+    const mv = { wrap, canvasWrap, canvas, gv, tabIdx, mirrored: false, tickOffset: 0, hsSlider, hsVal };
     _multiViews.push(mv);
 
     // HiSpeed slider wiring
@@ -2166,7 +2175,8 @@ function _multiRebuild() {
 // Apply / remove horizontal mirror to a multi-view slot via CSS transform.
 // This avoids breaking GameView.draw()'s internal clearRect.
 function _multiApplyMirror(mv) {
-  mv.canvas.style.transform = mv.mirrored ? 'scaleX(-1)' : '';
+  // Flip the whole canvas stack (WebGL lane + 2D overlay) together.
+  (mv.canvasWrap || mv.canvas).style.transform = mv.mirrored ? 'scaleX(-1)' : '';
 }
 
 // Draw all active multi-views (called from render() and playFrame())
@@ -2458,33 +2468,11 @@ window.addEventListener('DOMContentLoaded', () => {
   if (gameCanvas) {
     gameView = new GameView(gameCanvas);
     gameView.chart = chart;
-    // Phase 1: try to attach the sibling WebGL canvas. Falls back silently
-    // if the browser doesn't support WebGL2.
+    // The lane runway is rendered exclusively by the WebGL renderer. Attach the
+    // sibling WebGL canvas; if the browser somehow lacks WebGL2 the GameView
+    // falls back to a plain background so notes/lasers still composite on top.
     const glCanvas = document.getElementById('game-canvas-gl');
-    if (glCanvas) {
-      gameView.attachGL(glCanvas);
-      // Restore the user's preference (default off).
-      try {
-        const saved = JSON.parse(localStorage.getItem('vibe-editr-prefs') || '{}');
-        if (saved.useGLLane && gameView._glRenderer?.ok) gameView.useGL = true;
-      } catch(_) {}
-      const cb = document.getElementById('pvc-use-webgl');
-      if (cb) {
-        cb.checked  = !!gameView.useGL;
-        cb.disabled = !gameView._glRenderer?.ok;
-        if (cb.disabled) cb.title = 'WebGL2 not supported in this browser.';
-        cb.addEventListener('change', () => {
-          gameView.useGL = !!cb.checked;
-          if (!gameView.useGL) gameView._glRenderer?.clear();
-          try {
-            const s = JSON.parse(localStorage.getItem('vibe-editr-prefs') || '{}');
-            s.useGLLane = gameView.useGL;
-            localStorage.setItem('vibe-editr-prefs', JSON.stringify(s));
-          } catch(_) {}
-          gameView.draw();
-        });
-      }
-    }
+    if (glCanvas) gameView.attachGL(glCanvas);
     gameView.resize();
     gameCanvas.addEventListener('contextmenu', e => {
       e.preventDefault();

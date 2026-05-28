@@ -55,11 +55,11 @@ export class GameView {
     // Each entry lives for ~200 ms then is pruned.
     this._slamFlashes = [];
 
-    // Phase 1 WebGL lane renderer. Attached lazily via attachGL().
-    // When useGL is true and _glRenderer.ok is true, the lane runway is
-    // rendered on a separate GL canvas behind this 2D canvas; the 2D
-    // path skips its lane drawing and only paints notes/lasers/HUD.
-    this.useGL = false;
+    // WebGL lane renderer — the only lane/notes/laser-ribbon renderer.
+    // Attached via attachGL(). When _glRenderer.ok, the runway, notes and laser
+    // ribbons are rendered on a separate GL canvas behind this 2D canvas, and
+    // this 2D canvas paints only the overlay (indicators, slam flashes, HUD,
+    // edit ghosts). If WebGL2 is unavailable we fall back to a plain background.
     this._glRenderer = null;
   }
 
@@ -382,11 +382,12 @@ export class GameView {
     const score = (chart && autoplayOn) ? this._calcScore(chart, tick) : 0;
     const chain = (chart && autoplayOn) ? this.countChain(chart, tick) : 0;
 
-    // ── Background ────────────────────────────────────────────────────────
-    // When the WebGL lane renderer is active, it owns the background gradient
-    // and the entire lane runway. We just clear the 2D overlay to transparent
-    // so notes/lasers/HUD composite cleanly on top.
-    const useGL = this.useGL && this._glRenderer?.ok;
+    // ── Background / lane runway ──────────────────────────────────────────
+    // The lane runway is rendered exclusively by the WebGL renderer, which owns
+    // the background gradient and the entire lane. We clear the 2D overlay to
+    // transparent so notes/lasers/HUD composite cleanly on top. If WebGL2 is
+    // unavailable we paint a plain background as a graceful fallback (no lane).
+    const useGL = !!this._glRenderer?.ok;
     if (useGL) {
       this._glRenderer.render(
         p, this, LC, chart,
@@ -427,116 +428,6 @@ export class GameView {
     const vrx0 = this._screenX(1+OFF, p.cutoffY, p);
     const vlx1 = this._screenX(-OFF, p.judgeY,  p);
     const vrx1 = this._screenX(1+OFF, p.judgeY,  p);
-
-    if (!useGL) {
-      if (p.laneVisible) {
-      // ── VOL lane panels (darker tint, drawn first) ───────────────────────
-      const volGrad = ctx.createLinearGradient(0, p.cutoffY, 0, p.judgeY);
-      volGrad.addColorStop(0, '#030312');
-      volGrad.addColorStop(1, '#080820');
-
-      // Left VOL panel
-      ctx.beginPath();
-      ctx.moveTo(vlx0, p.cutoffY); ctx.lineTo(lx0, p.cutoffY);
-      ctx.lineTo(lx1, p.judgeY);   ctx.lineTo(vlx1, p.judgeY);
-      ctx.closePath();
-      ctx.fillStyle = volGrad; ctx.fill();
-
-      // Right VOL panel
-      ctx.beginPath();
-      ctx.moveTo(rx0, p.cutoffY); ctx.lineTo(vrx0, p.cutoffY);
-      ctx.lineTo(vrx1, p.judgeY); ctx.lineTo(rx1, p.judgeY);
-      ctx.closePath();
-      ctx.fillStyle = volGrad; ctx.fill();
-
-      // ── BT/FX main lane — two half-trapezoids when center_split is active ─
-      // Left half (norm 0→0.5, inner edge at p.cxL) and right half
-      // (norm 0.5→1, inner edge at p.cxR) — gap = 2 × splitPx when active.
-      const laneGrad = ctx.createLinearGradient(0, p.cutoffY, 0, p.judgeY);
-      laneGrad.addColorStop(0, '#060618');
-      laneGrad.addColorStop(0.6, '#0d0d28');
-      laneGrad.addColorStop(1, '#12133a');
-      ctx.fillStyle = laneGrad;
-      // Left half
-      ctx.beginPath();
-      ctx.moveTo(lx0, p.cutoffY); ctx.lineTo(p.cxL, p.cutoffY);
-      ctx.lineTo(p.cxL, p.judgeY); ctx.lineTo(lx1, p.judgeY);
-      ctx.closePath(); ctx.fill();
-      // Right half
-      ctx.beginPath();
-      ctx.moveTo(p.cxR, p.cutoffY); ctx.lineTo(rx0, p.cutoffY);
-      ctx.lineTo(rx1, p.judgeY); ctx.lineTo(p.cxR, p.judgeY);
-      ctx.closePath(); ctx.fill();
-
-      // VOL outer boundary lines
-      ctx.strokeStyle = '#2a2a55'; ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(vlx0, p.cutoffY); ctx.lineTo(vlx1, p.judgeY);
-      ctx.moveTo(vrx0, p.cutoffY); ctx.lineTo(vrx1, p.judgeY);
-      ctx.stroke();
-
-      // Side glow — from outer VOL lane edge inward
-      const volLeft  = this._laserX(0, p.judgeY, p);   // leftmost laser position
-      const volRight = this._laserX(1, p.judgeY, p);   // rightmost laser position
-      const _drawGlow = (x, dir, col) => {
-        const w = Math.abs(x - (dir < 0 ? vlx1 : vrx1)) + 40;
-        const g = ctx.createLinearGradient(x, 0, x + dir * w, 0);
-        g.addColorStop(0, col); g.addColorStop(1, 'transparent');
-        ctx.fillStyle = g;
-        ctx.fillRect(Math.min(x, x + dir * w), p.cutoffY, w, p.judgeY - p.cutoffY);
-      };
-      if (im !== 'wireframe' && im !== 'simplified') {
-        _drawGlow(volLeft,  -1, LC.L + '33');
-        _drawGlow(volRight,  1, LC.R + '33');
-      }
-
-      // ── Scrolling grid (beat/measure lines) ───────────────────────────────
-
-      const beatStep  = TICKS_PER_BEAT;
-      const startBeat = Math.floor(tick / beatStep) * beatStep;
-      // Extend upper iteration bound when chart velocity is slower than 1.0
-      // so we still draw all beat lines in the visible window.
-      const _velAtTick = chart?.getScrollSpeedAt ? chart.getScrollSpeedAt(tick) : 1.0;
-      const beatIterMax = tick + VT / Math.max(0.05, _velAtTick) + beatStep;
-      for (let t = startBeat; t <= beatIterMax; t += beatStep) {
-        const dt = this._effDt(t);
-        if (dt < 0 || dt > VT) continue;
-        const sy = this._screenY(dt, p);
-        if (sy <= p.cutoffY || sy >= p.judgeY) continue;
-        const isMeasure = (t % TICKS_PER_MEASURE === 0);
-        ctx.strokeStyle = isMeasure ? '#6060aa' : '#22224a';
-        ctx.lineWidth   = isMeasure ? 1.5 : 0.7;
-        // Draw two segments (left half and right half) so the gap stays
-        // visible when center_split is active.
-        ctx.beginPath();
-        ctx.moveTo(this._screenX(0, sy, p), sy);
-        ctx.lineTo(p.cxL, sy);
-        ctx.moveTo(p.cxR, sy);
-        ctx.lineTo(this._screenX(1, sy, p), sy);
-        ctx.stroke();
-      }
-
-      // ── Vertical lane dividers ────────────────────────────────────────────
-
-      for (let i = 0; i <= 4; i++) {
-        const n = i / 4;
-        ctx.strokeStyle = i === 0 || i === 4 ? '#5050a0' : '#282858';
-        ctx.lineWidth = i === 0 || i === 4 ? 1.5 : 0.8;
-        ctx.beginPath();
-        ctx.moveTo(this._screenX(n, p.cutoffY, p), p.cutoffY);
-        ctx.lineTo(this._screenX(n, p.judgeY,  p), p.judgeY);
-        ctx.stroke();
-      }
-      // Inner split edges — visible when center_split is active
-      if (p.splitPx > 0.5) {
-        ctx.strokeStyle = '#5050a0'; ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(p.cxL, p.cutoffY); ctx.lineTo(p.cxL, p.judgeY);
-        ctx.moveTo(p.cxR, p.cutoffY); ctx.lineTo(p.cxR, p.judgeY);
-        ctx.stroke();
-      }
-      } // end if (p.laneVisible)
-    }
 
     if (!chart) { this._drawHUD(p, tick, score, chain); return; }
 

@@ -359,6 +359,24 @@ html, body {
   width: 100%;
   min-height: 0;
 }
+/* Layered canvas stack inside each multi slot: WebGL lane behind, 2D overlay
+   (notes/lasers/HUD) on top — mirrors the single-preview #game-canvas-wrap. */
+.multi-canvas-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
+}
+.multi-canvas-wrap > canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  flex: none;
+  display: block;
+}
+.multi-canvas-wrap > .multi-gl { z-index: 0; pointer-events: none; }
 .multi-chart-header {
   display: flex;
   align-items: center;
