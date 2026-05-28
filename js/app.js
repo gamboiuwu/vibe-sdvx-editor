@@ -4770,6 +4770,9 @@ let _laserSel = null; // { side, sec, ptIndex }
 // Pen-tool laser state — the section currently being built point-by-point.
 // Null when no laser is being drawn.  Press Esc or switch tool to finish.
 let _activeLaserSec = null; // { sec, side } or null
+// Tracks an in-progress laser pen press so a sideways drag-release can form a
+// slam (parity with the game-preview edit mode). { side, downX, downY }
+let _laserPress = null;
 
 // Bezier handle drag state — set when user grabs a diamond handle
 let _curveDrag = null; // { sec, ptIndex, t0, t1, colIdx, colLen }
@@ -5144,6 +5147,8 @@ function onMouseDown(e) {
 
     // ── Pen tool: place one point at a time (Illustrator-style) ───────────
     const v = snapLaserV(renderer.localXToLaserPos(localX, wide));
+    // Remember this press so a sideways drag-release can turn into a slam.
+    _laserPress = { side, downX: e.clientX, downY: e.clientY };
 
     if (_activeLaserSec && _activeLaserSec.side === side) {
       // Extend the active section with a new point
@@ -5389,6 +5394,56 @@ function onMouseUp(e) {
     saveUndo('Adjusted laser curve');
     render();
     return;
+  }
+
+  // ── Laser drag-release → slam / segment ──────────────────────────────────
+  // The game-preview edit mode draws lasers by dragging; the 2D editor placed
+  // points only on discrete clicks, so a sideways DRAG dropped a single point
+  // and never formed a slam. Here, if the user dragged from the point they just
+  // placed, append a point: a sideways move (same / near-same tick) becomes a
+  // slam; a move to a later tick extends the section. The mousedown already
+  // captured the undo snapshot, so one undo reverts the whole gesture.
+  if (_laserPress && e?.button === 0) {
+    const press = _laserPress;
+    _laserPress = null;
+    const dx = e.clientX - press.downX, dy = e.clientY - press.downY;
+    const moved = Math.sqrt(dx * dx + dy * dy) >= 4;
+    if (moved && _activeLaserSec && _activeLaserSec.side === press.side &&
+        (tool === 'laser-l' || tool === 'laser-r') && renderer) {
+      const sec    = _activeLaserSec.sec;
+      const lastPt = sec.points[sec.points.length - 1];
+      if (lastPt) {
+        const h    = getHit(e);
+        const wide = sec.wide || laserWideMode;
+        const relV = snapLaserV(renderer.localXToLaserPos(h.localX, wide));
+        const downTick = sec.y + lastPt.ry;
+        const relTick  = Math.round(h.tick);
+        const dt = relTick - downTick;
+        const dvOK = Math.abs(relV - lastPt.v) > LASER_SLAM_V_EPS;
+        const slamGap = Math.max(1, Math.floor(LASER_SLAM_TICKS / 2));
+        if (dvOK && Math.abs(dt) <= LASER_SLAM_TICKS) {
+          // Sideways (near-instant) horizontal move → slam.
+          if (lastPt.interp === 'linear') lastPt.interp = 'step';
+          sec.points.push({ ry: lastPt.ry + slamGap, v: relV, slam: true, interp: 'linear', curve: 0.5 });
+          if (laserMirrorMode && _mirrorLaserSec) {
+            const mSec  = _mirrorLaserSec.sec;
+            const mLast = mSec.points[mSec.points.length - 1];
+            const mv    = Math.max(0, Math.min(1, 1 - relV));
+            if (mLast && Math.abs(mv - mLast.v) > LASER_SLAM_V_EPS) {
+              if (mLast.interp === 'linear') mLast.interp = 'step';
+              mSec.points.push({ ry: mLast.ry + slamGap, v: mv, slam: true, interp: 'linear', curve: 0.5 });
+            }
+          }
+          render();
+          return;
+        } else if (dt > LASER_SLAM_TICKS && dvOK) {
+          // Dragged to a later tick at a new position → normal segment point.
+          sec.points.push({ ry: relTick - sec.y, v: relV, slam: false, interp: 'linear', curve: 0.5 });
+          render();
+          return;
+        }
+      }
+    }
   }
   if (e?.button === 1) {
     sel.dragging = false;
