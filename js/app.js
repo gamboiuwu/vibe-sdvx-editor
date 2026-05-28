@@ -60,8 +60,18 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.28';
+const APP_VERSION = '0.0.29';
 const CHANGELOG = [
+  {
+    version: '0.0.29',
+    title: 'Chart Minimap',
+    entries: [
+      ['add', '<strong>Chart Minimap</strong> — a compact navigation strip at the bottom of the 2D editor that renders the entire chart at a glance. Lane rows show VOL-L (blue), FX-L (orange), BT A–D (white/grey), FX-R (orange), and VOL-R (pink) in a 52px-tall canvas spanning the full editor width.'],
+      ['add', 'Click or drag on the minimap to instantly seek the playhead and scroll the editor to that chart position. The current viewport is shown as a highlighted region with a white border. A red playhead line tracks position in real time during playback.'],
+      ['add', 'BPM change events appear as amber vertical markers so tempo changes are immediately visible across the whole chart. The minimap updates live as you add or remove notes.'],
+      ['add', 'Toggle the minimap on/off via <strong>View → Chart Minimap</strong>. State persists across sessions via Save Config.'],
+    ],
+  },
   {
     version: '0.0.28',
     title: 'FX Effect Automation Lane [Experimental]',
@@ -344,6 +354,10 @@ let laserXSnap = 0;
 let laserMirrorMode = false;
 // Active mirror-side laser section (opposite side of the one being drawn)
 let _mirrorLaserSec = null;
+
+// ── Chart Minimap ─────────────────────────────────────────────────────────────
+let minimapVisible = false;
+let _minimapDragging = false;
 
 const drag = { active: false, lane: -1, laneType: '', startTick: 0, side: 0, localX: 0, laserSec: null };
 export const sel  = { active: false, dragging: false, startTick: 0, endTick: 0, clipboard: null };
@@ -1047,6 +1061,7 @@ function playFrame(now) {
   // Update radar and heatmap every playback frame regardless of view mode
   if (typeof updateRadar === 'function') updateRadar();
   if (typeof updateHeatmap === 'function') updateHeatmap();
+  _drawMinimap();
   requestAnimationFrame(playFrame);
 }
 let _lastGameFrameTime = 0;
@@ -2473,6 +2488,10 @@ window.addEventListener('DOMContentLoaded', () => {
   // Seekbar / scrub
   initSeekbar();
 
+  // Chart Minimap
+  _minimapInitEvents();
+  _initMinimapToggle();
+
   // Chart speed slider — visual hi-speed only; playback timing is always BPM-accurate
   const speedSlider = document.getElementById('chart-speed');
   if (speedSlider) {
@@ -3872,6 +3891,7 @@ export function render() {
     if (typeof updateRadar     === 'function') updateRadar();
     if (typeof updateHeatmap   === 'function') updateHeatmap();
     if (typeof invalidateFxAuto === 'function') invalidateFxAuto();
+    _drawMinimap();
   });
 }
 function snapTick(t) {
@@ -7131,6 +7151,7 @@ const prefs = {
   physicsLaser:     false,
   snapToTransients: false,
   fxAutoVis:        false,
+  minimapVisible:   false,
 };
 let _autosaveTimer = null;
 
@@ -7377,6 +7398,10 @@ function applyPreferences() {
   // FX Automation overlay checkbox sync
   const fxAutoVisCb = document.getElementById('fxauto-vis-toggle');
   if (fxAutoVisCb) fxAutoVisCb.checked = !!prefs.fxAutoVis;
+
+  // Chart Minimap sync
+  minimapVisible = !!prefs.minimapVisible;
+  _applyMinimapVisibility();
 }
 
 // ── IndexedDB autosave ────────────────────────────────────────────────────────
@@ -9281,5 +9306,207 @@ const ChartSections = (function() {
     }, 2500);
   }
 })();
+
+// ── Chart Minimap ─────────────────────────────────────────────────────────────
+
+function _applyMinimapVisibility() {
+  const wrap = document.getElementById('chart-minimap-wrap');
+  if (!wrap) return;
+  wrap.style.display = minimapVisible ? 'block' : 'none';
+  const cb = document.getElementById('minimap-toggle');
+  if (cb) cb.checked = minimapVisible;
+  if (minimapVisible) { _resizeMinimap(); _drawMinimap(); }
+}
+
+function _resizeMinimap() {
+  const mm = document.getElementById('chart-minimap-canvas');
+  if (!mm) return;
+  const wrap = document.getElementById('chart-minimap-wrap');
+  if (!wrap) return;
+  const W = wrap.clientWidth || 400;
+  const H = 52;
+  if (mm.width !== W || mm.height !== H) {
+    mm.width  = W;
+    mm.height = H;
+  }
+}
+
+export function _drawMinimap() {
+  if (!minimapVisible) return;
+  const mm = document.getElementById('chart-minimap-canvas');
+  if (!mm) return;
+  _resizeMinimap();
+
+  const ctx = mm.getContext('2d');
+  const W = mm.width, H = mm.height;
+  if (W <= 0 || H <= 0) return;
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#0a0a14';
+  ctx.fillRect(0, 0, W, H);
+
+  if (!chart) return;
+  const totalTicks = chart.totalTicks();
+  if (totalTicks <= 0) return;
+
+  const tickToX = t => (t / totalTicks) * W;
+
+  // Lane row layout
+  const ROW = {
+    volL: { y: 0,  h: 8  },
+    fxL:  { y: 8,  h: 9  },
+    bt:   { y: 17, h: 20 },
+    fxR:  { y: 37, h: 7  },
+    volR: { y: 44, h: 8  },
+  };
+
+  // Measure grid (dim vertical lines)
+  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+  ctx.lineWidth = 1;
+  const measTicks = 192; // TICKS_PER_MEASURE
+  for (let t = measTicks; t < totalTicks; t += measTicks) {
+    const x = Math.round(tickToX(t)) + 0.5;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+  }
+
+  // VOL-L coverage
+  ctx.fillStyle = 'rgba(68,170,255,0.75)';
+  for (const sec of chart.lasers[0]) {
+    if (!sec.points?.length) continue;
+    const lastPt = sec.points[sec.points.length - 1];
+    const x = tickToX(sec.y);
+    const w = Math.max(1, tickToX(sec.y + (lastPt.ry ?? 0)) - x);
+    ctx.fillRect(x, ROW.volL.y, w, ROW.volL.h);
+  }
+
+  // VOL-R coverage
+  ctx.fillStyle = 'rgba(255,68,200,0.75)';
+  for (const sec of chart.lasers[1]) {
+    if (!sec.points?.length) continue;
+    const lastPt = sec.points[sec.points.length - 1];
+    const x = tickToX(sec.y);
+    const w = Math.max(1, tickToX(sec.y + (lastPt.ry ?? 0)) - x);
+    ctx.fillRect(x, ROW.volR.y, w, ROW.volR.h);
+  }
+
+  // FX-L holds
+  ctx.fillStyle = 'rgba(255,140,32,0.85)';
+  for (const note of chart.fx[0]) {
+    if (note.len <= 0) continue;
+    const x = tickToX(note.y);
+    const w = Math.max(1, tickToX(note.y + note.len) - x);
+    ctx.fillRect(x, ROW.fxL.y, w, ROW.fxL.h);
+  }
+
+  // FX-R holds
+  ctx.fillStyle = 'rgba(255,140,32,0.85)';
+  for (const note of chart.fx[1]) {
+    if (note.len <= 0) continue;
+    const x = tickToX(note.y);
+    const w = Math.max(1, tickToX(note.y + note.len) - x);
+    ctx.fillRect(x, ROW.fxR.y, w, ROW.fxR.h);
+  }
+
+  // BT notes (A=0, B=1, C=2, D=3)
+  const btRowH = ROW.bt.h / 4;
+  const BT_COLORS = ['rgba(255,255,255,0.9)', 'rgba(210,210,255,0.9)', 'rgba(255,210,210,0.9)', 'rgba(255,255,210,0.9)'];
+  for (let lane = 0; lane < 4; lane++) {
+    ctx.fillStyle = BT_COLORS[lane];
+    const rowY = ROW.bt.y + lane * btRowH;
+    for (const note of chart.bt[lane]) {
+      const x = tickToX(note.y);
+      const w = note.len > 0 ? Math.max(1, tickToX(note.y + note.len) - x) : Math.max(1.5, W / totalTicks * 4);
+      ctx.fillRect(x, rowY, w, btRowH - 0.5);
+    }
+  }
+
+  // BPM change markers (amber lines)
+  if (chart.bpmEvents.length > 1) {
+    ctx.strokeStyle = 'rgba(255,200,50,0.55)';
+    ctx.lineWidth = 1;
+    for (let i = 1; i < chart.bpmEvents.length; i++) {
+      const x = Math.round(tickToX(chart.bpmEvents[i].y)) + 0.5;
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+    }
+  }
+
+  // Section labels (colored bands along very top)
+  if (chart.sections?.length) {
+    for (const sec of chart.sections) {
+      const x = tickToX(sec.y);
+      const w = Math.max(2, tickToX(sec.endY ?? (sec.y + measTicks)) - x);
+      ctx.fillStyle = (sec.color || '#4488ff') + '55';
+      ctx.fillRect(x, 0, w, 3);
+    }
+  }
+
+  // Viewport indicator
+  if (renderer) {
+    const colLen = renderer.measPerCol * measTicks;
+    const numCols = renderer.numCols || 1;
+    const startTick = renderer.scrollCol * colLen;
+    const endTick   = startTick + numCols * colLen;
+    const vx = tickToX(startTick);
+    const vw = Math.max(3, tickToX(endTick) - vx);
+
+    ctx.fillStyle = 'rgba(255,255,255,0.09)';
+    ctx.fillRect(vx, 0, vw, H);
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(vx + 0.5, 0.5, Math.max(2, vw - 1), H - 1);
+  }
+
+  // Playhead
+  if (renderer && renderer.playTick >= 0) {
+    const px = tickToX(renderer.playTick);
+    ctx.strokeStyle = '#ff4444';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, H); ctx.stroke();
+  }
+}
+
+function _minimapInitEvents() {
+  const mm = document.getElementById('chart-minimap-canvas');
+  if (!mm) return;
+
+  const seekAt = e => {
+    const rect = mm.getBoundingClientRect();
+    const pct  = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const totalTicks = chart?.totalTicks() ?? 0;
+    if (totalTicks > 0) _seekTo(Math.round(pct * totalTicks));
+  };
+
+  mm.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    _minimapDragging = true;
+    seekAt(e);
+    e.preventDefault();
+  });
+  mm.addEventListener('mousemove', e => {
+    if (!_minimapDragging) return;
+    seekAt(e);
+  });
+  document.addEventListener('mouseup', () => { _minimapDragging = false; });
+
+  // Update minimap on resize
+  const ro = new ResizeObserver(() => { if (minimapVisible) { _resizeMinimap(); _drawMinimap(); } });
+  const wrap = document.getElementById('chart-minimap-wrap');
+  if (wrap) ro.observe(wrap);
+}
+
+// Minimap View-menu toggle handler (called from main init)
+function _initMinimapToggle() {
+  const cb = document.getElementById('minimap-toggle');
+  if (!cb) return;
+  cb.checked = minimapVisible;
+  cb.addEventListener('change', e => {
+    minimapVisible = e.target.checked;
+    prefs.minimapVisible = minimapVisible;
+    savePrefsToLocalStorage();
+    _applyMinimapVisibility();
+    if (minimapVisible) _drawMinimap();
+  });
+}
 
 // Pattern Library lives in tools.js (savePatternFromSelection exported)
