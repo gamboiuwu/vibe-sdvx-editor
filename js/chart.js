@@ -277,10 +277,17 @@ export class ChartData {
           slamFlag = (dt >= 0) && (dt <= LASER_SLAM_TICKS) &&
                      (Math.abs(v - prev.v) > LASER_SLAM_V_EPS);
         }
+        let ry = y - section.y;
+        // A slam needs two points at DISTINCT pulses (a same-pulse pair is
+        // ambiguous and breaks KSON export). If a slam lands on/before the
+        // previous point's tick, nudge it a hair later — the importer convention.
+        if (slamFlag && ry <= prev.ry) {
+          ry = prev.ry + Math.max(1, Math.floor(LASER_SLAM_TICKS / 2));
+        }
         // A slam jumps instantly, so the previous point holds its value until the
         // jump — mark its outgoing interp as 'step' (matches import/export).
         if (slamFlag && prev.interp === 'linear') prev.interp = 'step';
-        section.points.push({ ry: y - section.y, v, slam: slamFlag, interp, curve });
+        section.points.push({ ry, v, slam: slamFlag, interp, curve });
         return;
       }
     }

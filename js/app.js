@@ -5151,7 +5151,28 @@ function onMouseDown(e) {
       const ry     = Math.round(tick) - sec.y;
       const lastPt = sec.points[sec.points.length - 1];
       const lastRy = lastPt?.ry ?? -1;
-      if (ry > lastRy) {
+      // Horizontal slam: clicking a second point on (or within a slam-width of)
+      // the SAME tick at a different position. This is the canonical "place two
+      // laser points horizontally" gesture. Represent it the way the importers
+      // do — hold at the previous value, then jump a hair later — so it renders
+      // and round-trips to KSH/KSON correctly. Checked before the ry>lastRy case
+      // because a same-tick click has ry === lastRy (not greater).
+      const slamGap = Math.max(1, Math.floor(LASER_SLAM_TICKS / 2));
+      const sameTickSlam = !!lastPt && ry <= lastRy && (lastRy - ry) <= LASER_SLAM_TICKS &&
+                           Math.abs(v - lastPt.v) > LASER_SLAM_V_EPS;
+      if (sameTickSlam) {
+        if (lastPt.interp === 'linear') lastPt.interp = 'step';
+        sec.points.push({ ry: lastRy + slamGap, v, slam: true, interp: 'linear', curve: 0.5 });
+        if (laserMirrorMode && _mirrorLaserSec) {
+          const mv = Math.max(0, Math.min(1, 1 - v));
+          const mSec = _mirrorLaserSec.sec;
+          const mLastPt = mSec.points[mSec.points.length - 1];
+          if (mLastPt && Math.abs(mv - mLastPt.v) > LASER_SLAM_V_EPS) {
+            if (mLastPt.interp === 'linear') mLastPt.interp = 'step';
+            mSec.points.push({ ry: mLastPt.ry + slamGap, v: mv, slam: true, interp: 'linear', curve: 0.5 });
+          }
+        }
+      } else if (ry > lastRy) {
         // Slam = near-instant horizontal move: small time gap + real position jump.
         const isSlam = !!lastPt && (ry - lastRy) <= LASER_SLAM_TICKS &&
                        Math.abs(v - lastPt.v) > LASER_SLAM_V_EPS;
