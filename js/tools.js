@@ -16,6 +16,7 @@ const TOOL_REGISTRY = [
   { id: 'scale',       cat: 'Edit',     label: 'Scale Suggester',  icon: '♫' },
   { id: 'pattern-lib',        cat: 'Edit',     label: 'Pattern Library',   icon: '≡' },
   { id: 'adaptive-compress',  cat: 'Edit',     label: 'Adaptive Compress', icon: '⊟' },
+  { id: 'pattern-flip',       cat: 'Edit',     label: 'Pattern Flip',      icon: '⇌' },
   // Analysis
   { id: 'density-heatmap',cat:'Analysis',label:'Density Heatmap',  icon: '≋'  },
   { id: 'multi-sync',  cat: 'Analysis', label: 'Multi-Chart Sync', icon: '⇄'  },
@@ -545,6 +546,7 @@ function _renderTool(id, container) {
     case 'export-validate':return _toolChartValidator(container); // redirected
     case 'visual-mode':       return _toolVisualMode(container);
     case 'adaptive-compress': return _toolAdaptiveCompress(container);
+    case 'pattern-flip':      return _toolPatternFlip(container);
     default: container.textContent = 'Unknown tool: ' + id;
   }
 }
@@ -6538,6 +6540,256 @@ function _toolAdaptiveCompress(c) {
   });
   winSel.addEventListener('change', _clearStage);
   analyzeBtn.addEventListener('click', analyze);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   21. Pattern Flip / Temporal Mirror
+   ═══════════════════════════════════════════════════════════════════════════ */
+function _toolPatternFlip(c) {
+  const sec = _section('Pattern Flip / Temporal Mirror');
+  c.appendChild(sec);
+
+  const desc = _h('p', '', 'Select a region with the <strong>Select</strong> tool, then flip or reverse its note patterns in place. Operations are undoable with <kbd>Ctrl+Z</kbd>.');
+  desc.style.cssText = 'font-size:12px;color:#8899bb;margin:0 0 10px;line-height:1.5;';
+  sec.appendChild(desc);
+
+  // ── Status readout ─────────────────────────────────────────────────────────
+  const statusDiv = _h('div', '', '');
+  statusDiv.style.cssText = 'background:#10101e;border:1px solid #334;border-radius:4px;padding:6px 10px;margin-bottom:10px;font-size:12px;color:#88aacc;min-height:36px;';
+  sec.appendChild(statusDiv);
+
+  function refreshStatus() {
+    const s = typeof sel !== 'undefined' ? sel : null;
+    if (!s || !s.active) {
+      statusDiv.innerHTML = '<span style="color:#556677;">No active selection — drag a range with the Select tool (key&nbsp;<kbd>1</kbd>).</span>';
+      return;
+    }
+    const lo = Math.min(s.startTick, s.endTick);
+    const hi = Math.max(s.startTick, s.endTick);
+    const dur = hi - lo;
+    const ch = typeof chart !== 'undefined' ? chart : null;
+    let btCount = 0, fxCount = 0, laserPts = 0;
+    if (ch) {
+      for (let li = 0; li < 4; li++) btCount += ch.bt[li].filter(n => n.y >= lo && n.y < hi).length;
+      for (let li = 0; li < 2; li++) fxCount += ch.fx[li].filter(n => n.y >= lo && n.y < hi).length;
+      for (let s2 = 0; s2 < 2; s2++) ch.lasers[s2].filter(sec2 => sec2.y >= lo && sec2.y < hi).forEach(sec2 => laserPts += sec2.points.length);
+    }
+    const meas = (dur / 192).toFixed(2);
+    statusDiv.innerHTML = `<strong>Selection:</strong> ${dur} ticks (${meas} measures)<br>BT: ${btCount} notes &nbsp;|&nbsp; FX: ${fxCount} notes &nbsp;|&nbsp; VOL pts: ${laserPts}`;
+  }
+  refreshStatus();
+
+  // ── Options ────────────────────────────────────────────────────────────────
+  const inclLasersChk = document.createElement('input');
+  inclLasersChk.type = 'checkbox'; inclLasersChk.checked = true; inclLasersChk.id = 'pf-lasers';
+  const inclLasersLbl = document.createElement('label');
+  inclLasersLbl.htmlFor = 'pf-lasers';
+  inclLasersLbl.textContent = ' Include VOL lasers';
+  inclLasersLbl.style.cssText = 'font-size:12px;color:#aabbcc;cursor:pointer;';
+
+  const inclVelChk = document.createElement('input');
+  inclVelChk.type = 'checkbox'; inclVelChk.checked = false; inclVelChk.id = 'pf-vel';
+  const inclVelLbl = document.createElement('label');
+  inclVelLbl.htmlFor = 'pf-vel';
+  inclVelLbl.textContent = ' Include hi-speed events';
+  inclVelLbl.style.cssText = 'font-size:12px;color:#aabbcc;cursor:pointer;';
+
+  const optRow1 = document.createElement('div');
+  optRow1.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:4px;';
+  optRow1.append(inclLasersChk, inclLasersLbl);
+  const optRow2 = document.createElement('div');
+  optRow2.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:12px;';
+  optRow2.append(inclVelChk, inclVelLbl);
+  sec.appendChild(optRow1);
+  sec.appendChild(optRow2);
+
+  // ── Operation buttons ─────────────────────────────────────────────────────
+  const btnH = _btn('⇆  Flip Horizontal  (mirror lanes)');
+  btnH.style.cssText = 'width:100%;margin-bottom:6px;';
+  btnH.title = 'Mirrors BT-A↔D, BT-B↔C, FX-L↔R, VOL-L↔R (laser values inverted)';
+
+  const btnT = _btn('⇅  Flip Vertical  (reverse time)');
+  btnT.style.cssText = 'width:100%;margin-bottom:6px;';
+  btnT.title = 'Reverses the order of notes in time within the selection';
+
+  const btnB = _btn('⟲  Flip Both  (horizontal + temporal)');
+  btnB.style.cssText = 'width:100%;background:#2a1a3a;border-color:#884488;';
+  btnB.title = 'Applies both lane mirror and time reversal — useful for creating rotational symmetry';
+
+  sec.appendChild(btnH);
+  sec.appendChild(btnT);
+  sec.appendChild(btnB);
+
+  // ── Result message ─────────────────────────────────────────────────────────
+  const resultDiv = _h('div', '', '');
+  resultDiv.style.cssText = 'margin-top:8px;font-size:12px;min-height:18px;';
+  sec.appendChild(resultDiv);
+
+  function getOpts() {
+    const s = typeof sel !== 'undefined' ? sel : null;
+    if (!s || !s.active) { resultDiv.innerHTML = '<span style="color:#ff6655;">No active selection.</span>'; return null; }
+    return {
+      lo: Math.min(s.startTick, s.endTick),
+      hi: Math.max(s.startTick, s.endTick),
+      inclLasers: inclLasersChk.checked,
+      inclVel: inclVelChk.checked,
+    };
+  }
+
+  btnH.addEventListener('click', () => {
+    const opts = getOpts(); if (!opts) return;
+    saveUndo('Flip Horizontal');
+    const n = pfFlipHorizontal(opts.lo, opts.hi, opts.inclLasers);
+    if (typeof render === 'function') render();
+    resultDiv.innerHTML = `<span style="color:#44ff88;">✓ Flipped ${n} note${n!==1?'s':''} horizontally. <kbd>Ctrl+Z</kbd> to undo.</span>`;
+    refreshStatus();
+  });
+
+  btnT.addEventListener('click', () => {
+    const opts = getOpts(); if (!opts) return;
+    saveUndo('Flip Vertical (Time Reverse)');
+    const n = pfFlipTemporal(opts.lo, opts.hi, opts.inclLasers, opts.inclVel);
+    if (typeof render === 'function') render();
+    resultDiv.innerHTML = `<span style="color:#44ff88;">✓ Reversed ${n} note${n!==1?'s':''} in time. <kbd>Ctrl+Z</kbd> to undo.</span>`;
+    refreshStatus();
+  });
+
+  btnB.addEventListener('click', () => {
+    const opts = getOpts(); if (!opts) return;
+    saveUndo('Flip Both (Horizontal + Temporal)');
+    pfFlipHorizontal(opts.lo, opts.hi, opts.inclLasers);
+    const n = pfFlipTemporal(opts.lo, opts.hi, opts.inclLasers, opts.inclVel);
+    if (typeof render === 'function') render();
+    resultDiv.innerHTML = `<span style="color:#44ff88;">✓ Applied horizontal + temporal flip to ${n} note${n!==1?'s':''}. <kbd>Ctrl+Z</kbd> to undo.</span>`;
+    refreshStatus();
+  });
+
+  // Refresh status when the tool panel is focused (selection may have changed)
+  c.addEventListener('mouseenter', refreshStatus);
+}
+
+// ── Horizontal Flip: mirror BT A↔D, B↔C, FX-L↔R, VOL-L↔R (invert v) ────────
+export function pfFlipHorizontal(lo, hi, inclLasers) {
+  const ch = typeof chart !== 'undefined' ? chart : null;
+  if (!ch) return 0;
+  let count = 0;
+
+  // BT: swap lanes 0↔3, 1↔2
+  // Extract notes from each lane within [lo, hi], then reassign
+  const btBuckets = [[], [], [], []];
+  for (let li = 0; li < 4; li++) {
+    const keep = [], move = [];
+    ch.bt[li].forEach(n => (n.y >= lo && n.y < hi ? move : keep).push(n));
+    ch.bt[li] = keep;
+    btBuckets[li] = move;
+    count += move.length;
+  }
+  // Swap: lane 0 → 3, 1 → 2, 2 → 1, 3 → 0
+  [btBuckets[0], btBuckets[3]] = [btBuckets[3], btBuckets[0]];
+  [btBuckets[1], btBuckets[2]] = [btBuckets[2], btBuckets[1]];
+  for (let li = 0; li < 4; li++) {
+    btBuckets[li].forEach(n => ch.bt[li].push(n));
+    ch.bt[li].sort((a, b) => a.y - b.y);
+  }
+
+  // FX: swap lanes 0↔1
+  const fxBuckets = [[], []];
+  for (let li = 0; li < 2; li++) {
+    const keep = [], move = [];
+    ch.fx[li].forEach(n => (n.y >= lo && n.y < hi ? move : keep).push(n));
+    ch.fx[li] = keep;
+    fxBuckets[li] = move;
+    count += move.length;
+  }
+  [fxBuckets[0], fxBuckets[1]] = [fxBuckets[1], fxBuckets[0]];
+  for (let li = 0; li < 2; li++) {
+    fxBuckets[li].forEach(n => ch.fx[li].push(n));
+    ch.fx[li].sort((a, b) => a.y - b.y);
+  }
+
+  if (!inclLasers) return count;
+
+  // VOL: swap sides 0↔1, invert all v values (1 − v)
+  const laserBuckets = [[], []];
+  for (let s = 0; s < 2; s++) {
+    const keep = [], move = [];
+    ch.lasers[s].forEach(sec => (sec.y >= lo && sec.y < hi ? move : keep).push(sec));
+    ch.lasers[s] = keep;
+    laserBuckets[s] = move;
+  }
+  // Swap sides
+  [laserBuckets[0], laserBuckets[1]] = [laserBuckets[1], laserBuckets[0]];
+  for (let s = 0; s < 2; s++) {
+    laserBuckets[s].forEach(sec => {
+      // Invert all point v values
+      sec.points = sec.points.map(p => ({ ...p, v: parseFloat((1 - p.v).toFixed(6)) }));
+      ch.lasers[s].push(sec);
+    });
+    ch.lasers[s].sort((a, b) => a.y - b.y);
+  }
+
+  return count;
+}
+
+// ── Temporal Flip: reverse note order in time within [lo, hi] ────────────────
+export function pfFlipTemporal(lo, hi, inclLasers, inclVel) {
+  const ch = typeof chart !== 'undefined' ? chart : null;
+  if (!ch) return 0;
+  let count = 0;
+
+  // BT: new_y = lo + hi - n.y - max(n.len, 1)
+  for (let li = 0; li < 4; li++) {
+    ch.bt[li].forEach(n => {
+      if (n.y < lo || n.y >= hi) return;
+      const eff = Math.max(n.len, 1);
+      n.y = lo + hi - n.y - eff;
+      count++;
+    });
+    ch.bt[li].sort((a, b) => a.y - b.y);
+  }
+
+  // FX: same formula
+  for (let li = 0; li < 2; li++) {
+    ch.fx[li].forEach(n => {
+      if (n.y < lo || n.y >= hi) return;
+      const eff = Math.max(n.len, 1);
+      n.y = lo + hi - n.y - eff;
+      count++;
+    });
+    ch.fx[li].sort((a, b) => a.y - b.y);
+  }
+
+  if (inclVel && ch.scrollSpeedEvents) {
+    ch.scrollSpeedEvents.forEach(ev => {
+      if (ev.y < lo || ev.y >= hi) return;
+      ev.y = lo + hi - ev.y - 1;
+    });
+    ch.scrollSpeedEvents.sort((a, b) => a.y - b.y);
+  }
+
+  if (!inclLasers) return count;
+
+  // VOL: reverse each laser section's points and recompute offsets
+  for (let s = 0; s < 2; s++) {
+    ch.lasers[s].forEach(sec => {
+      if (sec.y < lo || sec.y >= hi) return;
+      const pts = sec.points;
+      if (pts.length < 2) return;
+      const totalX = pts[pts.length - 1].x;
+      // New section start (absolute tick)
+      const newY = hi - sec.y - totalX;
+      sec.y = newY;
+      // Reverse points and recalculate offsets
+      const reversed = pts.slice().reverse();
+      sec.points = reversed.map((p, i) => ({
+        ...p,
+        x: totalX - pts[pts.length - 1 - i].x,
+      }));
+    });
+    ch.lasers[s].sort((a, b) => a.y - b.y);
+  }
+
+  return count;
 }
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
