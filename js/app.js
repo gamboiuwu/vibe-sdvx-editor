@@ -8,7 +8,7 @@ import { calibrationWindow } from './calibration.js';
 import { t, applyLocalization } from './i18n.js';
 import { velEnvEditor, getVelEnvEditor, openVelEnvEditor, toggleVelEnvEditor } from './velenv.js';
 import { dockInit, dockRegister, dockApplyLayout, dockToggle } from './dock.js';
-import { openToolsWindow, savePatternFromSelection } from './tools.js';
+import { openToolsWindow, savePatternFromSelection, pfFlipHorizontal as _pfFlipHorizontal, pfFlipTemporal as _pfFlipTemporal } from './tools.js';
 import { openHeatmapWindow, updateHeatmap } from './heatmap.js';
 import { updateRadar, openRadarWindow } from './radar.js';
 import { openHandSimWindow } from './handsim.js';
@@ -60,8 +60,20 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.29';
+const APP_VERSION = '0.0.30';
 const CHANGELOG = [
+  {
+    version: '0.0.30',
+    title: 'Pattern Flip / Temporal Mirror [Experimental]',
+    entries: [
+      ['add', '<strong>Pattern Flip tool</strong> — new tool in <strong>Tools Hub → Edit → Pattern Flip</strong>. Select any region with the Select tool, then apply a horizontal lane mirror, a temporal (time) reversal, or both in a single click.'],
+      ['add', '<strong>Horizontal Flip</strong>: mirrors BT-A↔D and BT-B↔C, swaps FX-L↔R, swaps VOL-L↔R and inverts all laser <em>v</em> values (1−v) so the path reflects correctly across the centre axis.'],
+      ['add', '<strong>Temporal Flip (Reverse)</strong>: reverses the order of notes in time within the selection. Hold notes are repositioned so their end point stays at the mirror position. Laser sections have their point sequences reversed so the path plays backwards. Optionally includes hi-speed events.'],
+      ['add', '<strong>Flip Both</strong>: applies horizontal mirror first, then time reversal — useful for building rotational/rotationally-symmetric chart sections from a single authored phrase.'],
+      ['add', 'Live selection status readout shows the tick range, measure count, and note/laser-point counts before applying any operation. All three operations are fully undoable with <kbd>Ctrl+Z</kbd>.'],
+      ['add', 'Keyboard shortcuts: <kbd>Ctrl+Shift+H</kbd> for horizontal flip and <kbd>Ctrl+Shift+R</kbd> for temporal reversal (when a selection is active).'],
+    ],
+  },
   {
     version: '0.0.29',
     title: 'Chart Minimap',
@@ -5903,7 +5915,17 @@ function onKeyDown(e) {
       break;
 
     case 'h': case 'H':
-      if (!ctrl) {
+      if (ctrl && e.shiftKey) {
+        // Ctrl+Shift+H: Horizontal flip on selection
+        e.preventDefault();
+        if (sel.active) {
+          const lo = Math.min(sel.startTick, sel.endTick);
+          const hi = Math.max(sel.startTick, sel.endTick);
+          saveUndo('Flip Horizontal');
+          _pfFlipHorizontal(lo, hi, true);
+          render();
+        }
+      } else if (!ctrl) {
         e.preventDefault();
         const hp = document.getElementById('history-panel');
         if (hp) hp.style.display = hp.style.display === 'none' ? 'flex' : 'none';
@@ -5942,6 +5964,20 @@ function onKeyDown(e) {
       }
       _mirrorLaserSec = null;
       updateSelStatus(); render(); break;
+
+    case 'r': case 'R':
+      if (ctrl && e.shiftKey) {
+        // Ctrl+Shift+R: Temporal (time) reverse on selection
+        e.preventDefault();
+        if (sel.active) {
+          const lo = Math.min(sel.startTick, sel.endTick);
+          const hi = Math.max(sel.startTick, sel.endTick);
+          saveUndo('Flip Vertical (Time Reverse)');
+          _pfFlipTemporal(lo, hi, true, false);
+          render();
+        }
+      }
+      break;
 
     // Column navigation
     case 'ArrowLeft':

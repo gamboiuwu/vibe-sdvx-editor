@@ -439,6 +439,18 @@
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
 
 <div class="update-entry">
+  <h4><span class="ver-tag">v0.0.30</span>Pattern Flip / Temporal Mirror <span style="font-size:11px;color:#ffcc44;font-weight:normal;">[Experimental]</span></h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Pattern Flip tool</strong> — open via <strong>Tools Hub → Edit → Pattern Flip</strong>. Select any region, then mirror or reverse the contained note patterns in place with a single click.</li>
+    <li><span class="tag add">add</span><strong>Horizontal Flip</strong>: mirrors lanes left-to-right — BT-A↔D, BT-B↔C, FX-L↔R, VOL-L↔R. All laser <em>v</em> values are inverted (1−v) so paths reflect correctly across the centre axis.</li>
+    <li><span class="tag add">add</span><strong>Temporal Flip (Reverse)</strong>: reverses note order in time within the selection. Hold notes reposition so their duration is preserved. Laser sections have their point sequences reversed so paths play backwards. Hi-speed events can optionally be included.</li>
+    <li><span class="tag add">add</span><strong>Flip Both</strong>: horizontal mirror then time reversal in one click — useful for building rotationally-symmetric chart sections from a single authored phrase.</li>
+    <li><span class="tag add">add</span>Live selection status shows tick range, measure count, and note/laser-point counts before applying any operation.</li>
+    <li><span class="tag add">add</span>Keyboard shortcuts: <kbd>Ctrl+Shift+H</kbd> to flip horizontally, <kbd>Ctrl+Shift+R</kbd> to reverse in time (both require an active selection). All operations are undoable with <kbd>Ctrl+Z</kbd>.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
   <h4><span class="ver-tag">v0.0.29</span>Chart Minimap</h4>
   <ul>
     <li><span class="tag add">add</span><strong>Chart Minimap</strong> — a compact 52px-tall navigation strip rendered at the bottom of the 2D editor. Shows the entire chart at a glance: VOL-L (blue) and VOL-R (pink) coverage strips, FX-L/FX-R holds (orange), and BT A–D notes (white/grey rows) all mapped horizontally across the full chart duration.</li>
