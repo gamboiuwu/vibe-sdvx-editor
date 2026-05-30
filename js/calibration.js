@@ -55,6 +55,14 @@ export class CalibrationWindow {
     this._tapTimes   = [];    // performance.now() timestamps of each tap
     this._tapTimeout = null;  // timer that resets taps after 3 s of inactivity
 
+    // Live onset detection state (Point 11)
+    this._liveDetecting   = false;      // true while live BPM detection is running
+    this._liveOnsets      = [];         // audio-second timestamps of detected onsets
+    this._liveAnalyser    = null;       // AnalyserNode tapped from playing source
+    this._liveFreqBuf     = null;       // Float32Array for frequency data
+    this._liveLastMag     = null;       // previous frequency frame for spectral flux
+    this._liveFluxHistory = [];         // rolling flux values for adaptive threshold
+
     // DOM
     this._wrap       = null;
     this._canvas     = null;
@@ -75,6 +83,12 @@ export class CalibrationWindow {
     this._bpmValue    = chart?.bpmEvents?.[0]?.bpm ?? 120;
     this._bpmDetected = null;
     this._bpmDetecting = false;
+    this._liveDetecting   = false;
+    this._liveOnsets      = [];
+    this._liveAnalyser    = null;
+    this._liveFreqBuf     = null;
+    this._liveLastMag     = null;
+    this._liveFluxHistory = [];
     this._tapTempoTimes = [];
     if (this._tapTempoReset) { clearTimeout(this._tapTempoReset); this._tapTempoReset = null; }
     this._totalSec     = audioBuffer.duration;
@@ -270,6 +284,9 @@ export class CalibrationWindow {
 
     const bpmDetectBtn = mkBtn('🔍 Auto-Detect', 'Analyze waveform to estimate BPM', 'cal-bpm-detect-btn');
 
+    const liveDetectBtn = mkBtn('🎵 Live Detect', 'Play audio and detect BPM from live onset analysis — click again to stop', 'cal-bpm-live-btn');
+    liveDetectBtn.style.cssText += ';border-color:#ff9944;color:#ffbb66;';
+
     const tapTempoBtn = mkBtn('🥁 Tap Tempo', 'Tap repeatedly (or press T) to measure BPM from your tapping rhythm', 'cal-tap-tempo-btn');
 
     const tapTempoLbl = document.createElement('span');
@@ -307,7 +324,7 @@ export class CalibrationWindow {
     tapDismissBtn.style.cssText += ';display:none;border-color:#882244;color:#ff4466;';
 
     bpmPanel.append(
-      bpmSectionLbl, bpmLbl, bpmInput, bpmDetectBtn,
+      bpmSectionLbl, bpmLbl, bpmInput, bpmDetectBtn, liveDetectBtn,
       vsep(), tapBtn, tapReadout, tapConfirmBtn, tapDismissBtn,
       vsep(), bpmSuggestionLbl, bpmConfirmBtn, bpmDismissBtn,
       bpmGridNote
@@ -463,6 +480,15 @@ export class CalibrationWindow {
       if (dsm) dsm.style.display = 'none';
       this._bpmDetected = null;
       this._draw();
+    });
+
+    // Live BPM Detect toggle
+    liveDetectBtn.addEventListener('click', () => {
+      if (this._liveDetecting) {
+        this._doStopLiveDetect();
+      } else {
+        this._startLiveDetect();
+      }
     });
 
     // Tap Tempo
@@ -640,6 +666,7 @@ export class CalibrationWindow {
     this._drawLoopRegion(ctx, W, WY, WH, H);
     this._drawCalibMarker(ctx, W, RH, WY, WH, H);
     this._drawPlayhead(ctx, W, H);
+    if (this._liveDetecting) this._drawOnsetMarkers(ctx, W, WY, WH, H);
 
     // Update time display
     const td = document.getElementById('cal-time-disp');
@@ -894,6 +921,185 @@ export class CalibrationWindow {
     this._updateLabels(); this._draw();
   }
 
+  // ── Live onset BPM detection (Point 11) ───────────────────────────────────
+  // Spectral-flux onset detection running in the RAF loop while audio plays.
+  // The analyser is always attached to the audio graph in _play(); this method
+  // reads frequency data each frame, computes spectral flux, and marks onsets.
+
+  _startLiveDetect() {
+    if (this._liveDetecting) return;
+    this._liveDetecting   = true;
+    this._liveOnsets      = [];
+    this._liveFluxHistory = [];
+    this._liveLastMag     = null;
+
+    // Start audio if stopped
+    if (!this._playing) this._play();
+
+    const btn = document.getElementById('cal-bpm-live-btn');
+    if (btn) {
+      btn.textContent = '⏹ Stop Detect';
+      btn.style.borderColor = '#ff4466';
+      btn.style.color       = '#ff4466';
+    }
+    // Hide any pending suggestion from a prior detection
+    const sug = document.getElementById('cal-bpm-suggestion');
+    const cnf = document.getElementById('cal-bpm-confirm-btn');
+    const dsm = document.getElementById('cal-bpm-dismiss-btn');
+    if (sug) sug.style.display = 'none';
+    if (cnf) cnf.style.display = 'none';
+    if (dsm) dsm.style.display = 'none';
+    this._bpmDetected = null;
+  }
+
+  _doStopLiveDetect() {
+    this._liveDetecting = false;
+    const btn = document.getElementById('cal-bpm-live-btn');
+    if (btn) {
+      btn.textContent = '🎵 Live Detect';
+      btn.style.borderColor = '#ff9944';
+      btn.style.color       = '#ffbb66';
+    }
+
+    const bpm = this._computeIoiBpm();
+    const sug = document.getElementById('cal-bpm-suggestion');
+    const cnf = document.getElementById('cal-bpm-confirm-btn');
+    const dsm = document.getElementById('cal-bpm-dismiss-btn');
+
+    if (bpm !== null) {
+      this._bpmDetected = bpm;
+      if (sug) { sug.textContent = `Live Detect: ~${bpm.toFixed(1)} BPM (${this._liveOnsets.length} onsets)`; sug.style.display = 'inline'; }
+      if (cnf) cnf.style.display = 'inline';
+      if (dsm) dsm.style.display = 'inline';
+    } else {
+      const count = this._liveOnsets.length;
+      if (sug) { sug.textContent = count < 4 ? 'Detection inconclusive — play longer (need ≥4 onsets)' : 'Detection inconclusive — try a section with a clearer beat'; sug.style.display = 'inline'; }
+      if (dsm) dsm.style.display = 'inline';
+    }
+  }
+
+  // Poll called each RAF frame while live detection is active.
+  // Uses spectral flux (sum of positive magnitude differences) for onset detection.
+  _pollOnset() {
+    const analyser = this._liveAnalyser;
+    const buf = this._liveFreqBuf;
+    if (!analyser || !buf) return;
+
+    analyser.getFloatFrequencyData(buf); // dBFS values, range typically -140..0
+
+    // Convert dBFS to linear magnitude for each bin
+    const N = buf.length;
+    if (!this._liveLastMag) {
+      this._liveLastMag = new Float32Array(N);
+      for (let i = 0; i < N; i++) this._liveLastMag[i] = Math.pow(10, buf[i] / 20);
+      return; // skip first frame
+    }
+
+    // Spectral flux: sum positive differences (onset = energy increase)
+    let flux = 0;
+    for (let i = 0; i < N; i++) {
+      const mag = Math.pow(10, buf[i] / 20);
+      const diff = mag - this._liveLastMag[i];
+      if (diff > 0) flux += diff;
+      this._liveLastMag[i] = mag;
+    }
+
+    // Adaptive threshold: 1.5× rolling mean flux
+    this._liveFluxHistory.push(flux);
+    if (this._liveFluxHistory.length > 90) this._liveFluxHistory.shift(); // ~1.5s at 60fps
+    const mean = this._liveFluxHistory.reduce((a, b) => a + b, 0) / this._liveFluxHistory.length;
+    const threshold = mean * 1.5;
+
+    // Onset: flux exceeds threshold with minimum 120ms cooldown
+    const COOLDOWN = 0.12;
+    if (flux > threshold && flux > 0.05) {
+      const last = this._liveOnsets[this._liveOnsets.length - 1] ?? -Infinity;
+      if (this._curSec - last > COOLDOWN) {
+        this._liveOnsets.push(this._curSec);
+      }
+    }
+  }
+
+  // IOI (inter-onset interval) histogram to find dominant beat period → BPM.
+  _computeIoiBpm() {
+    const onsets = this._liveOnsets;
+    if (onsets.length < 4) return null;
+
+    // Compute inter-onset intervals
+    const iois = [];
+    for (let i = 1; i < onsets.length; i++) iois.push(onsets[i] - onsets[i - 1]);
+
+    // Histogram: 0.10s–2.00s in 20ms bins
+    const BIN   = 0.020;
+    const LO    = 0.10;
+    const HI    = 2.00;
+    const nBins = Math.round((HI - LO) / BIN);
+    const hist  = new Float32Array(nBins);
+
+    iois.forEach(ioi => {
+      if (ioi < LO || ioi > HI) return;
+      const b = Math.floor((ioi - LO) / BIN);
+      if (b >= 0 && b < nBins) hist[b] += 1.0;
+      // Boost harmonic bins (half / double period = musical sub/super-division)
+      const bHalf = Math.floor((ioi * 0.5 - LO) / BIN);
+      if (bHalf >= 0 && bHalf < nBins) hist[bHalf] += 0.5;
+      const bDbl = Math.floor((ioi * 2.0 - LO) / BIN);
+      if (bDbl >= 0 && bDbl < nBins) hist[bDbl]  += 0.5;
+    });
+
+    // Light smoothing
+    const smooth = new Float32Array(nBins);
+    for (let i = 0; i < nBins; i++) {
+      smooth[i] = (hist[Math.max(0, i - 1)] + hist[i] * 2 + hist[Math.min(nBins - 1, i + 1)]) / 4;
+    }
+
+    // Find peak bin
+    let maxV = 0, peakBin = -1;
+    for (let i = 0; i < nBins; i++) {
+      if (smooth[i] > maxV) { maxV = smooth[i]; peakBin = i; }
+    }
+    if (peakBin < 0 || maxV < 0.5) return null;
+
+    // Quadratic peak interpolation for sub-bin accuracy
+    let refined = peakBin;
+    if (peakBin > 0 && peakBin < nBins - 1) {
+      const a = smooth[peakBin - 1], b = smooth[peakBin], c = smooth[peakBin + 1];
+      if (b > a && b > c) refined = peakBin + 0.5 * (a - c) / (a - 2 * b + c);
+    }
+
+    const period = LO + (refined + 0.5) * BIN;
+    let bpm = 60 / period;
+    while (bpm > 300) bpm /= 2;
+    while (bpm < 60)  bpm *= 2;
+    return Math.round(bpm * 2) / 2;
+  }
+
+  // Draw amber vertical ticks on the waveform for each detected onset,
+  // plus a pulsing status label. Called only while liveDetecting is true.
+  _drawOnsetMarkers(ctx, W, wvY, wvH, H) {
+    // Draw onset tick lines
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,180,50,0.55)';
+    ctx.lineWidth = 1;
+    this._liveOnsets.forEach(sec => {
+      const x = this._secToX(sec);
+      if (x < 0 || x > W) return;
+      ctx.beginPath(); ctx.moveTo(x, wvY); ctx.lineTo(x, wvY + wvH); ctx.stroke();
+    });
+    ctx.restore();
+
+    // Pulsing status overlay in top-right of waveform
+    const pulse = Math.sin(performance.now() / 300) * 0.25 + 0.75; // 0.5–1.0
+    ctx.save();
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle   = '#ff4466';
+    ctx.font        = 'bold 11px monospace';
+    ctx.textAlign   = 'right';
+    ctx.fillText(`⏺ DETECTING · ${this._liveOnsets.length} onsets`, W - 8, wvY + 16);
+    ctx.textAlign = 'left';
+    ctx.restore();
+  }
+
   // ── Auto BPM detection ─────────────────────────────────────────────────────
   // Uses autocorrelation on the waveform envelope to find dominant rhythmic period.
   // Returns estimated BPM (rounded to nearest 0.5) or null on failure.
@@ -1063,7 +1269,17 @@ export class CalibrationWindow {
 
     const src = this._acCtx.createBufferSource();
     src.buffer = this._audioBuffer;
-    src.connect(this._acCtx.destination);
+
+    // Always wire an AnalyserNode so live detection can read audio data
+    const analyser = this._acCtx.createAnalyser();
+    analyser.fftSize = 2048;
+    analyser.smoothingTimeConstant = 0;
+    this._liveAnalyser = analyser;
+    this._liveFreqBuf  = new Float32Array(analyser.frequencyBinCount);
+    this._liveLastMag  = null;
+
+    src.connect(analyser);
+    analyser.connect(this._acCtx.destination);
 
     const loopA = this._loopEnabled && this._loopStart !== null
       ? Math.min(this._loopStart, this._loopEnd) : null;
@@ -1102,6 +1318,10 @@ export class CalibrationWindow {
   _stop() {
     if (this._source) { try { this._source.stop(); } catch(e) {} this._source = null; }
     this._playing = false;
+    this._liveAnalyser = null;
+    this._liveFreqBuf  = null;
+    this._liveLastMag  = null;
+    if (this._liveDetecting) this._doStopLiveDetect();
     const b = document.getElementById('cal-play-btn');
     if (b) b.textContent = '▶';
   }
@@ -1122,6 +1342,8 @@ export class CalibrationWindow {
             this._scrollSec = Math.max(0, this._curSec - vis * 0.18);
           }
         }
+        // Live onset detection — sample each animation frame
+        if (this._liveDetecting && this._liveAnalyser) this._pollOnset();
       }
       this._draw();
       this._rafId = requestAnimationFrame(tick);
@@ -1191,6 +1413,7 @@ export class CalibrationWindow {
 
   // ── Close ──────────────────────────────────────────────────────────────────
   _close(apply) {
+    this._liveDetecting = false;  // cancel live detection silently before stop
     this._stop();
     if (this._rafId) { cancelAnimationFrame(this._rafId); this._rafId = null; }
     if (this._clickTimer) { clearTimeout(this._clickTimer); this._clickTimer = null; }
