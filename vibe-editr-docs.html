@@ -439,6 +439,17 @@
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
 
 <div class="update-entry">
+  <h4><span class="ver-tag">v0.0.31</span>Live Onset BPM Detection <span style="font-size:11px;color:#ffcc44;font-weight:normal;">[Experimental]</span></h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>🎵 Live Detect button</strong> in the Calibration window BPM panel. Click to begin — audio starts playing and the system collects real-time onset data frame by frame. Click again (or stop playback) to end detection and receive a BPM estimate.</li>
+    <li><span class="tag add">add</span>Uses <strong>spectral flux onset detection</strong>: each animation frame the frequency spectrum is compared to the previous frame and summed positive energy increases form a flux signal. An adaptive threshold (1.5× rolling mean) gates events, suppressing noise and false triggers.</li>
+    <li><span class="tag add">add</span><strong>Inter-Onset Interval (IOI) histogram</strong> with harmonic weighting at ½× and 2× each IOI accumulates evidence for the dominant beat period. Quadratic peak interpolation provides sub-bin BPM accuracy.</li>
+    <li><span class="tag add">add</span><strong>Amber onset tick marks</strong> appear on the waveform in real time as onsets are detected. A pulsing <em>⏺ DETECTING · N onsets</em> label in the waveform corner shows detection progress.</li>
+    <li><span class="tag add">add</span>Result shown as a suggestion with Apply / Dismiss — same flow as Auto-Detect and Tap Tempo. The calibration marker and offset are never modified during detection.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
   <h4><span class="ver-tag">v0.0.30</span>Pattern Flip / Temporal Mirror <span style="font-size:11px;color:#ffcc44;font-weight:normal;">[Experimental]</span></h4>
   <ul>
     <li><span class="tag add">add</span><strong>Pattern Flip tool</strong> — open via <strong>Tools Hub → Edit → Pattern Flip</strong>. Select any region, then mirror or reverse the contained note patterns in place with a single click.</li>
@@ -736,7 +747,7 @@
 </div>
 
 <div class="note-box">
-  Looking for things still on the roadmap (strict 2D orthographic preview, spacebar BPM detection mode)? See <code>Upcoming Changes.rtf</code> in the project root. Chart Minimap shipped in v0.0.29; FX Automation Lane shipped in v0.0.28; Laser Mirror Mode shipped in v0.0.26.
+  Looking for things still on the roadmap (strict 2D orthographic preview)? See <code>Upcoming Changes.rtf</code> in the project root. Live Onset BPM Detection shipped in v0.0.31; Pattern Flip shipped in v0.0.30; Chart Minimap shipped in v0.0.29.
 </div>
 </section>
 

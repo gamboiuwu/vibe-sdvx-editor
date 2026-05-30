@@ -60,8 +60,20 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.30';
+const APP_VERSION = '0.0.31';
 const CHANGELOG = [
+  {
+    version: '0.0.31',
+    title: 'Live Onset BPM Detection [Experimental]',
+    entries: [
+      ['add', '<strong>🎵 Live Detect button</strong> in the Calibration window\'s BPM panel. Click to start playing audio and collecting real-time onset data; click again (or stop playback) to end detection and receive a BPM suggestion.'],
+      ['add', 'Uses <strong>spectral flux onset detection</strong>: each animation frame, the frequency spectrum is compared to the previous frame and positive energy increases are summed into a flux value. An adaptive threshold (1.5× rolling mean) gates onset events, preventing spurious double-triggers.'],
+      ['add', '<strong>Inter-Onset Interval (IOI) histogram</strong> accumulates the time gaps between detected onsets, with harmonic weighting at ½× and 2× each IOI so beat subdivisions and double-beats reinforce the dominant period. Quadratic peak interpolation gives sub-bin BPM accuracy.'],
+      ['add', 'Detected onset positions are drawn as <strong>amber tick marks</strong> on the waveform as they are captured. A pulsing <em>⏺ DETECTING · N onsets</em> status label is visible in the top-right corner of the waveform during detection.'],
+      ['add', 'After detection stops, the estimated BPM is shown as a <em>suggestion</em> (same Apply / Dismiss flow as Auto-Detect and Tap Tempo). The calibration marker and offset are never modified while detection is running.'],
+      ['add', 'The AnalyserNode is now wired into every calibration playback session (zero audio impact — analyser nodes are read-only). This lets Live Detect start instantly even if audio was already playing before the button was clicked.'],
+    ],
+  },
   {
     version: '0.0.30',
     title: 'Pattern Flip / Temporal Mirror [Experimental]',
