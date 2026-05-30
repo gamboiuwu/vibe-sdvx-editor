@@ -627,6 +627,72 @@ export class GLLaneRenderer {
           gSegs.push({ sy0, sy1, cx0, cx1, hw0, hw1, v0, v1,
                        wide: sec.wide, slam });
         }
+        // ── Entry cap: rectangle at first point, extends toward judgment ───────
+        // In 3D, the first point (earliest tick) is closest to judgment (largest sy).
+        // The cap extends further downward (toward judgment = larger sy).
+        const firstPt = sec.points[0];
+        const firstDt = sec.y + firstPt.ry - tick;
+        if (firstDt >= 0 && firstDt <= VT) {
+          const fsy = gv._screenY(firstDt, p);
+          const fcx = gv._laserX(firstPt.v, fsy, p, sec.wide);
+          const fhw = gv._halfW(fsy, p) * LASER_FRAC * 2;
+          const cW = fhw * 1.84, cH = fhw * 2.4;
+          flatQuad(fcx - cW * 0.5, fsy,      fcx + cW * 0.5, fsy,
+                   fcx + cW * 0.5, fsy + cH, fcx - cW * 0.5, fsy + cH, mainCol);
+          if (!simplified) {
+            const sw = wireframe ? Math.max(1.5, fhw * 0.35) : Math.max(0.6, fhw * 0.18);
+            flatQuad(fcx - cW * 0.5,      fsy, fcx - cW * 0.5 + sw, fsy,
+                     fcx - cW * 0.5 + sw, fsy + cH, fcx - cW * 0.5, fsy + cH, edgeCol);
+            flatQuad(fcx + cW * 0.5 - sw, fsy, fcx + cW * 0.5,      fsy,
+                     fcx + cW * 0.5,      fsy + cH, fcx + cW * 0.5 - sw, fsy + cH, edgeCol);
+          }
+        }
+
+        // ── Exit cap: rectangle at last point, extends away from judgment ────────
+        // The last point (latest tick) is furthest from judgment (smallest sy).
+        // The cap extends upward (away from judgment = smaller sy).
+        if (sec.points.length >= 2) {
+          const lastPt = sec.points[sec.points.length - 1];
+          const lastDt = sec.y + lastPt.ry - tick;
+          if (lastDt >= 0 && lastDt <= VT) {
+            const lsy = gv._screenY(lastDt, p);
+            const lcx = gv._laserX(lastPt.v, lsy, p, sec.wide);
+            const lhw = gv._halfW(lsy, p) * LASER_FRAC * 2;
+            const cW = lhw * 1.84, cH = lhw * 2.4;
+            flatQuad(lcx - cW * 0.5, lsy - cH, lcx + cW * 0.5, lsy - cH,
+                     lcx + cW * 0.5, lsy,       lcx - cW * 0.5, lsy,       mainCol);
+            if (!simplified) {
+              const sw = wireframe ? Math.max(1.5, lhw * 0.35) : Math.max(0.6, lhw * 0.18);
+              flatQuad(lcx - cW * 0.5,      lsy - cH, lcx - cW * 0.5 + sw, lsy - cH,
+                       lcx - cW * 0.5 + sw, lsy,      lcx - cW * 0.5,      lsy,      edgeCol);
+              flatQuad(lcx + cW * 0.5 - sw, lsy - cH, lcx + cW * 0.5,      lsy - cH,
+                       lcx + cW * 0.5,      lsy,      lcx + cW * 0.5 - sw, lsy,      edgeCol);
+            }
+          }
+        }
+
+        // ── Slam direction arrows: white triangle pointing the flick way ─────────
+        for (let pi = 0; pi < sec.points.length - 1; pi++) {
+          const p0 = sec.points[pi], p1 = sec.points[pi + 1];
+          if (!isSlam(p0, p1)) continue;
+          const dt1 = sec.y + p1.ry - tick;
+          if (dt1 < 0 || dt1 > VT) continue;
+          const dir = p1.v >= p0.v ? 1 : -1;
+          const sy  = gv._screenY(dt1, p);
+          const xDest = gv._laserX(p1.v, sy, p, sec.wide);
+          const hw  = gv._halfW(sy, p) * LASER_FRAC * 2;
+          const ax  = xDest + dir * (hw + 1);
+          const ah  = hw * 1.3;
+          const aw  = hw * 1.1;
+          const [ta0, ta1] = T(ax,              sy - ah);
+          const [tb0, tb1] = T(ax,              sy + ah);
+          const [tc0, tc1] = T(ax + dir * aw,   sy);
+          this._ensureCap(3);
+          this._vert(ta0, ta1, whiteCol[0], whiteCol[1], whiteCol[2], whiteCol[3]);
+          this._vert(tb0, tb1, whiteCol[0], whiteCol[1], whiteCol[2], whiteCol[3]);
+          this._vert(tc0, tc1, whiteCol[0], whiteCol[1], whiteCol[2], whiteCol[3]);
+        }
+
         if (!gSegs.length) continue;
 
         // ── Emit each segment / slam ──────────────────────────────────

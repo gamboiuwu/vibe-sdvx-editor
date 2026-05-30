@@ -829,20 +829,43 @@ export class GameView {
         ctx.restore();
         // No anchor dots in the preview — edit handles are 2D-editor only
 
-        // ── Tail-end cap at the last point of the section ─────────────────
-        if (sec.points.length >= 2) {
-          const lastPt = sec.points[sec.points.length - 1];
-          const lastDt = this._effDt(sec.y + lastPt.ry);
-          if (lastDt >= 0 && lastDt <= VT) {
-            const lastSy = this._screenY(lastDt, p);
-            if (lastSy > p.cutoffY) {
-              const lastCx  = this._laserX(lastPt.v, lastSy, p, sec.wide);
-              const lastHw  = this._halfW(lastSy, p) * LASER_FRAC * 2;
+        // ── Entry cap (first point, closest to judgment) ──────────────────
+        {
+          const firstPt = sec.points[0];
+          const firstDt = this._effDt(sec.y + firstPt.ry);
+          if (firstDt >= 0 && firstDt <= VT) {
+            const fsy = this._screenY(firstDt, p);
+            if (fsy > p.cutoffY) {
+              const fcx = this._laserX(firstPt.v, fsy, p, sec.wide);
+              const fhw = this._halfW(fsy, p) * LASER_FRAC * 2;
+              const cW = fhw * 1.84, cH = fhw * 2.4;
               ctx.save();
               ctx.globalAlpha = laserOpacity * 0.85;
               ctx.fillStyle   = mainCol;
               ctx.shadowColor = glowCol; ctx.shadowBlur = hq ? 6 : 0;
-              ctx.fillRect(lastCx - lastHw * 1.6, lastSy - lastHw * 0.5, lastHw * 3.2, lastHw);
+              ctx.fillRect(fcx - cW * 0.5, fsy, cW, cH);
+              ctx.shadowBlur = 0;
+              ctx.globalAlpha = 1;
+              ctx.restore();
+            }
+          }
+        }
+
+        // ── Exit cap (last point, furthest from judgment) ─────────────────
+        if (sec.points.length >= 2) {
+          const lastPt = sec.points[sec.points.length - 1];
+          const lastDt = this._effDt(sec.y + lastPt.ry);
+          if (lastDt >= 0 && lastDt <= VT) {
+            const lsy = this._screenY(lastDt, p);
+            if (lsy > p.cutoffY) {
+              const lcx  = this._laserX(lastPt.v, lsy, p, sec.wide);
+              const lhw  = this._halfW(lsy, p) * LASER_FRAC * 2;
+              const cW = lhw * 1.84, cH = lhw * 2.4;
+              ctx.save();
+              ctx.globalAlpha = laserOpacity * 0.85;
+              ctx.fillStyle   = mainCol;
+              ctx.shadowColor = glowCol; ctx.shadowBlur = hq ? 6 : 0;
+              ctx.fillRect(lcx - cW * 0.5, lsy - cH, cW, cH);
               ctx.shadowBlur = 0;
               ctx.globalAlpha = 1;
               ctx.restore();

@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.32';
+const APP_VERSION = '0.0.33';
 const CHANGELOG = [
+  {
+    version: '0.0.33',
+    title: 'Rectangular Laser Caps & 3D Preview Caps',
+    entries: [
+      ['fix', '<strong>Rectangular entry/exit caps.</strong> The laser section start (entry) and end (exit) markers are now solid rectangles instead of triangles, matching the SDVX arcade visual convention.'],
+      ['add', '<strong>Caps and slam arrows now visible in 3D Preview.</strong> The WebGL-rendered 3D game preview now draws rectangular entry/exit caps and white slam-direction arrowheads on all laser sections, matching the 2D editor.'],
+      ['fix', 'Preview laser caps properly extend toward and away from the judgment line, giving clear visual cues for where each laser section starts and ends in 3D perspective.'],
+    ],
+  },
   {
     version: '0.0.32',
     title: 'Laser Continuity & SDVX Entry/Exit Markers',

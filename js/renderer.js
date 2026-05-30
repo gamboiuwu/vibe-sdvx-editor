@@ -1547,44 +1547,34 @@ export class Renderer {
     ctx.shadowColor = color;
     ctx.shadowBlur  = hq2d ? 8 : 0;
 
-    // Half-width for the tail/head triangles (a touch narrower than the ribbon)
+    // Half-width for the caps (slightly narrower than the ribbon)
     const TW = HALF * 0.92;
-    const TLEN = HALF * 2.4;   // length of the tail/head along the time axis
+    const TLEN = HALF * 2.4;   // length of the cap along the time axis
 
-    // ── Entry tail: extends DOWN (earlier) from the first point ──
+    // ── Entry cap: rectangle extends DOWN (toward earlier ticks) from the first point ──
     const first = pts[0];
     const ft = sec.y + first.ry;
     if (ft >= startY && ft <= endY) {
       const x = pxAt(first.v);
       const y = pyAt(ft);
-      ctx.beginPath();
-      ctx.moveTo(x - TW, y);
-      ctx.lineTo(x + TW, y);
-      ctx.lineTo(x, y + TLEN);      // apex below = the lead-in point
-      ctx.closePath();
       ctx.fillStyle = color;
-      ctx.fill();
+      ctx.fillRect(x - TW, y, TW * 2, TLEN);
       ctx.strokeStyle = edge;
       ctx.lineWidth = 1;
-      ctx.stroke();
+      ctx.strokeRect(x - TW, y, TW * 2, TLEN);
     }
 
-    // ── Exit head: extends UP (later) from the last point ──
+    // ── Exit cap: rectangle extends UP (toward later ticks) from the last point ──
     const last = pts[pts.length - 1];
     const lt = sec.y + last.ry;
     if (lt >= startY && lt <= endY) {
       const x = pxAt(last.v);
       const y = pyAt(lt);
-      ctx.beginPath();
-      ctx.moveTo(x - TW, y);
-      ctx.lineTo(x + TW, y);
-      ctx.lineTo(x, y - TLEN);      // apex above = the exit point
-      ctx.closePath();
       ctx.fillStyle = color;
-      ctx.fill();
+      ctx.fillRect(x - TW, y - TLEN, TW * 2, TLEN);
       ctx.strokeStyle = edge;
       ctx.lineWidth = 1;
-      ctx.stroke();
+      ctx.strokeRect(x - TW, y - TLEN, TW * 2, TLEN);
     }
 
     // ── Slam direction arrows: one per slam segment, pointing the flick way ──
