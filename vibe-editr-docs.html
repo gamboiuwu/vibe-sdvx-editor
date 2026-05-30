@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.29 · 2026</span>
+  <span class="version">v0.0.32 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,17 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.32</span>Laser Continuity &amp; SDVX Entry/Exit Markers</h4>
+  <ul>
+    <li><span class="tag fix">fix</span><strong>Smooth / Linear / Step now works on slam-connected lasers.</strong> Right-clicking the point where a laser line meets a slam used to edit the slam segment itself (which always renders as a slam, so nothing changed). The interp menu and Alt+click now target the visible non-slam line adjacent to the point, so you can curve the run leading into or out of a slam.</li>
+    <li><span class="tag fix">fix</span>The laser interpolation menu no longer leaves a stale handler bound when dismissed without a selection, which could apply the chosen interp to the wrong anchor.</li>
+    <li><span class="tag add">add</span><strong>Auto-connect touching lasers.</strong> When one laser ends on the same tick and position where another begins — whether the junction is a slam, smooth curve, or normal point — the two merge into one continuous laser automatically.</li>
+    <li><span class="tag add">add</span><strong>SDVX-style entry tail &amp; exit head.</strong> Every laser draws a tapered tail at its start and a head at its end in the 2D editor, so you can always see where it begins and ends.</li>
+    <li><span class="tag add">add</span><strong>Slam direction arrows.</strong> Each slam draws a white arrowhead at its destination pointing the way the knob flicks, so isolated slams clearly show which direction to move.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.31</span>Live Onset BPM Detection <span style="font-size:11px;color:#ffcc44;font-weight:normal;">[Experimental]</span></h4>
