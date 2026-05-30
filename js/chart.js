@@ -302,6 +302,60 @@ export class ChartData {
     arr.sort((a, b) => a.y - b.y);
   }
 
+  // ── Auto-connect adjacent laser sections ──────────────────────────────────
+  // When the END of one section coincides with the START of the next (same
+  // absolute tick within tickEps, same position within LASER_SLAM_V_EPS), the
+  // two are really one continuous laser that happened to be authored as two
+  // pieces. Merge them so the path is continuous — whether the junction is a
+  // slam, a smooth/bezier curve, or a normal segment. This mirrors how SDVX /
+  // KSON treats touching laser segments as a single connected laser.
+  //
+  // Returns the number of merges performed (0 if nothing changed).
+  autoConnectLasers(side, tickEps = 1) {
+    const arr = this.lasers[side];
+    if (!arr || arr.length < 2) return 0;
+    arr.sort((a, b) => a.y - b.y);
+
+    let merges = 0;
+    let i = 0;
+    while (i < arr.length - 1) {
+      const a = arr[i], b = arr[i + 1];
+      if (!a.points.length || !b.points.length) { i++; continue; }
+
+      const aLast    = a.points[a.points.length - 1];
+      const aLastTick = a.y + aLast.ry;
+      const bFirst   = b.points[0];
+      const bFirstTick = b.y + bFirst.ry;
+
+      const touching = Math.abs(bFirstTick - aLastTick) <= tickEps;
+      const sameV    = Math.abs(bFirst.v - aLast.v) <= LASER_SLAM_V_EPS;
+
+      if (touching && sameV) {
+        // Append b's points (after its first, which duplicates a's last) onto a,
+        // rebasing their ry to a's origin. Preserve interp/curve/slam flags.
+        for (let pi = 1; pi < b.points.length; pi++) {
+          const p = b.points[pi];
+          a.points.push({
+            ry:    (b.y + p.ry) - a.y,
+            v:     p.v,
+            slam:  p.slam,
+            interp: p.interp ?? 'linear',
+            curve:  p.curve  ?? 0.5,
+          });
+        }
+        a.wide = a.wide || b.wide;
+        // Preserve an active-draw / mirror reference tag if `b` carried one so
+        // callers can re-point their section references to the survivor `a`.
+        if (b.__keep && !a.__keep) a.__keep = b.__keep;
+        arr.splice(i + 1, 1); // remove b; re-test a against the new next section
+        merges++;
+      } else {
+        i++;
+      }
+    }
+    return merges;
+  }
+
   // ── Slam query interface ─────────────────────────────────────────────────
   // Returns all slam events for one laser side as first-class structured objects:
   //   { y, endY, startV, endV, side }

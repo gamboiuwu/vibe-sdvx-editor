@@ -60,8 +60,19 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.31';
+const APP_VERSION = '0.0.32';
 const CHANGELOG = [
+  {
+    version: '0.0.32',
+    title: 'Laser Continuity & SDVX Entry/Exit Markers',
+    entries: [
+      ['fix', '<strong>Smooth/Linear/Step now works on slam-connected lasers.</strong> Right-clicking the point where a laser line meets a slam previously edited the slam segment (which always renders as a slam, so nothing visibly changed). The interp menu and Alt+click now target the <em>visible</em> line — the non-slam segment adjacent to the point — so you can finally curve the run leading into or out of a slam.'],
+      ['fix', 'The laser interpolation menu no longer leaves a stale click handler bound when dismissed without a selection, which could apply <em>Smooth</em> to the wrong anchor on a later open.'],
+      ['add', '<strong>Auto-connect touching lasers.</strong> When the end of one laser sits on the same tick and position as the start of another (whether the junction is a slam, a smooth curve, or a normal point), the two are automatically merged into one continuous laser. Placing or dragging a laser onto another laser\'s endpoint now joins them instead of leaving a disjoint break.'],
+      ['add', '<strong>SDVX-style entry tail & exit head.</strong> Every laser now draws a tapered tail at its start and a head at its end in the 2D editor, so you can always see where a laser begins and ends — matching the in-game/KSM look.'],
+      ['add', '<strong>Slam direction arrows.</strong> Each slam draws a white arrowhead at its destination pointing the way the knob flicks, so isolated slams clearly communicate which direction to move.'],
+    ],
+  },
   {
     version: '0.0.31',
     title: 'Live Onset BPM Detection [Experimental]',
@@ -4789,11 +4800,41 @@ let _laserPress = null;
 // Bezier handle drag state — set when user grabs a diamond handle
 let _curveDrag = null; // { sec, ptIndex, t0, t1, colIdx, colLen }
 
+// Resolve which point's outgoing `.interp` should be edited when the user opens
+// the interpolation menu on anchor `ptIndex`.
+//
+// `.interp` describes the OUTGOING segment from a point. A slam segment always
+// renders as a slam regardless of interp, so changing the interp of a point
+// whose outgoing segment is a slam appears to "do nothing". When the user
+// right-clicks such a point (e.g. the start of a slam, which is also the end of
+// the laser line leading into it) they almost always mean the visible non-slam
+// line. So:
+//   • prefer the OUTGOING segment when it exists and is NOT a slam,
+//   • otherwise fall back to the INCOMING segment (previous point) if non-slam,
+//   • otherwise edit the outgoing point anyway (slam→slam / lone cases).
+// Returns the point index whose `.interp` controls the segment we will edit.
+function resolveLaserInterpTarget(sec, ptIndex) {
+  const pts = sec?.points;
+  if (!pts || !pts.length) return ptIndex;
+  const hasOut = ptIndex < pts.length - 1;
+  const hasIn  = ptIndex > 0;
+  const outSlam = hasOut && ChartData.isPointSlam(pts[ptIndex], pts[ptIndex + 1]);
+  const inSlam  = hasIn  && ChartData.isPointSlam(pts[ptIndex - 1], pts[ptIndex]);
+
+  if (hasOut && !outSlam) return ptIndex;        // normal: edit outgoing
+  if (hasIn  && !inSlam)  return ptIndex - 1;    // slam/endpoint: edit incoming line
+  if (hasOut)             return ptIndex;         // slam→slam: edit outgoing
+  return Math.max(0, ptIndex - 1);
+}
+
 // Show the laser interpolation popup menu at (x, y) for a given anchor point.
 function showLaserInterpMenu(screenX, screenY, side, sec, ptIndex) {
   const menu = document.getElementById('laser-interp-menu');
   if (!menu) return;
-  const pt      = sec.points[ptIndex];
+
+  // Edit the segment the user most likely means (see resolveLaserInterpTarget).
+  const targetIdx = resolveLaserInterpTarget(sec, ptIndex);
+  const pt      = sec.points[targetIdx];
   const current = pt?.interp ?? 'linear';
 
   // Mark active item
@@ -4805,36 +4846,66 @@ function showLaserInterpMenu(screenX, screenY, side, sec, ptIndex) {
   menu.style.top     = screenY + 'px';
   menu.style.display = 'block';
 
-  // Remove old handler, add fresh one
+  // Replace any previous handler so a menu that was opened then dismissed
+  // (without a selection) can't leave a stale listener bound to an old point.
+  if (menu._limHandler) menu.removeEventListener('click', menu._limHandler);
   const handler = e => {
     const item = e.target.closest('.lim-item');
     if (!item) return;
     const type = item.dataset.type;
-    if (type && sec.points[ptIndex]) {
+    if (type && sec.points[targetIdx]) {
       saveUndo('Set interp ' + type);
-      sec.points[ptIndex].interp = type;
+      sec.points[targetIdx].interp = type;
       // Sync curve to sensible default when switching to bezier
-      if (type === 'bezier' && !(sec.points[ptIndex].curve ?? 0.5)) {
-        sec.points[ptIndex].curve = 0.5;
+      if (type === 'bezier' && !(sec.points[targetIdx].curve ?? 0.5)) {
+        sec.points[targetIdx].curve = 0.5;
       }
       render();
     }
     menu.style.display = 'none';
     menu.removeEventListener('click', handler);
+    menu._limHandler = null;
   };
+  menu._limHandler = handler;
   menu.addEventListener('click', handler);
 }
 
-// Cycle through interpolation types: linear → bezier → step → linear
+// Cycle through interpolation types: linear → bezier → step → linear.
+// Uses the same segment-resolution logic as the menu so Alt+click on a
+// slam-adjacent point cycles the visible line rather than the slam.
 function cycleInterpType(sec, ptIndex) {
-  if (!sec?.points[ptIndex]) return;
-  const pt   = sec.points[ptIndex];
+  const targetIdx = resolveLaserInterpTarget(sec, ptIndex);
+  if (!sec?.points[targetIdx]) return;
+  const pt   = sec.points[targetIdx];
   const cycle = ['linear', 'bezier', 'step'];
   const next  = cycle[(cycle.indexOf(pt.interp ?? 'linear') + 1) % cycle.length];
   saveUndo('Cycle interp → ' + next);
   pt.interp = next;
   if (next === 'bezier' && pt.curve == null) pt.curve = 0.5;
   render();
+}
+
+// Auto-connect touching laser sections on `side`, keeping any active-draw /
+// mirror section references valid if they get merged into an earlier section.
+function autoConnectLasersFixup(side) {
+  if (!chart || typeof chart.autoConnectLasers !== 'function') return;
+  if (_activeLaserSec && _activeLaserSec.side === side) _activeLaserSec.sec.__keep = 'active';
+  if (_mirrorLaserSec && _mirrorLaserSec.side === side) _mirrorLaserSec.sec.__keep = 'mirror';
+
+  const merges = chart.autoConnectLasers(side);
+
+  if (merges > 0) {
+    // Re-point references to the surviving (earlier) section that carries the tag.
+    for (const sec of chart.lasers[side]) {
+      if (sec.__keep === 'active' && _activeLaserSec) {
+        _activeLaserSec.sec = sec;
+        if (renderer) renderer.activeLaserSec = sec;
+      }
+      if (sec.__keep === 'mirror' && _mirrorLaserSec) _mirrorLaserSec.sec = sec;
+    }
+  }
+  // Clean up tags regardless
+  for (const sec of chart.lasers[side]) delete sec.__keep;
 }
 
 // Close laser interp menu when clicking elsewhere
@@ -5252,6 +5323,11 @@ function onMouseDown(e) {
       }
     }
 
+    // Auto-connect touching sections so a laser placed on another laser's
+    // endpoint becomes one continuous path (keeps the active-draw ref valid).
+    autoConnectLasersFixup(side);
+    if (laserMirrorMode) autoConnectLasersFixup(1 - side);
+
     _laserSel = null;
     if (renderer) renderer.selectedLaserPoint = null;
     render(); return;
@@ -5446,11 +5522,14 @@ function onMouseUp(e) {
               mSec.points.push({ ry: mLast.ry + slamGap, v: mv, slam: true, interp: 'linear', curve: 0.5 });
             }
           }
+          autoConnectLasersFixup(press.side);
+          if (laserMirrorMode) autoConnectLasersFixup(1 - press.side);
           render();
           return;
         } else if (dt > LASER_SLAM_TICKS && dvOK) {
           // Dragged to a later tick at a new position → normal segment point.
           sec.points.push({ ry: relTick - sec.y, v: relV, slam: false, interp: 'linear', curve: 0.5 });
+          autoConnectLasersFixup(press.side);
           render();
           return;
         }

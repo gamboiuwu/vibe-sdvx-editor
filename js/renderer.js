@@ -1344,6 +1344,13 @@ export class Renderer {
         ctx.globalAlpha = 1;
         ctx.restore();
 
+        // ── SDVX-style entry tail / exit head + slam direction arrows ─────────
+        // Tells the chartist where a laser begins, where it ends, and which way
+        // a slam flicks. Time runs bottom→top in the editor (earlier = larger y),
+        // so the entry tail extends DOWN from the first point and the exit head
+        // extends UP from the last point.
+        this._drawLaserSectionCaps(sec, side, pts, pxAt, pyAt, HALF, color, edge, startY, endY, hq2d);
+
         // ── Bezier handle indicators ─────────────────────────────────────────
         // Shown as a hollow diamond on the curve at the control point position.
         if (this.showLaserDots) {
@@ -1525,6 +1532,88 @@ export class Renderer {
       }
     }
     return null;
+  }
+
+  // ── Laser entry tail / exit head + slam direction arrows ───────────────────
+  // Draws SDVX-style markers so the chartist always knows where a laser begins,
+  // where it ends, and which direction each slam flicks. Drawn in laser color,
+  // clipped to the visible column range.
+  _drawLaserSectionCaps(sec, side, pts, pxAt, pyAt, HALF, color, edge, startY, endY, hq2d) {
+    if (!pts || pts.length === 0) return;
+    const ctx = this.ctx;
+
+    ctx.save();
+    ctx.globalAlpha = laserOpacity;
+    ctx.shadowColor = color;
+    ctx.shadowBlur  = hq2d ? 8 : 0;
+
+    // Half-width for the tail/head triangles (a touch narrower than the ribbon)
+    const TW = HALF * 0.92;
+    const TLEN = HALF * 2.4;   // length of the tail/head along the time axis
+
+    // ── Entry tail: extends DOWN (earlier) from the first point ──
+    const first = pts[0];
+    const ft = sec.y + first.ry;
+    if (ft >= startY && ft <= endY) {
+      const x = pxAt(first.v);
+      const y = pyAt(ft);
+      ctx.beginPath();
+      ctx.moveTo(x - TW, y);
+      ctx.lineTo(x + TW, y);
+      ctx.lineTo(x, y + TLEN);      // apex below = the lead-in point
+      ctx.closePath();
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.strokeStyle = edge;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    // ── Exit head: extends UP (later) from the last point ──
+    const last = pts[pts.length - 1];
+    const lt = sec.y + last.ry;
+    if (lt >= startY && lt <= endY) {
+      const x = pxAt(last.v);
+      const y = pyAt(lt);
+      ctx.beginPath();
+      ctx.moveTo(x - TW, y);
+      ctx.lineTo(x + TW, y);
+      ctx.lineTo(x, y - TLEN);      // apex above = the exit point
+      ctx.closePath();
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.strokeStyle = edge;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    // ── Slam direction arrows: one per slam segment, pointing the flick way ──
+    for (let pi = 0; pi < pts.length - 1; pi++) {
+      const p0 = pts[pi], p1 = pts[pi + 1];
+      if (!ChartData.isPointSlam(p0, p1)) continue;
+      const t1 = sec.y + p1.ry;
+      if (t1 < startY || t1 > endY) continue;
+      const dir = p1.v >= p0.v ? 1 : -1;       // +1 = flick right, −1 = flick left
+      const xDest = pxAt(p1.v);
+      const yDest = pyAt(t1);
+      const ax = xDest + dir * (HALF + 1);      // just outside the destination edge
+      const ah = HALF * 1.3;                    // arrow half-height
+      const aw = HALF * 1.1;                    // arrow length
+      ctx.beginPath();
+      ctx.moveTo(ax, yDest - ah);
+      ctx.lineTo(ax, yDest + ah);
+      ctx.lineTo(ax + dir * aw, yDest);         // apex points in flick direction
+      ctx.closePath();
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+      ctx.strokeStyle = edge;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
+    ctx.restore();
   }
 
   // Returns the nearest laser anchor point within hitRadius pixels of (cx, cy),
