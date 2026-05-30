@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.33';
+const APP_VERSION = '0.0.34';
 const CHANGELOG = [
+  {
+    version: '0.0.34',
+    title: 'Scroll Rate Sync & Laser Cap Alignment',
+    entries: [
+      ['fix', '<strong>All notes now scroll at the same rate in the 3D Preview.</strong> Lasers, FX notes, and BT buttons now all use velocity-adjusted timing so they move down the lane in perfect sync with each other and with the chart\'s scroll speed events.'],
+      ['fix', '<strong>Laser entry caps no longer visually lead BT notes.</strong> The rectangular entry cap was extending past the judgment line, making lasers appear to arrive earlier than notes at the same tick. The cap is now clamped to the judgment line so all elements align correctly.'],
+      ['fix', 'Beat/measure grid lines in the 3D Preview now also respect chart scroll speed events, keeping the grid in sync with notes.'],
+    ],
+  },
   {
     version: '0.0.33',
     title: 'Rectangular Laser Caps & 3D Preview Caps',

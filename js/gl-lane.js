@@ -279,8 +279,8 @@ export class GLLaneRenderer {
     const VT = gv.VISIBLE_TICKS;
     const tick = gv.playTick;
     const startBeat = Math.floor(tick / TPB) * TPB;
-    for (let t = startBeat; t <= tick + VT + TPB; t += TPB) {
-      const dt = t - tick;
+    for (let t = startBeat; t <= tick + VT * 2 + TPB; t += TPB) {
+      const dt = gv._effDt(t);
       if (dt < 0 || dt > VT) continue;
       const sy = gv._screenY(dt, p);
       if (sy <= p.cutoffY || sy >= p.judgeY) continue;
@@ -404,9 +404,10 @@ export class GLLaneRenderer {
       const ln = li * 0.5, rn = (li + 1) * 0.5;
       const mid = ln + 0.25;
       for (const n of chart.fx[li]) {
-        if (n.len === 0 || n.y + n.len < tick || n.y > tick + VT) continue;
-        const dt0 = Math.max(n.y - tick, 0);
-        const dt1 = Math.min(n.y + n.len - tick, VT);
+        const effEnd = gv._effDt(n.y + n.len), effStart = gv._effDt(n.y);
+        if (n.len === 0 || effEnd < 0 || effStart > VT) continue;
+        const dt0 = Math.max(effStart, 0);
+        const dt1 = Math.min(effEnd, VT);
         const sy0 = gv._screenY(dt1, p);
         const sy1 = gv._screenY(dt0, p);
         const x0l = gv._screenX(ln + FX_INSET, sy0, p);
@@ -431,8 +432,9 @@ export class GLLaneRenderer {
     for (let li = 0; li < 2; li++) {
       const ln = li * 0.5, rn = (li + 1) * 0.5;
       for (const n of chart.fx[li]) {
-        if (n.len !== 0 || n.y < tick || n.y > tick + VT) continue;
-        const dt = n.y - tick;
+        if (n.len !== 0) continue;
+        const dt = gv._effDt(n.y);
+        if (dt < 0 || dt > VT) continue;
         const sy = gv._screenY(dt, p);
         if (sy < p.cutoffY) continue;
         const lx = gv._screenX(ln + 0.01, sy, p);
@@ -457,9 +459,10 @@ export class GLLaneRenderer {
     for (let li = 0; li < 4; li++) {
       const ln = li / 4 + bwInset, rn = (li + 1) / 4 - bwInset;
       for (const n of chart.bt[li]) {
-        if (n.len === 0 || n.y + n.len < tick || n.y > tick + VT) continue;
-        const dt0 = Math.max(n.y - tick, 0);
-        const dt1 = Math.min(n.y + n.len - tick, VT);
+        const effEnd = gv._effDt(n.y + n.len), effStart = gv._effDt(n.y);
+        if (n.len === 0 || effEnd < 0 || effStart > VT) continue;
+        const dt0 = Math.max(effStart, 0);
+        const dt1 = Math.min(effEnd, VT);
         const sy0 = gv._screenY(dt1, p);
         const sy1 = gv._screenY(dt0, p);
         const active = (n.y <= tick && n.y + n.len >= tick);
@@ -469,7 +472,7 @@ export class GLLaneRenderer {
         trapQuad(x0l, sy0, x0r, x1r, sy1, x1l, topC, topC, BT_HOLD_BOT, BT_HOLD_BOT);
 
         // White top cap at the start of the hold
-        if (n.y >= tick && n.y <= tick + VT) {
+        if (effStart >= 0 && effStart <= VT) {
           const capH = Math.max(3, (x1r - x1l) * 0.07);
           trapQuad(x1l, sy1 - capH, x1r, x1r, sy1, x1l, BT_CAP, BT_CAP, BT_CAP, BT_CAP);
         }
@@ -486,8 +489,9 @@ export class GLLaneRenderer {
     for (let li = 0; li < 4; li++) {
       const ln = li / 4 + bwInset, rn = (li + 1) / 4 - bwInset;
       for (const n of chart.bt[li]) {
-        if (n.len !== 0 || n.y < tick || n.y > tick + VT) continue;
-        const dt = n.y - tick;
+        if (n.len !== 0) continue;
+        const dt = gv._effDt(n.y);
+        if (dt < 0 || dt > VT) continue;
         const sy = gv._screenY(dt, p);
         if (sy < p.cutoffY) continue;
         const hw = gv._halfW(sy, p);
@@ -565,14 +569,14 @@ export class GLLaneRenderer {
       for (const sec of chart.lasers[side]) {
         if (!sec.points.length) continue;
         const secEnd = sec.y + (sec.points[sec.points.length - 1]?.ry ?? 0);
-        if (secEnd < tick || sec.y > tick + VT) continue;
+        if (gv._effDt(secEnd) < 0 || gv._effDt(sec.y) > VT) continue;
 
         // ── Build flat segment list (same as 2D path) ─────────────────
         const gSegs = [];
         for (let pi = 0; pi < sec.points.length - 1; pi++) {
           const p0 = sec.points[pi], p1 = sec.points[pi + 1];
           const t0 = sec.y + p0.ry, t1 = sec.y + p1.ry;
-          const dt0g = t0 - tick, dt1g = t1 - tick;
+          const dt0g = gv._effDt(t0), dt1g = gv._effDt(t1);
           if (dt1g < 0 || dt0g > VT) continue;
 
           const slam = isSlam(p0, p1);
@@ -586,7 +590,7 @@ export class GLLaneRenderer {
             let prevDt = null, prevV = null;
             for (let si = 0; si <= BEZIER_STEPS; si++) {
               const t = si / BEZIER_STEPS;
-              const dt = bzTick(t) - tick;
+              const dt = gv._effDt(bzTick(t));
               const v  = bzV(t);
               if (prevDt !== null) {
                 const cDt0 = Math.max(prevDt, 0), cDt1 = Math.min(dt, VT);
@@ -631,20 +635,21 @@ export class GLLaneRenderer {
         // In 3D, the first point (earliest tick) is closest to judgment (largest sy).
         // The cap extends further downward (toward judgment = larger sy).
         const firstPt = sec.points[0];
-        const firstDt = sec.y + firstPt.ry - tick;
+        const firstDt = gv._effDt(sec.y + firstPt.ry);
         if (firstDt >= 0 && firstDt <= VT) {
           const fsy = gv._screenY(firstDt, p);
           const fcx = gv._laserX(firstPt.v, fsy, p, sec.wide);
           const fhw = gv._halfW(fsy, p) * LASER_FRAC * 2;
           const cW = fhw * 1.84, cH = fhw * 2.4;
-          flatQuad(fcx - cW * 0.5, fsy,      fcx + cW * 0.5, fsy,
-                   fcx + cW * 0.5, fsy + cH, fcx - cW * 0.5, fsy + cH, mainCol);
+          const capBot = Math.min(fsy + cH, p.judgeY);
+          flatQuad(fcx - cW * 0.5, fsy,   fcx + cW * 0.5, fsy,
+                   fcx + cW * 0.5, capBot, fcx - cW * 0.5, capBot, mainCol);
           if (!simplified) {
             const sw = wireframe ? Math.max(1.5, fhw * 0.35) : Math.max(0.6, fhw * 0.18);
             flatQuad(fcx - cW * 0.5,      fsy, fcx - cW * 0.5 + sw, fsy,
-                     fcx - cW * 0.5 + sw, fsy + cH, fcx - cW * 0.5, fsy + cH, edgeCol);
+                     fcx - cW * 0.5 + sw, capBot, fcx - cW * 0.5, capBot, edgeCol);
             flatQuad(fcx + cW * 0.5 - sw, fsy, fcx + cW * 0.5,      fsy,
-                     fcx + cW * 0.5,      fsy + cH, fcx + cW * 0.5 - sw, fsy + cH, edgeCol);
+                     fcx + cW * 0.5,      capBot, fcx + cW * 0.5 - sw, capBot, edgeCol);
           }
         }
 
@@ -653,20 +658,21 @@ export class GLLaneRenderer {
         // The cap extends upward (away from judgment = smaller sy).
         if (sec.points.length >= 2) {
           const lastPt = sec.points[sec.points.length - 1];
-          const lastDt = sec.y + lastPt.ry - tick;
+          const lastDt = gv._effDt(sec.y + lastPt.ry);
           if (lastDt >= 0 && lastDt <= VT) {
             const lsy = gv._screenY(lastDt, p);
             const lcx = gv._laserX(lastPt.v, lsy, p, sec.wide);
             const lhw = gv._halfW(lsy, p) * LASER_FRAC * 2;
             const cW = lhw * 1.84, cH = lhw * 2.4;
-            flatQuad(lcx - cW * 0.5, lsy - cH, lcx + cW * 0.5, lsy - cH,
-                     lcx + cW * 0.5, lsy,       lcx - cW * 0.5, lsy,       mainCol);
+            const capTop = Math.max(lsy - cH, p.cutoffY);
+            flatQuad(lcx - cW * 0.5, capTop, lcx + cW * 0.5, capTop,
+                     lcx + cW * 0.5, lsy,    lcx - cW * 0.5, lsy,    mainCol);
             if (!simplified) {
               const sw = wireframe ? Math.max(1.5, lhw * 0.35) : Math.max(0.6, lhw * 0.18);
-              flatQuad(lcx - cW * 0.5,      lsy - cH, lcx - cW * 0.5 + sw, lsy - cH,
-                       lcx - cW * 0.5 + sw, lsy,      lcx - cW * 0.5,      lsy,      edgeCol);
-              flatQuad(lcx + cW * 0.5 - sw, lsy - cH, lcx + cW * 0.5,      lsy - cH,
-                       lcx + cW * 0.5,      lsy,      lcx + cW * 0.5 - sw, lsy,      edgeCol);
+              flatQuad(lcx - cW * 0.5,      capTop, lcx - cW * 0.5 + sw, capTop,
+                       lcx - cW * 0.5 + sw, lsy,    lcx - cW * 0.5,      lsy,    edgeCol);
+              flatQuad(lcx + cW * 0.5 - sw, capTop, lcx + cW * 0.5,      capTop,
+                       lcx + cW * 0.5,      lsy,    lcx + cW * 0.5 - sw, lsy,    edgeCol);
             }
           }
         }
@@ -675,7 +681,7 @@ export class GLLaneRenderer {
         for (let pi = 0; pi < sec.points.length - 1; pi++) {
           const p0 = sec.points[pi], p1 = sec.points[pi + 1];
           if (!isSlam(p0, p1)) continue;
-          const dt1 = sec.y + p1.ry - tick;
+          const dt1 = gv._effDt(sec.y + p1.ry);
           if (dt1 < 0 || dt1 > VT) continue;
           const dir = p1.v >= p0.v ? 1 : -1;
           const sy  = gv._screenY(dt1, p);

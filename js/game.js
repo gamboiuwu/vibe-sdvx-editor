@@ -839,14 +839,17 @@ export class GameView {
               const fcx = this._laserX(firstPt.v, fsy, p, sec.wide);
               const fhw = this._halfW(fsy, p) * LASER_FRAC * 2;
               const cW = fhw * 1.84, cH = fhw * 2.4;
-              ctx.save();
-              ctx.globalAlpha = laserOpacity * 0.85;
-              ctx.fillStyle   = mainCol;
-              ctx.shadowColor = glowCol; ctx.shadowBlur = hq ? 6 : 0;
-              ctx.fillRect(fcx - cW * 0.5, fsy, cW, cH);
-              ctx.shadowBlur = 0;
-              ctx.globalAlpha = 1;
-              ctx.restore();
+              const capBotH = Math.min(fsy + cH, p.judgeY) - fsy;
+              if (capBotH > 0) {
+                ctx.save();
+                ctx.globalAlpha = laserOpacity * 0.85;
+                ctx.fillStyle   = mainCol;
+                ctx.shadowColor = glowCol; ctx.shadowBlur = hq ? 6 : 0;
+                ctx.fillRect(fcx - cW * 0.5, fsy, cW, capBotH);
+                ctx.shadowBlur = 0;
+                ctx.globalAlpha = 1;
+                ctx.restore();
+              }
             }
           }
         }
