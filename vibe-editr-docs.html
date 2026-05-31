@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.35 · 2026</span>
+  <span class="version">v0.0.36 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,17 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.36</span>Freehand Laser Smoothing &amp; Blue Cursor</h4>
+  <ul>
+    <li><span class="tag fix">fix</span><strong>Freehand lasers (Shift+drag) now draw smooth, faithful curves.</strong> The stroke is captured raw and unsnapped (previously the live X-snap quantized it into a staircase), de-jittered with a moving average, simplified with a scale-correct vertical-deviation RDP pass, then re-interpolated as a <strong>Catmull-Rom spline</strong>. Straight drags stay straight (no bulging); arcs follow the gesture.</li>
+    <li><span class="tag fix">fix</span>Simplification no longer mixes tick and position units in its distance metric, which caused erratic anchor placement and jagged output.</li>
+    <li><span class="tag add">add</span><strong>Blue crosshair cursor</strong> appears the moment you hold <kbd>Shift</kbd> with a laser tool active, so freehand mode is obvious before you drag. Reverts instantly on release.</li>
+    <li><span class="tag add">add</span>A fast near-horizontal flick during a freehand stroke is recognized as a <strong>slam</strong> automatically.</li>
+    <li><span class="tag add">add</span>Freehand respects Laser Mirror Mode for both VOL-L and VOL-R (spline mirrored with inverted v).</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.35</span>Freehand Laser Drawing</h4>

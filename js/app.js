@@ -60,8 +60,19 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.35';
+const APP_VERSION = '0.0.36';
 const CHANGELOG = [
+  {
+    version: '0.0.36',
+    title: 'Freehand Laser Smoothing & Blue Cursor',
+    entries: [
+      ['fix', '<strong>Freehand lasers (Shift+drag) now draw smooth, faithful curves.</strong> The stroke is captured raw and unsnapped — previously the live X-snap quantized it into a staircase — then de-jittered with a moving average, simplified with a scale-correct vertical-deviation Ramer-Douglas-Peucker pass, and re-interpolated as a Catmull-Rom spline. Straight drags stay perfectly straight (no bulging); arcs follow the gesture.'],
+      ['fix', 'Freehand simplification no longer mixes tick and position units in its distance metric, which previously caused erratic anchor placement and jagged results.'],
+      ['add', '<strong>Blue crosshair cursor</strong> appears the moment you hold <kbd>Shift</kbd> with a laser tool active, making it obvious you are in freehand mode before you even start dragging. It reverts the instant Shift is released.'],
+      ['add', 'A fast near-horizontal flick during a freehand stroke is now recognized as a <strong>slam</strong> automatically, instead of being smoothed away.'],
+      ['add', 'Freehand respects Laser Mirror Mode for both VOL-L and VOL-R — the smoothed spline is mirrored to the opposite side with inverted v values.'],
+    ],
+  },
   {
     version: '0.0.35',
     title: 'Freehand Laser Drawing',
@@ -5266,11 +5277,13 @@ function onMouseDown(e) {
 
     // ── Shift+drag: freehand laser drawing ──────────────────────────────────
     if (e.shiftKey && !e.altKey) {
-      const v0 = snapLaserV(renderer.localXToLaserPos(localX, wide));
+      // Capture raw, unsnapped position — snapping here would staircase the
+      // stroke; smoothing/simplification happens on mouse-up instead.
+      const s0 = _freehandSample(e, wide);
       drag.freehand          = true;
       drag.freehandSide      = side;
-      drag.freehandStartTick = Math.round(tick);
-      drag.freehandPts       = [{ ry: 0, v: v0 }];
+      drag.freehandStartTick = Math.round(s0.tick);
+      drag.freehandPts       = [{ ry: 0, v: s0.v }];
       // Clear pen-tool active section so freehand always starts fresh
       _activeLaserSec = null;
       _mirrorLaserSec = null;
@@ -5282,7 +5295,7 @@ function onMouseDown(e) {
         renderer.freehandPreviewSide   = side;
       }
       const canvas = document.getElementById('chart-canvas');
-      if (canvas) canvas.style.cursor = 'crosshair';
+      if (canvas) canvas.style.cursor = FREEHAND_CURSOR;
       saveUndo(`Freehand VOL-${side === 0 ? 'L' : 'R'}`);
       render(); return;
     }
@@ -5432,10 +5445,10 @@ function onMouseMove(e) {
 
   // ── Freehand laser drawing — collect raw path points ────────────────────
   if (drag.freehand) {
-    const h    = getHit(e);
     const wide = chart?.laserSettings?.wide || laserWideMode;
-    const ry   = Math.round(h.tick) - drag.freehandStartTick;
-    const v    = snapLaserV(renderer.localXToLaserPos(h.localX, wide));
+    const s    = _freehandSample(e, wide);
+    const ry   = Math.round(s.tick) - drag.freehandStartTick;
+    const v    = s.v;
     const pts  = drag.freehandPts;
     const last = pts[pts.length - 1];
     if (ry > (last?.ry ?? -1)) {
@@ -5443,6 +5456,8 @@ function onMouseMove(e) {
     } else if (last && ry === last.ry && Math.abs(v - last.v) > 0.001) {
       last.v = v;
     }
+    const canvas = document.getElementById('chart-canvas');
+    if (canvas) canvas.style.cursor = FREEHAND_CURSOR;
     if (renderer) {
       renderer.freehandPreviewPts  = [...pts];
       renderer.freehandPreviewSide = drag.freehandSide;
@@ -5458,7 +5473,8 @@ function onMouseMove(e) {
       const side = tool === 'laser-l' ? 0 : 1;
       const handleHit = renderer.getBezierHandleAt(e.offsetX, e.offsetY, side);
       const canvas = document.getElementById('chart-canvas');
-      if (canvas) canvas.style.cursor = handleHit ? 'grab' : (_activeLaserSec ? 'crosshair' : '');
+      if (canvas) canvas.style.cursor = handleHit ? 'grab'
+        : (e.shiftKey ? FREEHAND_CURSOR : (_activeLaserSec ? 'crosshair' : ''));
       const prev = renderer.activeBezierHandle;
       renderer.activeBezierHandle = handleHit
         ? { sec: handleHit.sec, ptIndex: handleHit.ptIndex }
@@ -5656,30 +5672,22 @@ function onMouseUp(e) {
 
   // ── Finalize freehand laser drawing ─────────────────────────────────────
   if (drag.freehand) {
-    const pts  = drag.freehandPts;
-    const side = drag.freehandSide;
-    const wide = chart?.laserSettings?.wide || laserWideMode;
-    if (pts.length >= 2) {
-      const simplified = _rdpSimplify(pts, FREEHAND_RDP_EPS);
-      if (simplified.length >= 2) {
-        const newSec = {
-          y:      drag.freehandStartTick,
-          points: simplified.map(p => ({
-            ry: p.ry, v: p.v, slam: false, interp: 'linear', curve: 0.5,
-          })),
-          wide,
-        };
+    const rawPts = drag.freehandPts;
+    const side   = drag.freehandSide;
+    const wide   = chart?.laserSettings?.wide || laserWideMode;
+    if (rawPts.length >= 2) {
+      // De-jitter → vertical-RDP simplify → Catmull-Rom resample (with slams).
+      const pts = _freehandToPoints(rawPts);
+      if (pts && pts.length >= 2) {
+        const newSec = { y: drag.freehandStartTick, points: pts.map(p => ({ ...p })), wide };
         chart.lasers[side].push(newSec);
         chart.lasers[side].sort((a, b) => a.y - b.y);
         autoConnectLasersFixup(side);
         if (laserMirrorMode) {
           const mirSide = 1 - side;
           const mirSec  = {
-            y:      drag.freehandStartTick,
-            points: simplified.map(p => ({
-              ry: p.ry, v: Math.max(0, Math.min(1, 1 - p.v)),
-              slam: false, interp: 'linear', curve: 0.5,
-            })),
+            y: drag.freehandStartTick,
+            points: pts.map(p => ({ ...p, v: Math.max(0, Math.min(1, 1 - p.v)) })),
             wide,
           };
           chart.lasers[mirSide].push(mirSec);
@@ -5690,6 +5698,7 @@ function onMouseUp(e) {
     }
     drag.freehand    = false;
     drag.freehandPts = [];
+    _updateFreehandCursor(false);
     if (renderer) { renderer.freehandPreviewPts = null; renderer.activeLaserSec = null; }
     render(); return;
   }
@@ -5805,6 +5814,130 @@ function _rdpSimplify(pts, epsilon) {
     ];
   }
   return [first, last];
+}
+
+// ── Freehand laser math ──────────────────────────────────────────────────────
+// A freehand stroke is a function v(t) sampled along monotonically-increasing
+// ticks. We (1) de-jitter v with a moving average, (2) simplify with RDP using a
+// VERTICAL (v-axis) deviation metric — the geometrically-correct measure for a
+// function graph and scale-independent, unlike perpendicular distance in mixed
+// tick/v units — then (3) re-interpolate a smooth Catmull-Rom spline through the
+// retained anchors. Sharp near-instant horizontal moves are emitted as slams.
+
+// Moving-average de-jitter of v; endpoints preserved, ry untouched.
+function _smoothFreehandV(pts, win) {
+  if (pts.length <= 2 || win <= 1) return pts.map(p => ({ ...p }));
+  const half = Math.floor(win / 2);
+  const out  = pts.map(p => ({ ...p }));
+  for (let i = 1; i < pts.length - 1; i++) {
+    let sum = 0, n = 0;
+    for (let j = i - half; j <= i + half; j++) {
+      if (j < 0 || j >= pts.length) continue;
+      sum += pts[j].v; n++;
+    }
+    out[i].v = sum / n;
+  }
+  return out;
+}
+
+// RDP on v(t): perpendicular distance replaced by vertical deviation in v.
+// epsilon is directly in v-units (0..1) — correct for a function graph.
+function _rdpSimplifyV(pts, epsilon) {
+  if (pts.length <= 2) return pts;
+  const first = pts[0], last = pts[pts.length - 1];
+  const dt = last.ry - first.ry;
+  let maxDev = 0, maxIdx = 0;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const frac = dt === 0 ? 0 : (pts[i].ry - first.ry) / dt;
+    const expV = first.v + (last.v - first.v) * frac;
+    const dev  = Math.abs(pts[i].v - expV);
+    if (dev > maxDev) { maxDev = dev; maxIdx = i; }
+  }
+  if (maxDev > epsilon) {
+    return [
+      ..._rdpSimplifyV(pts.slice(0, maxIdx + 1), epsilon),
+      ..._rdpSimplifyV(pts.slice(maxIdx), epsilon).slice(1),
+    ];
+  }
+  return [first, last];
+}
+
+// Uniform Catmull-Rom interpolation of v at parameter u in [0,1] for span p1->p2.
+function _catmullV(v0, v1, v2, v3, u) {
+  const u2 = u * u, u3 = u2 * u;
+  return 0.5 * ((2 * v1) +
+    (-v0 + v2) * u +
+    (2 * v0 - 5 * v1 + 4 * v2 - v3) * u2 +
+    (-v0 + 3 * v1 - 3 * v2 + v3) * u3);
+}
+
+// Build the final laser-point array from a raw {ry,v} freehand stroke.
+function _freehandToPoints(rawPts) {
+  const smoothed = _smoothFreehandV(rawPts, FREEHAND_SMOOTH_WINDOW);
+  const anchors  = _rdpSimplifyV(smoothed, FREEHAND_RDP_EPS);
+  if (anchors.length < 2) return null;
+
+  const clamp01 = v => Math.max(0, Math.min(1, v));
+  const out = [{ ry: anchors[0].ry, v: clamp01(anchors[0].v), interp: 'linear' }];
+
+  for (let i = 0; i < anchors.length - 1; i++) {
+    const a1 = anchors[i], a2 = anchors[i + 1];
+    const a0 = anchors[i - 1] || a1;
+    const a3 = anchors[i + 2] || a2;
+    const span = a2.ry - a1.ry;
+    const dv   = Math.abs(a2.v - a1.v);
+
+    // Near-instant horizontal move → slam: emit directly, no spline.
+    if (span <= LASER_SLAM_TICKS && dv > FREEHAND_SLAM_DV) {
+      const prev = out[out.length - 1];
+      if (prev.ry === a1.ry) prev.interp = 'step';
+      out.push({ ry: a2.ry, v: clamp01(a2.v), slam: true, interp: 'linear' });
+      continue;
+    }
+
+    // Only densify spans that actually curve; keep straight spans as 2 points.
+    const midV  = _catmullV(a0.v, a1.v, a2.v, a3.v, 0.5);
+    const linV  = (a1.v + a2.v) / 2;
+    const curvy = Math.abs(midV - linV) > 0.004;
+    const steps = curvy
+      ? Math.max(1, Math.min(20, Math.round(span / FREEHAND_SAMPLE_TICKS)))
+      : 1;
+    for (let s = 1; s <= steps; s++) {
+      const u  = s / steps;
+      const ry = Math.round(a1.ry + span * u);
+      const v  = clamp01(_catmullV(a0.v, a1.v, a2.v, a3.v, u));
+      const prev = out[out.length - 1];
+      if (ry > prev.ry) out.push({ ry, v, interp: 'linear' });
+      else prev.v = v;
+    }
+  }
+
+  if (out.length < 2) return null;
+  return out.map(p => ({
+    ry: p.ry, v: p.v,
+    slam: !!p.slam,
+    interp: p.interp || 'linear',
+    curve: 0.5,
+  }));
+}
+
+// Cursor feedback: blue crosshair while the freehand gesture is available.
+function _updateFreehandCursor(shiftHeld) {
+  if (tool !== 'laser-l' && tool !== 'laser-r') return;
+  const canvas = document.getElementById('chart-canvas');
+  if (!canvas) return;
+  if (shiftHeld || drag.freehand) canvas.style.cursor = FREEHAND_CURSOR;
+  else canvas.style.cursor = _activeLaserSec ? 'crosshair' : '';
+}
+
+// Raw, unsnapped freehand sample from a mouse event (client coords → tick/v).
+function _freehandSample(e, wide) {
+  const rect = renderer.canvas.getBoundingClientRect();
+  const raw  = renderer.canvasToTick(e.clientX - rect.left, e.clientY - rect.top);
+  return {
+    tick: Math.max(0, raw.tick),
+    v: Math.max(0, Math.min(1, renderer.localXToLaserPos(raw.localX, wide))),
+  };
 }
 
 function updateSelStatus() {
@@ -5991,6 +6124,25 @@ const TOOL_ORDER  = ['select', 'bt', 'fx', 'laser-l', 'laser-r', 'erase', 'cam-e
 // RDP epsilon for freehand laser simplification (fraction of laser lane width).
 // 0.018 ≈ 1.8% of the lane — keeps intentional curves while dropping noise.
 const FREEHAND_RDP_EPS = 0.018;
+// Moving-average window (samples) used to de-jitter a raw freehand stroke before
+// simplification. Larger = smoother but less faithful to fast wiggles.
+const FREEHAND_SMOOTH_WINDOW = 5;
+// Target spacing (ticks) for Catmull-Rom resampling of the simplified spline.
+// Curved spans get points roughly this far apart; straight spans stay sparse.
+const FREEHAND_SAMPLE_TICKS = 24;
+// Minimum horizontal move (v units) over a tight tick span to read a freehand
+// gesture as a deliberate slam. Higher than LASER_SLAM_V_EPS so ordinary fast
+// diagonal drags are not mistaken for slams.
+const FREEHAND_SLAM_DV = 0.12;
+// Blue crosshair cursor shown while the freehand-laser gesture is available
+// (laser tool active + Shift held) so the mode is visually obvious.
+const FREEHAND_CURSOR = 'url("data:image/svg+xml,' + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">' +
+  '<g stroke="#2b8cff" stroke-width="2" fill="none">' +
+  '<line x1="12" y1="2" x2="12" y2="9"/><line x1="12" y1="15" x2="12" y2="22"/>' +
+  '<line x1="2" y1="12" x2="9" y2="12"/><line x1="15" y1="12" x2="22" y2="12"/>' +
+  '</g><circle cx="12" cy="12" r="2.6" fill="#2b8cff"/></svg>'
+) + '") 12 12, crosshair';
 
 const SNAP_ENTRIES = [
   { v: 48,    l: '1/4'   },
