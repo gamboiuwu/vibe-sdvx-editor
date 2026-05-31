@@ -130,6 +130,10 @@ export class Renderer {
     // _laserPreview: pen-tool ghost line from last placed point to cursor
     // { side, sec, tick, v }  or null
     this._laserPreview = null;
+    // freehandPreviewPts: raw { ry, v }[] array being collected during Shift+drag.
+    // Drawn as a live polyline in _drawColLasers before the points are committed.
+    this.freehandPreviewPts  = null;
+    this.freehandPreviewSide = 0;
 
     // Camera event pill hover state — set by app.js from mouse coords.
     // _camPillHitZones: rebuilt every draw(); each entry is a canvas-space rect
@@ -1492,6 +1496,41 @@ export class Renderer {
           }
         }
       }
+    }
+
+    // ── Freehand laser preview — live polyline during Shift+drag ────────────
+    // Drawn once (outside the per-side loop) since freehandPreviewSide selects
+    // which color to use, and we draw all collected raw points for this column.
+    if (this.freehandPreviewPts && this.freehandPreviewPts.length >= 2) {
+      const fhSide  = this.freehandPreviewSide;
+      const fhColor = fhSide === 0 ? laserColors.L : laserColors.R;
+      const fhWide  = this.chart?.laserSettings?.wide || false;
+      const fhOx    = ox;   // reuse ox from outer scope (single-column context)
+      const pxAt    = (v) => this._laserVtoX(fhOx, v, fhWide);
+      const pyAt    = (t) => this._pyAt(t, startY);
+      // Find the start tick for this freehand section
+      // freehandPreviewPts are relative (ry offsets from freehandStartTick)
+      // We need freehandStartTick which is stored in the drag object (app.js global).
+      // Access via window to avoid a circular import.
+      const fhStartTick = (typeof window !== 'undefined' && window._drag?.freehandStartTick) ?? 0;
+      ctx.save();
+      ctx.globalAlpha = 0.55;
+      ctx.strokeStyle = fhColor;
+      ctx.lineWidth   = 2;
+      ctx.setLineDash([3, 4]);
+      ctx.beginPath();
+      let started = false;
+      for (const pt of this.freehandPreviewPts) {
+        const absTick = fhStartTick + pt.ry;
+        if (absTick < startY || absTick > endY) { started = false; continue; }
+        const px = pxAt(pt.v);
+        const py = pyAt(absTick);
+        if (!started) { ctx.moveTo(px, py); started = true; }
+        else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
     }
   }
 
