@@ -232,7 +232,11 @@ export class GameView {
   // 0.125 = full ribbon width 0.25 = one BT lane wide (user-tuned).
   // This is also the offset used by _laserNorm so that the ribbon's outer
   // edge lands exactly on the BT lane boundary at v=0 / v=1.
-  static get LASER_HALF_FRAC() { return 0.125; }
+  static get LASER_HALF_FRAC() {
+    // Live-scaled by the preview Laser Width slider (window.prefs.laserThickness).
+    const m = (typeof window !== 'undefined' && window.prefs && typeof window.prefs.laserThickness === 'number') ? window.prefs.laserThickness : 1;
+    return 0.125 * m;
+  }
 
   // Map laser position v ∈ [0, 1] to normalised track coordinate.
   // Default rest positions:
