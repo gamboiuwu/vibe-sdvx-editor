@@ -60,8 +60,16 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.37';
+const APP_VERSION = '0.0.38';
 const CHANGELOG = [
+  {
+    version: '0.0.38',
+    title: 'Laser Thickness Fixed (No More Squish)',
+    entries: [
+      ['fix', '<strong>The preview Laser Thickness slider no longer squishes or repositions lasers.</strong> It previously scaled GameView.LASER_HALF_FRAC, which is dual-purpose \u2014 it also drives laser position mapping \u2014 so lowering it shoved the ribbons sideways and distorted the layout. Position mapping is now pinned to the constant 0.125 and the slider feeds a separate render-only width multiplier (LASER_WIDTH_MUL) applied to the drawn band alone.'],
+      ['chg', 'The slider is relabeled <strong>Laser Thick</strong>: it changes how thick each laser ribbon is as it travels down the lane, without moving the laser or changing where it sits across the lanes. Applies to both the WebGL and 2D preview renderers.'],
+    ],
+  },
   {
     version: '0.0.37',
     title: 'Preview Laser Width & Opacity Sliders',
@@ -10046,8 +10054,8 @@ function _initMinimapToggle() {
     // Laser Width
     const wLbl = document.createElement('span');
     wLbl.className = 'pvc-label';
-    wLbl.textContent = 'Laser W';
-    wLbl.title = 'Laser ribbon thickness in the preview (20–150%)';
+    wLbl.textContent = 'Laser Thick';
+    wLbl.title = 'Laser ribbon thickness as it travels down the lane (20–150%)';
     const wSl = document.createElement('input');
     wSl.type = 'range'; wSl.id = 'pvc-laser-width';
     wSl.min = '20'; wSl.max = '150'; wSl.step = '5';

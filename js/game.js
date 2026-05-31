@@ -232,10 +232,14 @@ export class GameView {
   // 0.125 = full ribbon width 0.25 = one BT lane wide (user-tuned).
   // This is also the offset used by _laserNorm so that the ribbon's outer
   // edge lands exactly on the BT lane boundary at v=0 / v=1.
-  static get LASER_HALF_FRAC() {
-    // Live-scaled by the preview Laser Width slider (window.prefs.laserThickness).
+  static get LASER_HALF_FRAC() { return 0.125; }
+
+  // Render-only ribbon thickness multiplier from the preview Laser Thickness
+  // slider. Applied ONLY to the drawn band width (hw) — NEVER to _laserNorm
+  // position — so it thins/thickens the ribbon without moving or squishing lasers.
+  static get LASER_WIDTH_MUL() {
     const m = (typeof window !== 'undefined' && window.prefs && typeof window.prefs.laserThickness === 'number') ? window.prefs.laserThickness : 1;
-    return 0.125 * m;
+    return (m > 0 && isFinite(m)) ? m : 1;
   }
 
   // Map laser position v ∈ [0, 1] to normalised track coordinate.
@@ -617,7 +621,7 @@ export class GameView {
       // Laser ribbon half-width as fraction of lane half-width.
       // Sourced from the GameView static so the position/width pair stays in
       // sync: ribbon's outer edge lands on the BT lane boundary at v=0/v=1.
-      const LASER_FRAC = GameView.LASER_HALF_FRAC; // 0.125 → one BT lane wide
+      const LASER_FRAC = GameView.LASER_HALF_FRAC * GameView.LASER_WIDTH_MUL; // band width only (position fixed)
 
       for (const sec of chart.lasers[side]) {
         if (!sec.points.length) continue;

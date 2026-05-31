@@ -532,7 +532,9 @@ export class GLLaneRenderer {
     const simplified = im === 'simplified';
     // Sourced from GameView so position and width stay in sync. Fallback
     // to 0.125 if the static is unreachable (shouldn't happen in practice).
-    const LASER_FRAC = (typeof GameView !== 'undefined' && GameView.LASER_HALF_FRAC) || 0.125;
+    const _lhf = (typeof GameView !== 'undefined' && GameView.LASER_HALF_FRAC) || 0.125;
+    const _lwm = (typeof GameView !== 'undefined' && GameView.LASER_WIDTH_MUL) || 1;
+    const LASER_FRAC = _lhf * _lwm; // band width only (position fixed via _laserNorm)
     const BEZIER_STEPS = 10;
     const opacity = (laserOpacity ?? 0.7);
 
