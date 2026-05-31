@@ -60,8 +60,16 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.36';
+const APP_VERSION = '0.0.37';
 const CHANGELOG = [
+  {
+    version: '0.0.37',
+    title: 'Preview Laser Width & Opacity Sliders',
+    entries: [
+      ['add', '<strong>Laser Width slider</strong> in the preview control bar (next to Rate) to shrink the VOL laser ribbons when they take up too much of the lane. Scales the laser width in both the WebGL and 2D preview renderers via a live GameView.LASER_HALF_FRAC getter, and persists across sessions.'],
+      ['add', '<strong>Laser Opacity slider</strong> in the preview control bar so ribbon transparency can be tuned right where you are previewing (the existing one lived in Preferences).'],
+    ],
+  },
   {
     version: '0.0.36',
     title: 'Freehand Laser Smoothing & Blue Cursor',
@@ -10017,3 +10025,72 @@ function _initMinimapToggle() {
 }
 
 // Pattern Library lives in tools.js (savePatternFromSelection exported)
+
+// ── Preview Laser Width + Opacity controls ──────────────────────────────────
+// Injects two sliders into the preview control bar (next to the Rate slider):
+//   • Laser Width  → window.prefs.laserThickness (read by GameView.LASER_HALF_FRAC
+//                     getter, so both WebGL & 2D preview renderers scale live)
+//   • Laser Opacity→ setLaserOpacity()  (the laser ribbon alpha)
+// Both persist in localStorage. Width is also restored at load so the preview
+// honors it before the control bar is opened.
+(function _previewLaserControls() {
+  try {
+    const s = localStorage.getItem('laserThickness');
+    if (s != null) { window.prefs = window.prefs || {}; window.prefs.laserThickness = +s; }
+  } catch (_) {}
+
+  function ensure() {
+    const rate = document.getElementById('pvc-rate');
+    if (!rate || document.getElementById('pvc-laser-width')) return;
+
+    // Laser Width
+    const wLbl = document.createElement('span');
+    wLbl.className = 'pvc-label';
+    wLbl.textContent = 'Laser W';
+    wLbl.title = 'Laser ribbon thickness in the preview (20–150%)';
+    const wSl = document.createElement('input');
+    wSl.type = 'range'; wSl.id = 'pvc-laser-width';
+    wSl.min = '20'; wSl.max = '150'; wSl.step = '5';
+    wSl.title = wLbl.title;
+    let wInit = 100;
+    try { const s = localStorage.getItem('laserThickness'); if (s != null) wInit = Math.round((+s) * 100); } catch (_) {}
+    wSl.value = wInit;
+    const applyW = () => {
+      const v = +wSl.value;
+      window.prefs = window.prefs || {};
+      window.prefs.laserThickness = v / 100;
+      try { localStorage.setItem('laserThickness', String(v / 100)); } catch (_) {}
+    };
+    applyW();
+    wSl.addEventListener('input', applyW);
+
+    // Laser Opacity
+    const oLbl = document.createElement('span');
+    oLbl.className = 'pvc-label';
+    oLbl.textContent = 'Laser O';
+    oLbl.title = 'Laser ribbon opacity in the preview (10–100%)';
+    const oSl = document.createElement('input');
+    oSl.type = 'range'; oSl.id = 'pvc-laser-op2';
+    oSl.min = '10'; oSl.max = '100'; oSl.step = '5';
+    oSl.title = oLbl.title;
+    oSl.value = Math.round((typeof laserOpacity === 'number' ? laserOpacity : 0.7) * 100);
+    const applyO = () => {
+      const v = +oSl.value;
+      try { if (typeof setLaserOpacity === 'function') setLaserOpacity(v / 100); } catch (_) {}
+      try { localStorage.setItem('laserOpacity', String(v / 100)); } catch (_) {}
+    };
+    applyO();
+    oSl.addEventListener('input', applyO);
+
+    // Insert after the Rate slider, in order: Laser W, width, Laser O, opacity.
+    rate.insertAdjacentElement('afterend', oSl);
+    rate.insertAdjacentElement('afterend', oLbl);
+    rate.insertAdjacentElement('afterend', wSl);
+    rate.insertAdjacentElement('afterend', wLbl);
+  }
+
+  if (typeof document === 'undefined') return;
+  if (document.readyState !== 'loading') ensure();
+  else document.addEventListener('DOMContentLoaded', ensure);
+  try { new MutationObserver(ensure).observe(document.documentElement, { childList: true, subtree: true }); } catch (_) {}
+})();
