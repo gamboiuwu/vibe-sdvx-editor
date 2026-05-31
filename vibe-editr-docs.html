@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.37 · 2026</span>
+  <span class="version">v0.0.38 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,14 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.38</span>Laser Thickness Fixed (No More Squish)</h4>
+  <ul>
+    <li><span class="tag fix">fix</span><strong>Laser Thickness slider no longer squishes lasers.</strong> It used to scale <code>GameView.LASER_HALF_FRAC</code>, which also controls laser position mapping, so it shoved ribbons sideways. Position is now pinned to the 0.125 constant and the slider drives a separate render-only width multiplier on the drawn band only.</li>
+    <li><span class="tag chg">chg</span>Relabeled <strong>Laser Thick</strong> — it changes how thick each ribbon is as it travels down the lane, without moving it or changing its across-lane position. Affects both WebGL and 2D preview renderers.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.37</span>Preview Laser Width &amp; Opacity Sliders</h4>
