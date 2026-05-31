@@ -60,8 +60,16 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.38';
+const APP_VERSION = '0.0.39';
 const CHANGELOG = [
+  {
+    version: '0.0.39',
+    title: 'KSM Export: Bezier Laser Resampling',
+    entries: [
+      ['fix', '<strong>KSON/KSONPACK → KSM export now correctly converts bezier laser curves.</strong> Previously, smooth/bezier laser segments were silently downgraded to linear — only the anchor points were written and KSM interpolated them straight. The exporter now samples every bezier segment at 1/32-note (24-tick) intervals and emits a real position character at each sample, so the exported \.ksh file faithfully reproduces the curved shape.'],
+      ['fix', 'KSON-only data (camera events, FX automation, chart sections, scroll-speed events, glitch events) is not written to .ksh output — it was never included in the KSH serialiser, but this confirms the boundary.'],
+    ],
+  },
   {
     version: '0.0.38',
     title: 'Laser Thickness Fixed (No More Squish)',
