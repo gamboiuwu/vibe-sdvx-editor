@@ -60,8 +60,18 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.34';
+const APP_VERSION = '0.0.35';
 const CHANGELOG = [
+  {
+    version: '0.0.35',
+    title: 'Freehand Laser Drawing',
+    entries: [
+      ['add', '<strong>Shift+drag to draw freehand lasers.</strong> Hold <kbd>Shift</kbd> while pressing the left or right laser tool and drag across the lane — a live path preview follows the cursor. On release, the raw path is automatically simplified using the Ramer-Douglas-Peucker algorithm, producing a clean set of anchor points that faithfully capture your gesture without unnecessary clutter.'],
+      ['add', 'Freehand mode always starts a fresh laser section from the drag origin, so it never accidentally extends an existing laser. All simplified points use linear interpolation; you can Alt+click any anchor afterward to refine the curve type.'],
+      ['add', 'Freehand drawing respects <strong>Laser Mirror Mode</strong> — if mirror mode is active, the RDP-simplified path is simultaneously mirrored to the opposite side with inverted v values, making symmetric patterns fast to sketch.'],
+      ['add', 'The raw freehand path is drawn as a semi-transparent colored stroke in real time while dragging, so you can see the shape before it is committed and simplified.'],
+    ],
+  },
   {
     version: '0.0.34',
     title: 'Scroll Rate Sync & Laser Cap Alignment',
@@ -412,7 +422,7 @@ let _mirrorLaserSec = null;
 let minimapVisible = false;
 let _minimapDragging = false;
 
-const drag = { active: false, lane: -1, laneType: '', startTick: 0, side: 0, localX: 0, laserSec: null };
+const drag = { active: false, lane: -1, laneType: '', startTick: 0, side: 0, localX: 0, laserSec: null, freehand: false, freehandPts: [], freehandSide: 0, freehandStartTick: 0 };
 export const sel  = { active: false, dragging: false, startTick: 0, endTick: 0, clipboard: null };
 const undoStack = [], redoStack = [];
 let MAX_UNDO = 100; // adjustable via preferences
@@ -1623,6 +1633,7 @@ export function getLaserPosAt(side, tick) {
   return null;
 }
 window.getLaserPosAt = getLaserPosAt;
+window._drag = drag; // expose for renderer freehand preview (freehandStartTick)
 
 function updatePlayBtn(isPlaying) {
   // Use localized strings, falling back to English defaults
@@ -3884,7 +3895,8 @@ function checkFxHover(e) {
 function setTool(t) {
   tool = t;
   document.querySelectorAll('.tool-btn[data-tool]').forEach(b => b.classList.toggle('active', b.dataset.tool === t));
-  document.getElementById('status-tool').textContent = 'Tool: ' + t;
+  const toolHints = { 'laser-l': 'VOL-L  [Shift+drag = freehand]', 'laser-r': 'VOL-R  [Shift+drag = freehand]' };
+  document.getElementById('status-tool').textContent = 'Tool: ' + (toolHints[t] ?? t);
   // Show laser anchor dots only when a laser tool is active (edit layer gate)
   if (renderer) {
     renderer.showLaserDots = (t === 'laser-l' || t === 'laser-r');
@@ -3899,6 +3911,12 @@ function setTool(t) {
   if (_activeLaserSec) {
     _activeLaserSec = null;
     if (renderer) { renderer.activeLaserSec = null; renderer._laserPreview = null; }
+  }
+  // Cancel any in-progress freehand draw when switching tools
+  if (drag.freehand) {
+    drag.freehand    = false;
+    drag.freehandPts = [];
+    if (renderer) renderer.freehandPreviewPts = null;
   }
   // Show/hide cam-event subpanel
   const camSub = document.getElementById('cam-subpanel');
@@ -5246,6 +5264,29 @@ function onMouseDown(e) {
       }
     }
 
+    // ── Shift+drag: freehand laser drawing ──────────────────────────────────
+    if (e.shiftKey && !e.altKey) {
+      const v0 = snapLaserV(renderer.localXToLaserPos(localX, wide));
+      drag.freehand          = true;
+      drag.freehandSide      = side;
+      drag.freehandStartTick = Math.round(tick);
+      drag.freehandPts       = [{ ry: 0, v: v0 }];
+      // Clear pen-tool active section so freehand always starts fresh
+      _activeLaserSec = null;
+      _mirrorLaserSec = null;
+      _laserPress     = null;
+      if (renderer) {
+        renderer.activeLaserSec        = null;
+        renderer._laserPreview         = null;
+        renderer.freehandPreviewPts    = drag.freehandPts;
+        renderer.freehandPreviewSide   = side;
+      }
+      const canvas = document.getElementById('chart-canvas');
+      if (canvas) canvas.style.cursor = 'crosshair';
+      saveUndo(`Freehand VOL-${side === 0 ? 'L' : 'R'}`);
+      render(); return;
+    }
+
     // ── Pen tool: place one point at a time (Illustrator-style) ───────────
     const v = snapLaserV(renderer.localXToLaserPos(localX, wide));
     // Remember this press so a sideways drag-release can turn into a slam.
@@ -5388,6 +5429,27 @@ function onMouseMove(e) {
     updateStatusFromEvent(e);
     return;
   }
+
+  // ── Freehand laser drawing — collect raw path points ────────────────────
+  if (drag.freehand) {
+    const h    = getHit(e);
+    const wide = chart?.laserSettings?.wide || laserWideMode;
+    const ry   = Math.round(h.tick) - drag.freehandStartTick;
+    const v    = snapLaserV(renderer.localXToLaserPos(h.localX, wide));
+    const pts  = drag.freehandPts;
+    const last = pts[pts.length - 1];
+    if (ry > (last?.ry ?? -1)) {
+      pts.push({ ry, v });
+    } else if (last && ry === last.ry && Math.abs(v - last.v) > 0.001) {
+      last.v = v;
+    }
+    if (renderer) {
+      renderer.freehandPreviewPts  = [...pts];
+      renderer.freehandPreviewSide = drag.freehandSide;
+    }
+    render(); return;
+  }
+
   if (!drag.active) {
     updateStatusFromEvent(e);
     checkFxHover(e);
@@ -5590,6 +5652,46 @@ function onMouseUp(e) {
     drag.laneType = '';
     render();
     return;
+  }
+
+  // ── Finalize freehand laser drawing ─────────────────────────────────────
+  if (drag.freehand) {
+    const pts  = drag.freehandPts;
+    const side = drag.freehandSide;
+    const wide = chart?.laserSettings?.wide || laserWideMode;
+    if (pts.length >= 2) {
+      const simplified = _rdpSimplify(pts, FREEHAND_RDP_EPS);
+      if (simplified.length >= 2) {
+        const newSec = {
+          y:      drag.freehandStartTick,
+          points: simplified.map(p => ({
+            ry: p.ry, v: p.v, slam: false, interp: 'linear', curve: 0.5,
+          })),
+          wide,
+        };
+        chart.lasers[side].push(newSec);
+        chart.lasers[side].sort((a, b) => a.y - b.y);
+        autoConnectLasersFixup(side);
+        if (laserMirrorMode) {
+          const mirSide = 1 - side;
+          const mirSec  = {
+            y:      drag.freehandStartTick,
+            points: simplified.map(p => ({
+              ry: p.ry, v: Math.max(0, Math.min(1, 1 - p.v)),
+              slam: false, interp: 'linear', curve: 0.5,
+            })),
+            wide,
+          };
+          chart.lasers[mirSide].push(mirSec);
+          chart.lasers[mirSide].sort((a, b) => a.y - b.y);
+          autoConnectLasersFixup(mirSide);
+        }
+      }
+    }
+    drag.freehand    = false;
+    drag.freehandPts = [];
+    if (renderer) { renderer.freehandPreviewPts = null; renderer.activeLaserSec = null; }
+    render(); return;
   }
 
   drag.active   = false;
@@ -5886,6 +5988,10 @@ const TOOL_ORDER  = ['select', 'bt', 'fx', 'laser-l', 'laser-r', 'erase', 'cam-e
 // Snap entries: v = ticks (may be fractional), l = display label
 // 192 ticks/measure; integer values: 48,24,16,12,8,6,4,3,2,1
 // Sub-tick values (1.5, 0.75, 0.5, 0.375) are rounded to int by snapTick()
+// RDP epsilon for freehand laser simplification (fraction of laser lane width).
+// 0.018 ≈ 1.8% of the lane — keeps intentional curves while dropping noise.
+const FREEHAND_RDP_EPS = 0.018;
+
 const SNAP_ENTRIES = [
   { v: 48,    l: '1/4'   },
   { v: 24,    l: '1/8'   },
@@ -6072,6 +6178,10 @@ function onKeyDown(e) {
         if (renderer) { renderer.activeLaserSec = null; renderer._laserPreview = null; }
       }
       _mirrorLaserSec = null;
+      if (drag.freehand) {
+        drag.freehand = false; drag.freehandPts = [];
+        if (renderer) renderer.freehandPreviewPts = null;
+      }
       updateSelStatus(); render(); break;
 
     case 'r': case 'R':

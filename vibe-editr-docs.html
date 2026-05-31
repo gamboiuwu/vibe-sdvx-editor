@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.32 · 2026</span>
+  <span class="version">v0.0.35 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,34 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.35</span>Freehand Laser Drawing</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Shift+drag to draw freehand lasers.</strong> Hold <kbd>Shift</kbd> while pressing with the left or right laser tool active and drag across the lane. A live semi-transparent path preview follows the cursor in real time. On release, the raw path is simplified with the <strong>Ramer-Douglas-Peucker algorithm</strong> (ε = 1.8% of lane width), producing a clean set of anchor points that preserve the intended shape without noise.</li>
+    <li><span class="tag add">add</span>Freehand always starts a fresh laser section from the drag-start tick, so it never accidentally extends an existing laser. All simplified points use linear interpolation; Alt+click any anchor afterward to change the curve type.</li>
+    <li><span class="tag add">add</span>Freehand drawing respects <strong>Laser Mirror Mode</strong> — when mirror mode is active, the simplified path is also placed on the opposite side with inverted v values, letting you sketch symmetric patterns in one gesture.</li>
+    <li><span class="tag add">add</span>Implements the system-specification requirement: <em>"Holding Shift allows freeform drawing that is later simplified into smooth curves."</em></li>
+  </ul>
+</div>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.34</span>Scroll Rate Sync &amp; Laser Cap Alignment</h4>
+  <ul>
+    <li><span class="tag fix">fix</span><strong>All notes now scroll at the same rate in the 3D Preview.</strong> Lasers, FX notes, and BT buttons all use velocity-adjusted timing so they move down the lane in perfect sync with each other and with the chart's scroll speed events.</li>
+    <li><span class="tag fix">fix</span><strong>Laser entry caps no longer visually lead BT notes.</strong> The rectangular entry cap was extending past the judgment line, making lasers appear to arrive earlier than notes at the same tick. The cap is now clamped to the judgment line so all elements align correctly.</li>
+    <li><span class="tag fix">fix</span>Beat/measure grid lines in the 3D Preview now also respect chart scroll speed events, keeping the grid in sync with notes.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.33</span>Rectangular Laser Caps &amp; 3D Preview Caps</h4>
+  <ul>
+    <li><span class="tag fix">fix</span><strong>Rectangular entry/exit caps.</strong> The laser section start (entry) and end (exit) markers are now solid rectangles instead of triangles, matching the SDVX arcade visual convention.</li>
+    <li><span class="tag add">add</span><strong>Caps and slam arrows now visible in 3D Preview.</strong> The WebGL-rendered 3D game preview now draws rectangular entry/exit caps and white slam-direction arrowheads on all laser sections, matching the 2D editor.</li>
+    <li><span class="tag fix">fix</span>Preview laser caps properly extend toward and away from the judgment line, giving clear visual cues for where each laser section starts and ends in 3D perspective.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.32</span>Laser Continuity &amp; SDVX Entry/Exit Markers</h4>
