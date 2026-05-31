@@ -60,16 +60,34 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.33';
+const APP_VERSION = '0.0.35';
 const CHANGELOG = [
   {
-    version: '0.0.33',
+    version: '0.0.35',
     title: 'Freehand Laser Drawing',
     entries: [
       ['add', '<strong>Shift+drag to draw freehand lasers.</strong> Hold <kbd>Shift</kbd> while pressing the left or right laser tool and drag across the lane — a live path preview follows the cursor. On release, the raw path is automatically simplified using the Ramer-Douglas-Peucker algorithm, producing a clean set of anchor points that faithfully capture your gesture without unnecessary clutter.'],
       ['add', 'Freehand mode always starts a fresh laser section from the drag origin, so it never accidentally extends an existing laser. All simplified points use linear interpolation; you can Alt+click any anchor afterward to refine the curve type.'],
       ['add', 'Freehand drawing respects <strong>Laser Mirror Mode</strong> — if mirror mode is active, the RDP-simplified path is simultaneously mirrored to the opposite side with inverted v values, making symmetric patterns fast to sketch.'],
       ['add', 'The raw freehand path is drawn as a semi-transparent colored stroke in real time while dragging, so you can see the shape before it is committed and simplified.'],
+    ],
+  },
+  {
+    version: '0.0.34',
+    title: 'Scroll Rate Sync & Laser Cap Alignment',
+    entries: [
+      ['fix', '<strong>All notes now scroll at the same rate in the 3D Preview.</strong> Lasers, FX notes, and BT buttons now all use velocity-adjusted timing so they move down the lane in perfect sync with each other and with the chart\'s scroll speed events.'],
+      ['fix', '<strong>Laser entry caps no longer visually lead BT notes.</strong> The rectangular entry cap was extending past the judgment line, making lasers appear to arrive earlier than notes at the same tick. The cap is now clamped to the judgment line so all elements align correctly.'],
+      ['fix', 'Beat/measure grid lines in the 3D Preview now also respect chart scroll speed events, keeping the grid in sync with notes.'],
+    ],
+  },
+  {
+    version: '0.0.33',
+    title: 'Rectangular Laser Caps & 3D Preview Caps',
+    entries: [
+      ['fix', '<strong>Rectangular entry/exit caps.</strong> The laser section start (entry) and end (exit) markers are now solid rectangles instead of triangles, matching the SDVX arcade visual convention.'],
+      ['add', '<strong>Caps and slam arrows now visible in 3D Preview.</strong> The WebGL-rendered 3D game preview now draws rectangular entry/exit caps and white slam-direction arrowheads on all laser sections, matching the 2D editor.'],
+      ['fix', 'Preview laser caps properly extend toward and away from the judgment line, giving clear visual cues for where each laser section starts and ends in 3D perspective.'],
     ],
   },
   {
