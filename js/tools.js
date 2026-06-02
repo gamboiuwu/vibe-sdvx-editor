@@ -1,5 +1,5 @@
-import { chart, renderer, gameView, render, saveUndo, updateSeekbar, addChartAnnotation, _seekTo, sel, playing, audioBuffer } from './app.js';
-import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE } from './chart.js';
+import { chart, renderer, gameView, render, saveUndo, updateSeekbar, addChartAnnotation, _seekTo, sel, playing, audioBuffer, flipHorizontalRange, flipTemporalRange } from './app.js';
+import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes } from './chart.js';
 import { Renderer } from './renderer.js';
 import { updateRadar } from './radar.js';
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -653,12 +653,8 @@ function _toolBpmSync(c) {
 
   ttBtnRow.append(ttApply, ttReset);
 
-  function ttCalcBpm() {
-    if (_ttTimes.length < 2) return null;
-    let sum = 0;
-    for (let i = 1; i < _ttTimes.length; i++) sum += _ttTimes[i] - _ttTimes[i - 1];
-    return 60000 / (sum / (_ttTimes.length - 1));
-  }
+  // Shared with the Calibration window's Tap Tempo via chart.js bpmFromTapTimes().
+  const ttCalcBpm = () => bpmFromTapTimes(_ttTimes);
 
   function ttUpdateDisplay() {
     const count = _ttTimes.length;
@@ -5837,40 +5833,17 @@ function _toolChartStats(c) {
       fullRes.innerHTML = '<div class="tool-result-item tool-result-err">No chart loaded</div>'; return;
     }
     const ch = chart;
-    const totalMeas  = ch.totalMeasures || 1;
-    const totalTicks = totalMeas * TICKS_PER_MEASURE;
-
-    const btTotal  = [0,1,2,3].reduce((s,i)=>s+ch.bt[i].length, 0);
-    const fxTotal  = [0,1].reduce((s,i)=>s+ch.fx[i].length, 0);
-    const btChips  = [0,1,2,3].reduce((s,i)=>s+ch.bt[i].filter(n=>n.len===0).length, 0);
-    const btHolds  = btTotal - btChips;
-    const fxChips  = [0,1].reduce((s,i)=>s+ch.fx[i].filter(n=>n.len===0).length, 0);
-    const fxHolds  = fxTotal - fxChips;
-    const lptsL    = ch.lasers[0].reduce((s,sec2)=>s+sec2.points.length, 0);
-    const lptsR    = ch.lasers[1].reduce((s,sec2)=>s+sec2.points.length, 0);
-
-    const calcCov = secs => {
-      let cov = 0;
-      secs.forEach(sec2 => { const lp = sec2.points[sec2.points.length-1]; cov += lp?.ry ?? 0; });
-      return totalTicks > 0 ? Math.min(100, cov/totalTicks*100).toFixed(1) : '0.0';
-    };
-    const coverL = calcCov(ch.lasers[0]);
-    const coverR = calcCov(ch.lasers[1]);
-
-    const bpms   = ch.bpmEvents.map(e=>e.bpm);
-    const bpmMin = bpms.length ? Math.min(...bpms) : 0;
-    const bpmMax = bpms.length ? Math.max(...bpms) : 0;
-    const bpmStr = bpmMin === bpmMax ? bpmMin.toFixed(1) : `${bpmMin.toFixed(0)}–${bpmMax.toFixed(0)}`;
-
-    const allTicks = [];
-    for (let i=0;i<4;i++) ch.bt[i].forEach(n=>allTicks.push(n.y));
-    for (let i=0;i<2;i++) ch.fx[i].forEach(n=>allTicks.push(n.y));
-    let peakDens = 0;
-    for (let m=0;m<totalMeas;m++) {
-      const s=m*TICKS_PER_MEASURE, e=s+TICKS_PER_MEASURE;
-      const cnt=allTicks.filter(t=>t>=s&&t<e).length;
-      if (cnt>peakDens) peakDens=cnt;
-    }
+    // Statistics math is shared with the Window-menu Chart Statistics modal via
+    // chart.js computeChartStats() — single source of truth.
+    const st = computeChartStats(ch);
+    const totalMeas = st.totalMeas;
+    const btTotal = st.btTotal, btChips = st.btChip, btHolds = st.btHold;
+    const fxTotal = st.fxTotal, fxChips = st.fxChip, fxHolds = st.fxHold;
+    const lptsL = st.pointsL, lptsR = st.pointsR;
+    const coverL = st.coverL.toFixed(1), coverR = st.coverR.toFixed(1);
+    const bpmStr = st.bpmMin === st.bpmMax ? st.bpmMin.toFixed(1) : `${st.bpmMin.toFixed(0)}–${st.bpmMax.toFixed(0)}`;
+    const peakDens = st.peak;
+    const totalNoteEvents = st.totalNotes;
 
     results.appendChild(_statGrid([
       { label: 'BT Notes',  value: btTotal,   color: '#c8c8ff' },
@@ -5888,7 +5861,7 @@ function _toolChartStats(c) {
       { label: 'VOL-L coverage',       value: `${coverL}%  (${ch.lasers[0].length} section${ch.lasers[0].length!==1?'s':''})` },
       { label: 'VOL-R coverage',       value: `${coverR}%  (${ch.lasers[1].length} section${ch.lasers[1].length!==1?'s':''})` },
       { label: 'Peak density',         value: `${peakDens} notes/measure` },
-      { label: 'Total note events',    value: allTicks.length },
+      { label: 'Total note events',    value: totalNoteEvents },
       { label: 'BPM events',           value: ch.bpmEvents.length },
       { label: 'Chart sections',       value: (ch.sections||[]).length },
     ];
@@ -6669,127 +6642,20 @@ function _toolPatternFlip(c) {
 }
 
 // ── Horizontal Flip: mirror BT A↔D, B↔C, FX-L↔R, VOL-L↔R (invert v) ────────
+// Pattern Flip operations now delegate to the single canonical flip engine in
+// app.js (flipHorizontalRange / flipTemporalRange). This removed two divergent
+// copies of the mirror logic — and fixed a real bug: the old temporal-laser
+// path here mirrored laser points via a non-existent `.x` field (the model is
+// `{ ry, v }`), so flipping a selection containing lasers produced NaN section
+// positions. The canonical engine uses `.ry`, so lasers now flip correctly.
+//   inclLasers → include VOL ('all') or BT+FX only ('btfx')
 export function pfFlipHorizontal(lo, hi, inclLasers) {
-  const ch = typeof chart !== 'undefined' ? chart : null;
-  if (!ch) return 0;
-  let count = 0;
-
-  // BT: swap lanes 0↔3, 1↔2
-  // Extract notes from each lane within [lo, hi], then reassign
-  const btBuckets = [[], [], [], []];
-  for (let li = 0; li < 4; li++) {
-    const keep = [], move = [];
-    ch.bt[li].forEach(n => (n.y >= lo && n.y < hi ? move : keep).push(n));
-    ch.bt[li] = keep;
-    btBuckets[li] = move;
-    count += move.length;
-  }
-  // Swap: lane 0 → 3, 1 → 2, 2 → 1, 3 → 0
-  [btBuckets[0], btBuckets[3]] = [btBuckets[3], btBuckets[0]];
-  [btBuckets[1], btBuckets[2]] = [btBuckets[2], btBuckets[1]];
-  for (let li = 0; li < 4; li++) {
-    btBuckets[li].forEach(n => ch.bt[li].push(n));
-    ch.bt[li].sort((a, b) => a.y - b.y);
-  }
-
-  // FX: swap lanes 0↔1
-  const fxBuckets = [[], []];
-  for (let li = 0; li < 2; li++) {
-    const keep = [], move = [];
-    ch.fx[li].forEach(n => (n.y >= lo && n.y < hi ? move : keep).push(n));
-    ch.fx[li] = keep;
-    fxBuckets[li] = move;
-    count += move.length;
-  }
-  [fxBuckets[0], fxBuckets[1]] = [fxBuckets[1], fxBuckets[0]];
-  for (let li = 0; li < 2; li++) {
-    fxBuckets[li].forEach(n => ch.fx[li].push(n));
-    ch.fx[li].sort((a, b) => a.y - b.y);
-  }
-
-  if (!inclLasers) return count;
-
-  // VOL: swap sides 0↔1, invert all v values (1 − v)
-  const laserBuckets = [[], []];
-  for (let s = 0; s < 2; s++) {
-    const keep = [], move = [];
-    ch.lasers[s].forEach(sec => (sec.y >= lo && sec.y < hi ? move : keep).push(sec));
-    ch.lasers[s] = keep;
-    laserBuckets[s] = move;
-  }
-  // Swap sides
-  [laserBuckets[0], laserBuckets[1]] = [laserBuckets[1], laserBuckets[0]];
-  for (let s = 0; s < 2; s++) {
-    laserBuckets[s].forEach(sec => {
-      // Invert all point v values
-      sec.points = sec.points.map(p => ({ ...p, v: parseFloat((1 - p.v).toFixed(6)) }));
-      ch.lasers[s].push(sec);
-    });
-    ch.lasers[s].sort((a, b) => a.y - b.y);
-  }
-
-  return count;
+  return flipHorizontalRange(lo, hi, inclLasers ? 'all' : 'btfx');
 }
 
 // ── Temporal Flip: reverse note order in time within [lo, hi] ────────────────
 export function pfFlipTemporal(lo, hi, inclLasers, inclVel) {
-  const ch = typeof chart !== 'undefined' ? chart : null;
-  if (!ch) return 0;
-  let count = 0;
-
-  // BT: new_y = lo + hi - n.y - max(n.len, 1)
-  for (let li = 0; li < 4; li++) {
-    ch.bt[li].forEach(n => {
-      if (n.y < lo || n.y >= hi) return;
-      const eff = Math.max(n.len, 1);
-      n.y = lo + hi - n.y - eff;
-      count++;
-    });
-    ch.bt[li].sort((a, b) => a.y - b.y);
-  }
-
-  // FX: same formula
-  for (let li = 0; li < 2; li++) {
-    ch.fx[li].forEach(n => {
-      if (n.y < lo || n.y >= hi) return;
-      const eff = Math.max(n.len, 1);
-      n.y = lo + hi - n.y - eff;
-      count++;
-    });
-    ch.fx[li].sort((a, b) => a.y - b.y);
-  }
-
-  if (inclVel && ch.scrollSpeedEvents) {
-    ch.scrollSpeedEvents.forEach(ev => {
-      if (ev.y < lo || ev.y >= hi) return;
-      ev.y = lo + hi - ev.y - 1;
-    });
-    ch.scrollSpeedEvents.sort((a, b) => a.y - b.y);
-  }
-
-  if (!inclLasers) return count;
-
-  // VOL: reverse each laser section's points and recompute offsets
-  for (let s = 0; s < 2; s++) {
-    ch.lasers[s].forEach(sec => {
-      if (sec.y < lo || sec.y >= hi) return;
-      const pts = sec.points;
-      if (pts.length < 2) return;
-      const totalX = pts[pts.length - 1].x;
-      // New section start (absolute tick)
-      const newY = hi - sec.y - totalX;
-      sec.y = newY;
-      // Reverse points and recalculate offsets
-      const reversed = pts.slice().reverse();
-      sec.points = reversed.map((p, i) => ({
-        ...p,
-        x: totalX - pts[pts.length - 1 - i].x,
-      }));
-    });
-    ch.lasers[s].sort((a, b) => a.y - b.y);
-  }
-
-  return count;
+  return flipTemporalRange(lo, hi, inclLasers ? 'all' : 'btfx', inclVel);
 }
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────

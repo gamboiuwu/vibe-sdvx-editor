@@ -28,6 +28,92 @@ export function laserPosToChar(pos) {
   return LASER_CHARS[i];
 }
 
+// Estimate BPM from a list of tap timestamps (performance.now() ms) by averaging
+// the inter-tap intervals. Shared by the Calibration window's Tap Tempo and the
+// Tools Hub BPM Sync tool so both stay in lock-step. Returns null with < 2 taps.
+export function bpmFromTapTimes(times) {
+  if (!times || times.length < 2) return null;
+  let sum = 0;
+  for (let i = 1; i < times.length; i++) sum += times[i] - times[i - 1];
+  const avg = sum / (times.length - 1);
+  return avg > 0 ? 60000 / avg : null;
+}
+
+// Single source of truth for chart statistics. Both the Window-menu "Chart
+// Statistics" modal and the Tools Hub "Chart Statistics" tool used to carry
+// their own near-identical copies of this math; both now call this. Returns a
+// superset object so either UI can pick the fields it shows.
+export function computeChartStats(chart) {
+  if (!chart) return null;
+  const TPM = TICKS_PER_MEASURE, TPB = TICKS_PER_BEAT;
+
+  let btChip = 0, btHold = 0;
+  for (const lane of chart.bt) for (const n of lane) (n.len > 0 ? btHold++ : btChip++);
+  let fxChip = 0, fxHold = 0;
+  for (const lane of chart.fx) for (const n of lane) (n.len > 0 ? fxHold++ : fxChip++);
+
+  const segL = chart.lasers[0].length, segR = chart.lasers[1].length;
+  let slamL = 0, slamR = 0, pointsL = 0, pointsR = 0;
+  [chart.lasers[0], chart.lasers[1]].forEach((side, idx) => {
+    for (const sec of side) {
+      const pts = sec.points || [];
+      if (idx === 0) pointsL += pts.length; else pointsR += pts.length;
+      for (let i = 1; i < pts.length; i++) {
+        if ((pts[i].ry - pts[i - 1].ry) <= 6) { if (idx === 0) slamL++; else slamR++; }
+      }
+    }
+  });
+
+  const totalNotes = btChip + btHold + fxChip + fxHold;
+  const totalMeas  = chart.totalMeasures || 1;
+  const totalTicks = totalMeas * TPM;
+
+  // Per-measure note density → peak + spanned-measure average
+  const measBuckets = new Array(totalMeas).fill(0);
+  const addToBucket = (y) => { const m = Math.floor(y / TPM); if (m >= 0 && m < totalMeas) measBuckets[m]++; };
+  for (const lane of chart.bt) for (const n of lane) addToBucket(n.y);
+  for (const lane of chart.fx) for (const n of lane) addToBucket(n.y);
+  let peak = 0, peakMeas = 0, totalSpanned = 0;
+  measBuckets.forEach((c, i) => { if (c > peak) { peak = c; peakMeas = i; } if (c > 0) totalSpanned++; });
+  const avgDens = totalSpanned ? (totalNotes / totalSpanned) : 0;
+
+  // Laser coverage % (sum of section lengths / chart length)
+  const cov = secs => {
+    let c = 0;
+    secs.forEach(s => { const lp = s.points[s.points.length - 1]; c += lp?.ry ?? 0; });
+    return totalTicks > 0 ? Math.min(100, c / totalTicks * 100) : 0;
+  };
+  const coverL = cov(chart.lasers[0]), coverR = cov(chart.lasers[1]);
+
+  // Duration estimate from BPM events
+  let durSec = 0;
+  const events = [...chart.bpmEvents].sort((a, b) => a.y - b.y);
+  const endTick = totalMeas * TPM;
+  for (let i = 0; i < events.length; i++) {
+    const a = events[i].y;
+    const b = (i + 1 < events.length) ? events[i + 1].y : endTick;
+    durSec += (Math.max(0, b - a) / TPB) * (60 / (events[i].bpm || 120));
+  }
+  const mm = Math.floor(durSec / 60), ss = Math.floor(durSec % 60);
+  const durStr = `${mm}:${String(ss).padStart(2, '0')}`;
+
+  const bs = events.map(e => e.bpm);
+  const bpmMin = bs.length ? Math.min(...bs) : 0;
+  const bpmMax = bs.length ? Math.max(...bs) : 0;
+  const bpmRange = bs.length ? (bpmMin === bpmMax ? bpmMin.toFixed(2) : `${bpmMin.toFixed(2)} – ${bpmMax.toFixed(2)}`) : '—';
+
+  return {
+    btChip, btHold, fxChip, fxHold,
+    btTotal: btChip + btHold, fxTotal: fxChip + fxHold,
+    segL, segR, slamL, slamR, pointsL, pointsR,
+    totalNotes, totalMeas, peak, peakMeas, avgDens, durStr, durSec,
+    coverL, coverR,
+    bpmMin, bpmMax, bpmRange,
+    bpmCount: chart.bpmEvents.length,
+    sectionCount: (chart.sections || []).length,
+  };
+}
+
 export class ChartData {
   constructor() {
     this.meta = {

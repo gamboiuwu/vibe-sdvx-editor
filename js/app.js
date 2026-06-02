@@ -1,4 +1,4 @@
-import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS } from './chart.js';
+import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats } from './chart.js';
 import { Renderer, C, laserColors, laserOpacity, laserWideMode, LASER_PRESETS, applyLaserPreset, setLaserColorCustom, buildLaneHeader, setLaserOpacity, setLaserWideMode } from './renderer.js';
 import { GameView } from './game.js';
 import { exportKsh, importKsh, downloadText } from './ksh.js';
@@ -8,7 +8,7 @@ import { calibrationWindow } from './calibration.js';
 import { t, applyLocalization } from './i18n.js';
 import { velEnvEditor, getVelEnvEditor, openVelEnvEditor, toggleVelEnvEditor } from './velenv.js';
 import { dockInit, dockRegister, dockApplyLayout, dockToggle } from './dock.js';
-import { openToolsWindow, savePatternFromSelection, pfFlipHorizontal as _pfFlipHorizontal, pfFlipTemporal as _pfFlipTemporal } from './tools.js';
+import { openToolsWindow, savePatternFromSelection } from './tools.js';
 import { openHeatmapWindow, updateHeatmap } from './heatmap.js';
 import { updateRadar, openRadarWindow } from './radar.js';
 import { openHandSimWindow } from './handsim.js';
@@ -60,8 +60,16 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.40';
+const APP_VERSION = '0.0.41';
 const CHANGELOG = [
+  {
+    version: '0.0.41',
+    title: 'Unified Tools & a Pattern-Flip Laser Fix',
+    entries: [
+      ['fix', '<strong>Pattern Flip (and Ctrl+Shift+R time-reverse) now flips lasers correctly.</strong> When a selection contained VOL lasers, the Tools Hub “Pattern Flip” tool and the time-reverse shortcut used a stale point model and produced broken/misplaced laser sections. Mirror/flip is now a single shared engine, so the Edit menu, the right-click menu, the keyboard shortcuts, and the tool all behave identically.'],
+      ['chg', '<strong>Duplicate tools consolidated.</strong> The Window-menu “Chart Statistics” and the Tools Hub “Chart Statistics” now compute from one shared function (identical numbers everywhere), and the Tap Tempo BPM math is shared between the Calibration window and the BPM Sync tool. No more drift between two copies.'],
+    ],
+  },
   {
     version: '0.0.40',
     title: 'Practice A–B Loop',
@@ -4255,13 +4263,23 @@ function selPasteAtTick(targetTick) {
   render();
 }
 
-function selMirror(what) {
-  if (!sel.active) return;
-  saveUndo(`Mirrored ${what.toUpperCase()}`);
-  const [lo, hi] = selTickRange();
+// ── Canonical horizontal / temporal flip engine ─────────────────────────────
+// Single source of truth for ALL mirror/flip operations across the app: the
+// Edit-menu Mirror items, the right-click context menu, the Ctrl+Shift+H/R
+// shortcuts, and the Tools Hub "Pattern Flip" tool (which delegates here via
+// pfFlipHorizontal/pfFlipTemporal). Range-based (operates on [lo, hi]) and
+// undo/render-agnostic — the caller wraps with saveUndo()/render().
+//   what ∈ 'all' | 'bt' | 'fx' | 'vol' | 'btfx'
+// Returns the number of BT+FX notes moved (for status readouts).
+export function flipHorizontalRange(lo, hi, what = 'all') {
+  if (!chart) return 0;
   const inSel = y => y >= lo && y <= hi;
+  const doBt  = what === 'all' || what === 'bt' || what === 'btfx';
+  const doFx  = what === 'all' || what === 'fx' || what === 'btfx';
+  const doVol = what === 'all' || what === 'vol';
+  let count = 0;
 
-  if (what === 'all' || what === 'bt') {
+  if (doBt) {
     const snap0 = chart.bt[0].filter(n => inSel(n.y)), snap3 = chart.bt[3].filter(n => inSel(n.y));
     const snap1 = chart.bt[1].filter(n => inSel(n.y)), snap2 = chart.bt[2].filter(n => inSel(n.y));
     chart.bt[0] = [...chart.bt[0].filter(n => !inSel(n.y)), ...snap3];
@@ -4269,14 +4287,16 @@ function selMirror(what) {
     chart.bt[2] = [...chart.bt[2].filter(n => !inSel(n.y)), ...snap1];
     chart.bt[3] = [...chart.bt[3].filter(n => !inSel(n.y)), ...snap0];
     for (let li = 0; li < 4; li++) chart.bt[li].sort((a, b) => a.y - b.y);
+    count += snap0.length + snap1.length + snap2.length + snap3.length;
   }
-  if (what === 'all' || what === 'fx') {
+  if (doFx) {
     const snapL = chart.fx[0].filter(n => inSel(n.y)), snapR = chart.fx[1].filter(n => inSel(n.y));
     chart.fx[0] = [...chart.fx[0].filter(n => !inSel(n.y)), ...snapR];
     chart.fx[1] = [...chart.fx[1].filter(n => !inSel(n.y)), ...snapL];
     for (let li = 0; li < 2; li++) chart.fx[li].sort((a, b) => a.y - b.y);
+    count += snapL.length + snapR.length;
   }
-  if (what === 'all' || what === 'vol') {
+  if (doVol) {
     const flipPts = s => ({ ...s, points: s.points.map(p => ({ ...p, v: 1 - p.v })) });
     const snapLL = chart.lasers[0].filter(s => inSel(s.y)).map(flipPts);
     const snapRL = chart.lasers[1].filter(s => inSel(s.y)).map(flipPts);
@@ -4284,6 +4304,70 @@ function selMirror(what) {
     chart.lasers[1] = [...chart.lasers[1].filter(s => !inSel(s.y)), ...snapLL];
     for (let s = 0; s < 2; s++) chart.lasers[s].sort((a, b) => a.y - b.y);
   }
+  return count;
+}
+
+export function flipTemporalRange(lo, hi, what = 'all', inclVel = false) {
+  if (!chart) return 0;
+  const span = hi - lo;
+  // reflect a note's y around the selection midpoint, accounting for its length
+  const reflectNote = n => ({ ...n, y: lo + (span - (n.y - lo) - n.len) });
+  const doBt  = what === 'all' || what === 'bt' || what === 'btfx';
+  const doFx  = what === 'all' || what === 'fx' || what === 'btfx';
+  const doVol = what === 'all' || what === 'vol';
+  let count = 0;
+
+  if (doBt) {
+    for (let li = 0; li < 4; li++) {
+      const inside  = chart.bt[li].filter(n => n.y >= lo && n.y < hi);
+      const outside = chart.bt[li].filter(n => n.y < lo || n.y >= hi);
+      chart.bt[li] = [...outside, ...inside.map(reflectNote)];
+      chart.bt[li].sort((a, b) => a.y - b.y);
+      count += inside.length;
+    }
+  }
+  if (doFx) {
+    for (let li = 0; li < 2; li++) {
+      const inside  = chart.fx[li].filter(n => n.y >= lo && n.y < hi);
+      const outside = chart.fx[li].filter(n => n.y < lo || n.y >= hi);
+      chart.fx[li] = [...outside, ...inside.map(reflectNote)];
+      chart.fx[li].sort((a, b) => a.y - b.y);
+      count += inside.length;
+    }
+  }
+  if (doVol) {
+    for (let s = 0; s < 2; s++) {
+      const inside  = chart.lasers[s].filter(sec => sec.y >= lo && sec.y < hi);
+      const outside = chart.lasers[s].filter(sec => sec.y < lo || sec.y >= hi);
+      const reflected = inside.map(sec => {
+        const lastRy = sec.points.length > 0 ? sec.points[sec.points.length - 1].ry : 0;
+        const secEnd = sec.y + lastRy;
+        const newY   = lo + (hi - secEnd);
+        // Reverse the point order and mirror each ry about the section end so the
+        // path plays backwards in time while keeping the same v positions.
+        const newPts = [...sec.points].reverse().map(p => ({ ...p, ry: lastRy - p.ry }));
+        return { ...sec, y: Math.max(lo, newY), points: newPts };
+      });
+      chart.lasers[s] = [...outside, ...reflected];
+      chart.lasers[s].sort((a, b) => a.y - b.y);
+    }
+  }
+  // Optional: reflect scroll-speed (velocity) events in time too.
+  if (inclVel && chart.scrollSpeedEvents) {
+    chart.scrollSpeedEvents.forEach(ev => {
+      if (ev.y < lo || ev.y >= hi) return;
+      ev.y = lo + hi - ev.y - 1;
+    });
+    chart.scrollSpeedEvents.sort((a, b) => a.y - b.y);
+  }
+  return count;
+}
+
+function selMirror(what) {
+  if (!sel.active) return;
+  saveUndo(`Mirrored ${what.toUpperCase()}`);
+  const [lo, hi] = selTickRange();
+  flipHorizontalRange(lo, hi, what);
   updateTimeSigList();
   render();
 }
@@ -4292,45 +4376,7 @@ function selTemporalMirror(what) {
   if (!sel.active) return;
   saveUndo(`Temporal Mirror ${what.toUpperCase()}`);
   const [lo, hi] = selTickRange();
-  const span = hi - lo;
-
-  // reflect a note's y around the selection midpoint, accounting for its length
-  const reflectNote = n => ({ ...n, y: lo + (span - (n.y - lo) - n.len) });
-
-  if (what === 'all' || what === 'bt') {
-    for (let li = 0; li < 4; li++) {
-      const inside = chart.bt[li].filter(n => n.y >= lo && n.y < hi);
-      const outside = chart.bt[li].filter(n => n.y < lo || n.y >= hi);
-      chart.bt[li] = [...outside, ...inside.map(reflectNote)];
-      chart.bt[li].sort((a, b) => a.y - b.y);
-    }
-  }
-  if (what === 'all' || what === 'fx') {
-    for (let li = 0; li < 2; li++) {
-      const inside = chart.fx[li].filter(n => n.y >= lo && n.y < hi);
-      const outside = chart.fx[li].filter(n => n.y < lo || n.y >= hi);
-      chart.fx[li] = [...outside, ...inside.map(reflectNote)];
-      chart.fx[li].sort((a, b) => a.y - b.y);
-    }
-  }
-  if (what === 'all' || what === 'vol') {
-    for (let s = 0; s < 2; s++) {
-      const inside = chart.lasers[s].filter(sec => sec.y >= lo && sec.y < hi);
-      const outside = chart.lasers[s].filter(sec => sec.y < lo || sec.y >= hi);
-      const reflected = inside.map(sec => {
-        const secEnd = sec.y + (sec.points.length > 0 ? sec.points[sec.points.length-1].ry : 0);
-        const newY = lo + (hi - secEnd);
-        const newPts = [...sec.points].reverse().map((p, i, arr) => {
-          const origRy = arr[arr.length - 1 - i].ry;
-          const nextRy = i < arr.length - 1 ? arr[arr.length - 2 - i].ry : origRy;
-          return { ...p, ry: sec.points[sec.points.length - 1].ry - p.ry };
-        });
-        return { ...sec, y: Math.max(lo, newY), points: newPts };
-      });
-      chart.lasers[s] = [...outside, ...reflected];
-      chart.lasers[s].sort((a, b) => a.y - b.y);
-    }
-  }
+  flipTemporalRange(lo, hi, what, false);
   render();
 }
 
@@ -6433,7 +6479,7 @@ function onKeyDown(e) {
           const lo = Math.min(sel.startTick, sel.endTick);
           const hi = Math.max(sel.startTick, sel.endTick);
           saveUndo('Flip Horizontal');
-          _pfFlipHorizontal(lo, hi, true);
+          flipHorizontalRange(lo, hi, 'all');
           render();
         }
       } else if (!ctrl) {
@@ -6488,7 +6534,7 @@ function onKeyDown(e) {
           const lo = Math.min(sel.startTick, sel.endTick);
           const hi = Math.max(sel.startTick, sel.endTick);
           saveUndo('Flip Vertical (Time Reverse)');
-          _pfFlipTemporal(lo, hi, true, false);
+          flipTemporalRange(lo, hi, 'all', false);
           render();
         }
       }
@@ -9507,72 +9553,9 @@ const DisclaimerGate = (function() {
   }
   function section(t) { return `<div class="cs-section-title">${t}</div>`; }
 
-  function compute() {
-    if (!chart) return null;
-    const TPM = 192, TPB = 48;
-    let btChip = 0, btHold = 0;
-    for (const lane of chart.bt) for (const n of lane) (n.len > 0 ? btHold++ : btChip++);
-    let fxChip = 0, fxHold = 0;
-    for (const lane of chart.fx) for (const n of lane) (n.len > 0 ? fxHold++ : fxChip++);
-
-    let segL = 0, segR = 0, slamL = 0, slamR = 0, pointsL = 0, pointsR = 0;
-    [chart.lasers[0], chart.lasers[1]].forEach((side, idx) => {
-      for (const sec of side) {
-        if (idx === 0) segL++; else segR++;
-        const pts = sec.points || [];
-        if (idx === 0) pointsL += pts.length; else pointsR += pts.length;
-        for (let i = 1; i < pts.length; i++) {
-          if ((pts[i].ry - pts[i-1].ry) <= 6) {
-            if (idx === 0) slamL++; else slamR++;
-          }
-        }
-      }
-    });
-
-    const totalNotes = btChip + btHold + fxChip + fxHold;
-    const totalMeas = chart.totalMeasures || 1;
-
-    // Density: notes per measure across all measures that contain at least one note
-    const measBuckets = new Array(totalMeas).fill(0);
-    const addToBucket = (y) => {
-      const m = Math.floor(y / TPM);
-      if (m >= 0 && m < totalMeas) measBuckets[m]++;
-    };
-    for (const lane of chart.bt) for (const n of lane) addToBucket(n.y);
-    for (const lane of chart.fx) for (const n of lane) addToBucket(n.y);
-
-    let peak = 0, peakMeas = 0, totalSpanned = 0;
-    measBuckets.forEach((c, i) => {
-      if (c > peak) { peak = c; peakMeas = i; }
-      if (c > 0) totalSpanned++;
-    });
-    const avgDens = totalSpanned ? (totalNotes / totalSpanned) : 0;
-
-    // Duration estimate from BPM events
-    let durSec = 0;
-    const events = [...chart.bpmEvents].sort((a, b) => a.y - b.y);
-    const endTick = totalMeas * TPM;
-    for (let i = 0; i < events.length; i++) {
-      const a = events[i].y;
-      const b = (i + 1 < events.length) ? events[i + 1].y : endTick;
-      const ticks = Math.max(0, b - a);
-      const bpm = events[i].bpm || 120;
-      durSec += (ticks / TPB) * (60 / bpm);
-    }
-    const mm = Math.floor(durSec / 60), ss = Math.floor(durSec % 60);
-    const durStr = `${mm}:${String(ss).padStart(2, '0')}`;
-
-    return {
-      btChip, btHold, fxChip, fxHold,
-      segL, segR, slamL, slamR, pointsL, pointsR,
-      totalNotes, totalMeas, peak, peakMeas, avgDens, durStr,
-      bpmRange: events.length ? (() => {
-        const bs = events.map(e => e.bpm);
-        const lo = Math.min(...bs), hi = Math.max(...bs);
-        return lo === hi ? lo.toFixed(2) : `${lo.toFixed(2)} – ${hi.toFixed(2)}`;
-      })() : '—',
-    };
-  }
+  // Statistics math is shared with the Tools Hub "Chart Statistics" tool via
+  // chart.js computeChartStats() — single source of truth.
+  const compute = () => computeChartStats(chart);
 
   function render() {
     const s = compute();

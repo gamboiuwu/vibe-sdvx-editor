@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.40 · 2026</span>
+  <span class="version">v0.0.41 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,14 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.41</span>Unified Tools &amp; a Pattern-Flip Laser Fix</h4>
+  <ul>
+    <li><span class="tag fix">fix</span><strong>Pattern Flip now flips lasers correctly.</strong> The Tools Hub &ldquo;Pattern Flip&rdquo; tool and the <kbd>Ctrl+Shift+R</kbd> time-reverse shortcut previously corrupted VOL laser sections in the selection (they referenced a point field that doesn&rsquo;t exist). Mirror/flip is now one shared engine, so the Edit menu, right-click menu, shortcuts, and the tool all behave identically.</li>
+    <li><span class="tag chg">chg</span><strong>Duplicate tools consolidated.</strong> The Window-menu and Tools Hub &ldquo;Chart Statistics&rdquo; now share one computation (identical numbers everywhere), and Tap Tempo BPM is shared between the Calibration window and the BPM Sync tool.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.40</span>Practice A&ndash;B Loop</h4>

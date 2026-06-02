@@ -1,4 +1,4 @@
-import { TICKS_PER_BEAT, BEATS_PER_MEASURE } from './chart.js';
+import { TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes } from './chart.js';
 
 // ── CalibrationWindow ─────────────────────────────────────────────────────────
 // Floating calibration editor: load audio, set Beat 1.0 marker, output offset.
@@ -1225,12 +1225,8 @@ export class CalibrationWindow {
   }
 
   _calcTapBpm() {
-    if (this._tapTimes.length < 2) return null;
-    let sum = 0;
-    for (let i = 1; i < this._tapTimes.length; i++) {
-      sum += this._tapTimes[i] - this._tapTimes[i - 1];
-    }
-    return 60000 / (sum / (this._tapTimes.length - 1));
+    // Shared with the Tools Hub BPM Sync tool via chart.js bpmFromTapTimes().
+    return bpmFromTapTimes(this._tapTimes);
   }
 
   _updateTapDisplay() {
