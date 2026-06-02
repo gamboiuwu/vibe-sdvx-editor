@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.39';
+const APP_VERSION = '0.0.40';
 const CHANGELOG = [
+  {
+    version: '0.0.40',
+    title: 'Practice A–B Loop',
+    entries: [
+      ['add', '<strong>Practice A–B Loop</strong> in the Game Preview side panel (under “⚙ More”). Press <strong>A</strong> to mark a loop start at the playhead, <strong>B</strong> to mark the end, then <strong>↻</strong> to repeat that section endlessly — perfect for drilling a hard run. Combine with the Rate slider to practice slowed-down.'],
+      ['add', 'Amber <strong>A/B markers and a shaded region</strong> on the preview seekbar show the loop visually, and a time readout (e.g. 0:12–0:18) appears next to the buttons. <strong>✕</strong> clears the loop.'],
+      ['chg', 'The loop wraps cleanly in world space: no slam/FX hit sounds fire across the seam, the lane auto-scrolls straight back to A, and the audio re-seeks without tearing down the camera or FX chain. Loop points reset when you switch chart tabs.'],
+    ],
+  },
   {
     version: '0.0.39',
     title: 'KSM Export: Bezier Laser Resampling',
@@ -723,6 +732,8 @@ function switchToTab(idx) {
   renderFxChain(0); renderFxChain(1);
   renderTabBar();
   _multiUpdateTabButtons();
+  // Loop points are chart-specific tick positions, so clear them on tab switch.
+  if (typeof resetPracticeLoop === 'function') resetPracticeLoop();
   render();
   updateSeekbar(renderer ? renderer.playTick : 0);
 }
@@ -1003,6 +1014,50 @@ function togglePlay() {
 
 let playStopTick = -1; // -1 = play until end
 
+// ── Practice A–B Loop ────────────────────────────────────────────────────────
+// When enabled, playback wraps from B back to A so a section repeats endlessly.
+// loopA / loopB are chart ticks; null means unset. Lives in the preview side
+// panel per the spec ("looping selected regions for precise practice").
+let loopEnabled = false;
+let loopA = null;
+let loopB = null;
+
+// Re-seek playback to `toTick` mid-stream WITHOUT the full stopPlay()/startPlay()
+// teardown (which would reset the camera, FX chain and RAF loop). Used by the
+// A–B loop to jump back to A the instant the playhead crosses B.
+function _practiceLoopReseek(toTick) {
+  renderer.playTick = Math.max(0, toTick);
+  playStartPerf  = performance.now();
+  playStartTickV = renderer.playTick;
+  prevPlayTick   = renderer.playTick;
+  if (gameView) {
+    gameView.playTick = renderer.playTick;
+    gameView.chain    = gameView.countChain(chart, renderer.playTick);
+  }
+  if (audioBuffer && audioCtx) {
+    if (audioSource) { try { audioSource.onended = null; audioSource.stop(); } catch(e) {} }
+    audioSource = audioCtx.createBufferSource();
+    audioSource.buffer = audioBuffer;
+    audioSource.playbackRate.value = 1.0;
+    audioSource.connect(laserFilterNode || audioCtx.destination);
+    const offset    = (+(chart.meta.offset) || 0) / 1000;
+    const userDelay = (prefs.audioDelay ?? 0) / 1000;
+    const rawSeek   = tickToSeconds(renderer.playTick) + offset + userDelay;
+    const audioSeek = isFinite(rawSeek) ? rawSeek : 0;
+    audioStartAcTime   = audioCtx.currentTime;
+    const aware        = tickToAudioSec(renderer.playTick);
+    audioStartChartSec = isFinite(aware) ? aware : 0;
+    if (audioSeek >= 0) {
+      audioSource.start(audioCtx.currentTime, audioSeek);
+    } else {
+      const d = -audioSeek;
+      audioSource.start(audioCtx.currentTime + d);
+      audioStartAcTime += d;
+    }
+    audioSource.onended = () => { if (playing) stopPlay(); };
+  }
+}
+
 function startPlay(stopAtTick = -1) {
   playStopTick      = stopAtTick;
   ensureAudioCtx();
@@ -1106,6 +1161,14 @@ function playFrame(now) {
   if (gameView) {
     gameView.playTick = renderer.playTick;
     gameView.chain = gameView.countChain(chart, renderer.playTick);
+  }
+
+  // ── Practice A–B Loop: jump back to A the moment the playhead reaches B ──
+  // Done before auto-scroll/detection so the wrapped frame scrolls to A cleanly
+  // and no slam/hit sounds fire across the seam (prevPlayTick is reset to A).
+  if (loopEnabled && loopA != null && loopB != null && loopB > loopA &&
+      renderer.playTick >= loopB) {
+    _practiceLoopReseek(loopA);
   }
 
   // Auto-scroll
@@ -1718,6 +1781,63 @@ export function updateSeekbar(tick) {
   const curSec   = tickToSeconds(tick);
   const totSec   = tickToSeconds(total);
   label.textContent = `${_fmtTime(curSec)} / ${_fmtTime(totSec)}`;
+
+  _updateLoopMarkers();
+}
+
+// Position the A/B markers + shaded region on the game seekbar to match loopA/B.
+function _updateLoopMarkers() {
+  const total = chart ? chart.totalTicks() : 0;
+  const aEl = document.getElementById('game-seekbar-loop-a');
+  const bEl = document.getElementById('game-seekbar-loop-b');
+  const rEl = document.getElementById('game-seekbar-loop-region');
+  if (!aEl || !bEl || !rEl) return;
+  const pctOf = t => total > 0 ? Math.min(100, Math.max(0, (t / total) * 100)) : 0;
+  if (loopA != null) { aEl.style.left = pctOf(loopA) + '%'; aEl.style.display = 'block'; }
+  else aEl.style.display = 'none';
+  if (loopB != null) { bEl.style.left = pctOf(loopB) + '%'; bEl.style.display = 'block'; }
+  else bEl.style.display = 'none';
+  if (loopA != null && loopB != null && loopB > loopA) {
+    rEl.style.left  = pctOf(loopA) + '%';
+    rEl.style.width = (pctOf(loopB) - pctOf(loopA)) + '%';
+    rEl.style.display = 'block';
+  } else {
+    rEl.style.display = 'none';
+  }
+}
+
+// Refresh the loop control buttons + text readout in the preview side panel.
+function _updateLoopHud() {
+  const aBtn = document.getElementById('pvc-loop-a');
+  const bBtn = document.getElementById('pvc-loop-b');
+  const tBtn = document.getElementById('pvc-loop-toggle');
+  const lbl  = document.getElementById('pvc-loop-label');
+  if (aBtn) aBtn.classList.toggle('set', loopA != null);
+  if (bBtn) bBtn.classList.toggle('set', loopB != null);
+  if (tBtn) {
+    const on = loopEnabled && loopA != null && loopB != null && loopB > loopA;
+    tBtn.classList.toggle('active', on);
+    tBtn.innerHTML = (on ? '↻ On' : '↻ Off');
+  }
+  if (lbl) {
+    if (loopA != null && loopB != null) {
+      lbl.textContent = `${_fmtTime(tickToSeconds(loopA))}–${_fmtTime(tickToSeconds(loopB))}`;
+      lbl.style.color = (loopB > loopA) ? '#ffc83c' : '#e06666';
+    } else if (loopA != null) {
+      lbl.textContent = `A ${_fmtTime(tickToSeconds(loopA))}`;
+      lbl.style.color = '#ffd574';
+    } else {
+      lbl.textContent = '––';
+      lbl.style.color = '';
+    }
+  }
+  _updateLoopMarkers();
+}
+
+// Reset the practice loop (called on new/open chart).
+function resetPracticeLoop() {
+  loopEnabled = false; loopA = null; loopB = null;
+  _updateLoopHud();
 }
 
 function _seekbarTickFromEvent(e) {
@@ -8686,6 +8806,43 @@ function _initProjectionControls() {
     }
     // Audio pitch/speed is intentionally NOT changed — only chart tick advancement is scaled
   });
+
+  // ── Practice A–B Loop controls ──────────────────────────────────────────────
+  const loopABtn = document.getElementById('pvc-loop-a');
+  const loopBBtn = document.getElementById('pvc-loop-b');
+  const loopTBtn = document.getElementById('pvc-loop-toggle');
+  const loopCBtn = document.getElementById('pvc-loop-clear');
+  if (loopABtn && !loopABtn._wired) {
+    loopABtn._wired = true;
+    const curTick = () => Math.round(renderer ? renderer.playTick : 0);
+    loopABtn.addEventListener('click', () => {
+      loopA = curTick();
+      // Keep A < B: if the new A lands past B, drop the stale B.
+      if (loopB != null && loopB <= loopA) loopB = null;
+      _updateLoopHud();
+    });
+    loopBBtn.addEventListener('click', () => {
+      loopB = curTick();
+      if (loopA != null && loopA >= loopB) loopA = null;
+      _updateLoopHud();
+    });
+    loopTBtn.addEventListener('click', () => {
+      // Enabling needs a valid A<B range; otherwise the toggle is a no-op hint.
+      if (!loopEnabled && (loopA == null || loopB == null || loopB <= loopA)) {
+        _updateLoopHud();
+        return;
+      }
+      loopEnabled = !loopEnabled;
+      // When turning the loop on mid-playback while past B (or before A), snap
+      // the playhead into the region so the loop engages immediately.
+      if (loopEnabled && playing && (renderer.playTick >= loopB || renderer.playTick < loopA)) {
+        _practiceLoopReseek(loopA);
+      }
+      _updateLoopHud();
+    });
+    loopCBtn.addEventListener('click', () => { resetPracticeLoop(); });
+    _updateLoopHud();
+  }
 
   // Judge Y slider
   const jySl  = document.getElementById('pvc-judge-y');

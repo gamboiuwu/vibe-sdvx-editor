@@ -551,6 +551,14 @@
         <input type="range" id="pvc-rate" min="0.25" max="2.0" step="0.05" value="1" title="Playback rate: 0.25× (quarter speed) to 2.0× (double speed)">
         <span id="pvc-rate-label" class="pvc-val">1.00×</span>
       </div>
+      <div class="pvc-section" id="pvc-loop-section">
+        <span class="pvc-label" data-i18n="preview.loop" title="Practice A&#8211;B loop: repeat a chosen section over and over while practicing">Loop</span>
+        <button id="pvc-loop-a"      class="pvc-loop-btn"        title="Set loop start (A) to the current playhead">A</button>
+        <button id="pvc-loop-b"      class="pvc-loop-btn"        title="Set loop end (B) to the current playhead">B</button>
+        <button id="pvc-loop-toggle" class="pvc-loop-btn toggle" title="Enable / disable the A&#8211;B practice loop">&#8635; Off</button>
+        <button id="pvc-loop-clear"  class="pvc-loop-btn clear"  title="Clear the loop points">&#10005;</button>
+        <span id="pvc-loop-label" class="pvc-val">&#8211;&#8211;</span>
+      </div>
       <div class="pvc-section">
         <span class="pvc-label" data-i18n="preview.btWidth">BT Width</span>
         <input type="range" id="pvc-bt-width" min="0.3" max="1.6" step="0.05" value="1" title="Visual BT note thickness">
@@ -603,6 +611,9 @@
   <div id="game-seekbar" title="Click or drag to seek">
     <div id="game-seekbar-track">
       <div id="game-seekbar-fill"></div>
+      <div id="game-seekbar-loop-region"></div>
+      <div id="game-seekbar-loop-a" class="seekbar-loop-mark"></div>
+      <div id="game-seekbar-loop-b" class="seekbar-loop-mark"></div>
       <div id="game-seekbar-thumb"></div>
     </div>
     <div id="game-seekbar-time">0:00 / 0:00</div>
