@@ -3,9 +3,57 @@ import { TICKS_PER_BEAT, TICKS_PER_MEASURE, ChartData, LASER_CHARS, laserCharToP
 
 // ── KSH EXPORT ──────────────────────────────────────────────────────────────
 
+// KSM/KSH does not support bezier (smooth) laser curves — it only has linear
+// interpolation between anchor points.  Expand any bezier segment into dense
+// 1/32-note (24-tick) linear samples so the exported chart visually matches
+// the KSON source.
+const _KSH_BEZ_SAMPLE = 24; // 1/32 note at 192 ticks/beat
+
+function _kshExpandBezier(sec) {
+  if (!sec.points.some(p => p.interp === 'bezier')) return sec;
+  const pts = sec.points;
+  const flat = [];
+  for (let pi = 0; pi < pts.length; pi++) {
+    const p0 = pts[pi];
+    if (pi === pts.length - 1 || p0.interp !== 'bezier') {
+      flat.push({ ry: p0.ry, v: p0.v, slam: p0.slam ?? false, interp: p0.interp ?? 'linear' });
+      continue;
+    }
+    const p1  = pts[pi + 1];
+    const t0  = sec.y + p0.ry;
+    const t1  = sec.y + p1.ry;
+    if (t1 <= t0) {
+      flat.push({ ry: p0.ry, v: p0.v, slam: p0.slam ?? false, interp: 'linear' });
+      continue;
+    }
+    const curve  = p0.curve ?? 0.5;
+    const tCtrl  = t0 + (t1 - t0) * curve;
+    const bzTick = t => t0*(1-t)**3 + tCtrl*3*t*(1-t) + t1*t**3;
+    const bzV    = t => p0.v*(1-t)**2*(1+2*t) + p1.v*t**2*(3-2*t);
+    // Emit the start anchor
+    flat.push({ ry: p0.ry, v: p0.v, slam: p0.slam ?? false, interp: 'linear' });
+    // Emit a sample at every 1/32-note boundary strictly inside [t0, t1)
+    const first = Math.ceil((t0 + 1) / _KSH_BEZ_SAMPLE) * _KSH_BEZ_SAMPLE;
+    for (let T = first; T < t1; T += _KSH_BEZ_SAMPLE) {
+      // Binary-search the bezier parameter t such that bzTick(t) ≈ T
+      let lo = 0, hi = 1;
+      for (let i = 0; i < 24; i++) {
+        const mid = (lo + hi) * 0.5;
+        if (bzTick(mid) < T) lo = mid; else hi = mid;
+      }
+      const v = Math.max(0, Math.min(1, bzV((lo + hi) * 0.5)));
+      flat.push({ ry: T - sec.y, v, slam: false, interp: 'linear' });
+    }
+    // p1 is emitted on the next iteration (or as the final point)
+  }
+  return { ...sec, points: flat };
+}
+
 export function exportKsh(chart) {
   const m = chart.meta;
   const lines = [];
+  // Bezier segments expanded to 1/32-note linear samples for KSH compatibility
+  const exportLasers = chart.lasers.map(side => side.map(_kshExpandBezier));
 
   // Header
   lines.push(`title=${m.title}`);
@@ -78,7 +126,7 @@ export function exportKsh(chart) {
 
     // Laser anchor points
     for (let side = 0; side < 2; side++) {
-      for (const sec of chart.lasers[side]) {
+      for (const sec of exportLasers[side]) {
         for (const pt of sec.points) {
           const t = sec.y + pt.ry;
           if (t >= startY && t < endY) offsets.add(t - startY);
@@ -148,7 +196,7 @@ export function exportKsh(chart) {
       }).join('');
 
       const laserStr = [0, 1].map(side => {
-        for (const sec of chart.lasers[side]) {
+        for (const sec of exportLasers[side]) {
           for (const pt of sec.points) {
             if (sec.y + pt.ry === tick) return laserPosToChar(pt.v);
           }
