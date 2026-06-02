@@ -127,6 +127,7 @@ export const I18N = {
     'preview.btWidth':    'BT Width',
     'preview.rate':       'Rate',
     'preview.judgeY':     'Judge Y',
+    'preview.loop':       'Loop',
     'preview.multiChart': 'Multi Chart',
     'preview.more':       'More',
     'preview.ortho':      'Ortho',
@@ -397,6 +398,7 @@ export const I18N = {
     'preview.btWidth':    'Ancho BT',
     'preview.rate':       'Ritmo',
     'preview.judgeY':     'Línea Y',
+    'preview.loop':       'Bucle',
     'preview.multiChart': 'Multi-gráfico',
     'preview.more':       'Más',
     'preview.ortho':      'Orto',
@@ -566,7 +568,7 @@ export const I18N = {
 
     'preview.projection': 'Projection', 'preview.perspective': 'Perspective',
     'preview.hispeed': 'Vitesse', 'preview.btWidth': 'Largeur BT',
-    'preview.rate': 'Cadence', 'preview.judgeY': 'Ligne Y', 'preview.multiChart': 'Multi-graphique', 'preview.more': 'Plus',
+    'preview.rate': 'Cadence', 'preview.judgeY': 'Ligne Y', 'preview.loop': 'Boucle', 'preview.multiChart': 'Multi-graphique', 'preview.more': 'Plus',
     'preview.ortho': 'Ortho', 'preview.sdvx': 'SDVX', 'preview.hybrid': 'Hybride',
 
     'tool.desc.bpm-sync':       'Calcule les temps en ms et en ticks pour tout BPM et subdivision. Utile pour vérifier la synchro audio.',
@@ -729,7 +731,7 @@ export const I18N = {
 
     'preview.projection': '投影', 'preview.perspective': '遠近',
     'preview.hispeed': 'ハイスピード', 'preview.btWidth': 'BT 幅',
-    'preview.rate': '再生速度', 'preview.judgeY': '判定Y', 'preview.multiChart': 'マルチ譜面', 'preview.more': '詳細',
+    'preview.rate': '再生速度', 'preview.judgeY': '判定Y', 'preview.loop': 'ループ', 'preview.multiChart': 'マルチ譜面', 'preview.more': '詳細',
     'preview.ortho': '正射', 'preview.sdvx': 'SDVX', 'preview.hybrid': 'ハイブリッド',
 
     'tool.desc.bpm-sync':       '任意のBPMと細分でのノートタイミング（ms・tick）を計算します。オーディオ同期の確認や配置計画に便利。',
@@ -892,7 +894,7 @@ export const I18N = {
 
     'preview.projection': '投影', 'preview.perspective': '透视',
     'preview.hispeed': '速度', 'preview.btWidth': 'BT 宽度',
-    'preview.rate': '倍速', 'preview.judgeY': '判定线Y', 'preview.multiChart': '多谱面', 'preview.more': '更多',
+    'preview.rate': '倍速', 'preview.judgeY': '判定线Y', 'preview.loop': '循环', 'preview.multiChart': '多谱面', 'preview.more': '更多',
     'preview.ortho': '正交', 'preview.sdvx': 'SDVX', 'preview.hybrid': '混合',
 
     'tool.desc.bpm-sync':       '计算任意 BPM 和细分下的音符时值（ms 和 tick）。用于验证音频同步或规划精确放置。',

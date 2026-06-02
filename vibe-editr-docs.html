@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.38 · 2026</span>
+  <span class="version">v0.0.39 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.39</span>Practice A&ndash;B Loop</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Practice A&ndash;B Loop</strong> in the Game Preview side panel (under <em>&#9881; More</em>, next to Rate). Press <strong>A</strong> to mark a loop start at the playhead, <strong>B</strong> to mark the end, then the <strong>&#8635; On/Off</strong> toggle to repeat that section endlessly &mdash; ideal for drilling a hard run. Pair it with the Rate slider to practice slowed down. <strong>&#10005;</strong> clears the loop.</li>
+    <li><span class="tag add">add</span>Amber <strong>A/B markers and a shaded region</strong> on the preview seekbar show the loop at a glance, with a time readout (e.g. <code>0:12&ndash;0:18</code>) beside the buttons.</li>
+    <li><span class="tag chg">chg</span>The loop wraps in world space with linear timing: no slam/FX hit sounds fire across the seam, the lane scrolls straight back to A, and the audio re-seeks without resetting the camera or FX chain. Loop points clear automatically when you switch chart tabs.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.38</span>Laser Thickness Fixed (No More Squish)</h4>

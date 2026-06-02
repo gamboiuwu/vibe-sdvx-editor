@@ -1134,6 +1134,61 @@ kbd {
   text-align: right;
   font-family: monospace;
 }
+/* ── Practice A–B Loop markers on the seekbar ── */
+#game-seekbar-loop-region {
+  position: absolute;
+  top: 0; bottom: 0;
+  left: 0; width: 0;
+  background: rgba(255, 200, 60, 0.18);
+  border-left: 1px solid rgba(255, 200, 60, 0.55);
+  border-right: 1px solid rgba(255, 200, 60, 0.55);
+  pointer-events: none;
+  display: none;
+  z-index: 1;
+}
+.seekbar-loop-mark {
+  position: absolute;
+  top: -3px; bottom: -3px;
+  width: 2px;
+  background: #ffc83c;
+  box-shadow: 0 0 5px #ffc83ccc;
+  pointer-events: none;
+  display: none;
+  z-index: 2;
+}
+.seekbar-loop-mark::after {
+  position: absolute;
+  top: -11px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 8px;
+  font-weight: 700;
+  color: #ffc83c;
+  letter-spacing: 0;
+}
+#game-seekbar-loop-a::after { content: 'A'; }
+#game-seekbar-loop-b::after { content: 'B'; }
+
+/* ── Practice A–B Loop buttons (preview side panel) ── */
+.pvc-loop-btn {
+  background: #181828;
+  color: #aab;
+  border: 1px solid #3a3a5a;
+  border-radius: 4px;
+  padding: 3px 7px;
+  font-size: 10px;
+  cursor: pointer;
+  letter-spacing: 0.03em;
+}
+.pvc-loop-btn:hover { background: #232340; color: #ccd; }
+.pvc-loop-btn.set { border-color: #c8a23a; color: #ffd574; }
+.pvc-loop-btn.toggle.active {
+  background: #3a3210;
+  border-color: #ffc83c;
+  color: #ffc83c;
+}
+.pvc-loop-btn.clear { color: #c88; }
+
 #game-seekbar:hover #game-seekbar-track { background: #252540; }
 #game-seekbar:hover #game-seekbar-thumb { box-shadow: 0 0 10px #1255e8cc; width: 14px; height: 14px; }
 #game-seekbar-track.scrubbing #game-seekbar-fill { transition: none; }
