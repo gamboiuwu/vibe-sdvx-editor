@@ -60,15 +60,23 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.39';
+const APP_VERSION = '0.0.40';
 const CHANGELOG = [
   {
-    version: '0.0.39',
+    version: '0.0.40',
     title: 'Practice A–B Loop',
     entries: [
       ['add', '<strong>Practice A–B Loop</strong> in the Game Preview side panel (under “⚙ More”). Press <strong>A</strong> to mark a loop start at the playhead, <strong>B</strong> to mark the end, then <strong>↻</strong> to repeat that section endlessly — perfect for drilling a hard run. Combine with the Rate slider to practice slowed-down.'],
       ['add', 'Amber <strong>A/B markers and a shaded region</strong> on the preview seekbar show the loop visually, and a time readout (e.g. 0:12–0:18) appears next to the buttons. <strong>✕</strong> clears the loop.'],
       ['chg', 'The loop wraps cleanly in world space: no slam/FX hit sounds fire across the seam, the lane auto-scrolls straight back to A, and the audio re-seeks without tearing down the camera or FX chain. Loop points reset when you switch chart tabs.'],
+    ],
+  },
+  {
+    version: '0.0.39',
+    title: 'KSM Export: Bezier Laser Resampling',
+    entries: [
+      ['fix', '<strong>KSON/KSONPACK → KSM export now correctly converts bezier laser curves.</strong> Previously, smooth/bezier laser segments were silently downgraded to linear — only the anchor points were written and KSM interpolated them straight. The exporter now samples every bezier segment at 1/32-note (24-tick) intervals and emits a real position character at each sample, so the exported \.ksh file faithfully reproduces the curved shape.'],
+      ['fix', 'KSON-only data (camera events, FX automation, chart sections, scroll-speed events, glitch events) is not written to .ksh output — it was never included in the KSH serialiser, but this confirms the boundary.'],
     ],
   },
   {
