@@ -23,6 +23,12 @@ export class GameView {
     // Judgment line Y position as fraction of canvas height (0.73 = default)
     this.judgeYFrac = 0.73;
 
+    // Track cover (SDVX Sudden+/Hidden+). Fraction (0..0.9) of the lane runway
+    // hidden from the far/top edge (sudden) and the near/bottom edge (hidden).
+    // Render-only readability-practice overlay — never touches chart data.
+    this.coverSudden = 0;
+    this.coverHidden = 0;
+
     // Visual interpretation mode for readability testing
     // 'standard' | 'simplified' | 'colorblind' | 'wireframe'
     this.interpMode = 'standard';
@@ -1113,6 +1119,10 @@ export class GameView {
     // Edit-mode ghost cursor (rendered inside tilt context so it aligns with the lane)
     if (this._editGhost) this._drawEditGhost(p);
 
+    // Sudden+/Hidden+ track cover — drawn inside the tilt context so it tilts
+    // with the lane, on top of notes/lasers but under the HUD.
+    this._drawLaneCover(p);
+
     // Close the tilt rotation context (HUD is always drawn unrotated)
     if (p.tilt) ctx.restore();
 
@@ -1377,6 +1387,53 @@ export class GameView {
     this._slamFlashes.push({ side, v0, v1, wide, time: now });
     // Prune any older than 220 ms
     this._slamFlashes = this._slamFlashes.filter(f => now - f.time < 220);
+  }
+
+  // ── Sudden+ / Hidden+ track cover ─────────────────────────────────────────
+  // SDVX-style practice cover: an opaque band hides the far end of the runway
+  // (Sudden+) and/or the near end by the judgment line (Hidden+) so the chartist
+  // can readability-test reaction windows. Pure overlay — no chart data changes.
+  _drawLaneCover(p) {
+    const sud = Math.max(0, Math.min(0.9, this.coverSudden || 0));
+    const hid = Math.max(0, Math.min(0.9, this.coverHidden || 0));
+    if (sud <= 0 && hid <= 0) return;
+    const { ctx } = this;
+    const OFF  = GameView.LASER_LANE_OFFSET;
+    const top  = p.cutoffY;          // far edge (where notes appear)
+    const bot  = p.judgeY;           // near edge (judgment line)
+    const span = bot - top;
+    if (span <= 0) return;
+
+    // Opaque trapezoid spanning the full lane (incl. VOL side-rails) between two
+    // screen-Ys, with a bright edge line on the side facing the play area.
+    const band = (yA, yB, edgeY, edgeColor) => {
+      const lA = this._screenX(-OFF, yA, p), rA = this._screenX(1 + OFF, yA, p);
+      const lB = this._screenX(-OFF, yB, p), rB = this._screenX(1 + OFF, yB, p);
+      ctx.shadowBlur = 0;
+      ctx.beginPath();
+      ctx.moveTo(lA, yA); ctx.lineTo(rA, yA);
+      ctx.lineTo(rB, yB); ctx.lineTo(lB, yB);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(2,3,9,0.94)';
+      ctx.fill();
+      const lE = this._screenX(-OFF, edgeY, p), rE = this._screenX(1 + OFF, edgeY, p);
+      ctx.beginPath();
+      ctx.moveTo(lE, edgeY); ctx.lineTo(rE, edgeY);
+      ctx.strokeStyle = edgeColor;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    };
+
+    // Sudden+ : cover from the far/top edge down; edge line at its lower border.
+    if (sud > 0) {
+      const yEdge = top + span * sud;
+      band(top, yEdge, yEdge, 'rgba(120,200,255,0.85)');
+    }
+    // Hidden+ : cover from the near/bottom edge up; edge line at its upper border.
+    if (hid > 0) {
+      const yEdge = bot - span * hid;
+      band(yEdge, bot, yEdge, 'rgba(255,170,90,0.85)');
+    }
   }
 
   // ── HUD ───────────────────────────────────────────────────────────────────

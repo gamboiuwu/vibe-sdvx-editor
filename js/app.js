@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.41';
+const APP_VERSION = '0.0.42';
 const CHANGELOG = [
+  {
+    version: '0.0.42',
+    title: 'Sudden+ / Hidden+ Track Cover',
+    entries: [
+      ['add', '<strong>Sudden+ / Hidden+ track cover</strong> in the Game Preview side panel (under “⚙ More”). <strong>Sudden+</strong> hides the far/top end of the runway so notes appear lower down; <strong>Hidden+</strong> hides the near/bottom end by the judgment line. Both are the classic SDVX readability-practice covers — drag each slider from 0–90%.'],
+      ['add', 'The cover is a pure visual overlay that tilts with the lane and works in every projection mode. It never touches your chart data — it only changes what you see, so you can readability-test how a pattern feels with reduced reaction window.'],
+      ['chg', 'Cover amounts persist via <strong>■ Save Config</strong> alongside Projection, HiSpeed, BT Width and Judge Y.'],
+    ],
+  },
   {
     version: '0.0.41',
     title: 'Unified Tools & a Pattern-Flip Laser Fix',
@@ -8902,6 +8911,28 @@ function _initProjectionControls() {
     });
   }
 
+  // Sudden+ / Hidden+ track cover sliders — render-only readability practice aid.
+  const sudSl  = document.getElementById('pvc-cover-sudden');
+  const sudLbl = document.getElementById('pvc-cover-sudden-label');
+  if (sudSl && !sudSl._wired) {
+    sudSl._wired = true;
+    sudSl.addEventListener('input', () => {
+      const v = +sudSl.value;
+      if (sudLbl) sudLbl.textContent = Math.round(v * 100) + '%';
+      if (gameView) { gameView.coverSudden = v; if (!playing) gameView.draw(); }
+    });
+  }
+  const hidSl  = document.getElementById('pvc-cover-hidden');
+  const hidLbl = document.getElementById('pvc-cover-hidden-label');
+  if (hidSl && !hidSl._wired) {
+    hidSl._wired = true;
+    hidSl.addEventListener('input', () => {
+      const v = +hidSl.value;
+      if (hidLbl) hidLbl.textContent = Math.round(v * 100) + '%';
+      if (gameView) { gameView.coverHidden = v; if (!playing) gameView.draw(); }
+    });
+  }
+
   // Game canvas drag to reposition judgment line
   const gc = document.getElementById('game-canvas');
   if (gc && !gc._judgeYDragWired) {
@@ -8979,6 +9010,11 @@ function _initProjectionControls() {
     // Judge Y
     const jyEl = document.getElementById('pvc-judge-y');
     if (jyEl) prefs.judgeYFrac = +jyEl.value;
+    // Track cover (Sudden+ / Hidden+)
+    const sudCfgEl = document.getElementById('pvc-cover-sudden');
+    if (sudCfgEl) prefs.coverSudden = +sudCfgEl.value;
+    const hidCfgEl = document.getElementById('pvc-cover-hidden');
+    if (hidCfgEl) prefs.coverHidden = +hidCfgEl.value;
     // Visual interpretation mode (managed by Tools Hub → Visual Mode)
     if (gameView) prefs.interpMode = gameView.interpMode;
     // Playback Rate
@@ -9022,6 +9058,18 @@ function _initProjectionControls() {
     const lb = document.getElementById('pvc-judge-y-label');
     if (el) { el.value = prefs.judgeYFrac; if (gameView) gameView.judgeYFrac = prefs.judgeYFrac; }
     if (lb) lb.textContent = Math.round(prefs.judgeYFrac * 100) + '%';
+  }
+  if (prefs.coverSudden != null) {
+    const el = document.getElementById('pvc-cover-sudden');
+    const lb = document.getElementById('pvc-cover-sudden-label');
+    if (el) { el.value = prefs.coverSudden; if (gameView) gameView.coverSudden = prefs.coverSudden; }
+    if (lb) lb.textContent = Math.round(prefs.coverSudden * 100) + '%';
+  }
+  if (prefs.coverHidden != null) {
+    const el = document.getElementById('pvc-cover-hidden');
+    const lb = document.getElementById('pvc-cover-hidden-label');
+    if (el) { el.value = prefs.coverHidden; if (gameView) gameView.coverHidden = prefs.coverHidden; }
+    if (lb) lb.textContent = Math.round(prefs.coverHidden * 100) + '%';
   }
   if (prefs.playbackRate != null) {
     const el = document.getElementById('pvc-rate');
