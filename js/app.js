@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.42';
+const APP_VERSION = '0.0.43';
 const CHANGELOG = [
+  {
+    version: '0.0.43',
+    title: 'Quantize Tool — snap selections & lasers to grid',
+    entries: [
+      ['add', '<strong>Quantize tool</strong> in <strong>Tools Hub → Edit → Quantize</strong>. Snaps notes <em>and</em> VOL lasers to a chosen grid (1/4 … 1/48 incl. triplets). Unlike BPM Sync — which snaps every note globally and ignores lasers — Quantize works on the active <strong>Select</strong> region (or the whole chart) and is the only tool that cleans up off-grid VOL laser anchors, including freehand-drawn paths.'],
+      ['add', '<strong>Strength slider (0–100%)</strong> for partial / “humanize” snapping, an optional <strong>“Snap hold ends too”</strong> toggle, per-class <strong>BT / FX / VOL targets</strong>, and a live readout of how many in-scope objects are currently off-grid.'],
+      ['add', '<strong>± one-step Nudge</strong> buttons shift the in-scope objects by exactly one grid division (lasers move as a whole, preserving their shape). Every Quantize/Nudge is a single undoable step (<kbd>Ctrl+Z</kbd>).'],
+    ],
+  },
   {
     version: '0.0.42',
     title: 'Sudden+ / Hidden+ Track Cover',

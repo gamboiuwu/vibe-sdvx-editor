@@ -1,9 +1,9 @@
 import { chart, renderer, gameView, render, saveUndo, updateSeekbar, addChartAnnotation, _seekTo, sel, playing, audioBuffer, flipHorizontalRange, flipTemporalRange } from './app.js';
-import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats } from './chart.js';
+import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, quantizeRange, nudgeRange } from './chart.js';
 import { Renderer } from './renderer.js';
 import { updateRadar } from './radar.js';
 /* ═══════════════════════════════════════════════════════════════════════════
-   vibe-editr  ·  Tools Hub  ·  20 tools — floating MDI window
+   vibe-editr  ·  Tools Hub  ·  24 tools — floating MDI window
    ═══════════════════════════════════════════════════════════════════════════ */
 
 // ── Tool registry ────────────────────────────────────────────────────────────
@@ -17,6 +17,7 @@ const TOOL_REGISTRY = [
   { id: 'pattern-lib',        cat: 'Edit',     label: 'Pattern Library',   icon: '≡' },
   { id: 'adaptive-compress',  cat: 'Edit',     label: 'Adaptive Compress', icon: '⊟' },
   { id: 'pattern-flip',       cat: 'Edit',     label: 'Pattern Flip',      icon: '⇌' },
+  { id: 'quantize',           cat: 'Edit',     label: 'Quantize',          icon: '⊞' },
   // Analysis
   { id: 'density-heatmap',cat:'Analysis',label:'Density Heatmap',  icon: '≋'  },
   { id: 'multi-sync',  cat: 'Analysis', label: 'Multi-Chart Sync', icon: '⇄'  },
@@ -547,6 +548,7 @@ function _renderTool(id, container) {
     case 'visual-mode':       return _toolVisualMode(container);
     case 'adaptive-compress': return _toolAdaptiveCompress(container);
     case 'pattern-flip':      return _toolPatternFlip(container);
+    case 'quantize':          return _toolQuantize(container);
     default: container.textContent = 'Unknown tool: ' + id;
   }
 }
@@ -6639,6 +6641,192 @@ function _toolPatternFlip(c) {
 
   // Refresh status when the tool panel is focused (selection may have changed)
   c.addEventListener('mouseenter', refreshStatus);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Quantize — snap / nudge selected (or all) notes & lasers to a grid
+   ═══════════════════════════════════════════════════════════════════════════
+   The BPM Sync tool's "Snap all notes" is global and ignores lasers entirely.
+   This tool fills that gap: it quantizes a *selection* (or the whole chart),
+   includes VOL laser sections + their points (important for cleaning up
+   freehand-drawn, off-grid laser paths), supports a partial-strength
+   "humanize" snap, and adds a ±one-step nudge. Core math lives in chart.js
+   (quantizeRange / nudgeRange) and is unit-tested. */
+function _toolQuantize(c) {
+  const sec = _section('Quantize / Snap to Grid');
+  c.appendChild(sec);
+
+  const desc = _h('p', '', 'Snap notes and lasers to a rhythmic grid. Works on the active <strong>Select</strong> region, or the whole chart. Unlike BPM Sync this also quantizes VOL lasers — handy for cleaning up freehand-drawn paths. Undoable with <kbd>Ctrl+Z</kbd>.');
+  desc.style.cssText = 'font-size:12px;color:#8899bb;margin:0 0 10px;line-height:1.5;';
+  sec.appendChild(desc);
+
+  // ── Grid subdivision ─────────────────────────────────────────────────────
+  const subdivs = [
+    { label: '1/4 beat',    div: 1  },
+    { label: '1/8 beat',    div: 2  },
+    { label: '1/12 (1/8T)', div: 3  },
+    { label: '1/16 beat',   div: 4  },
+    { label: '1/24 (1/16T)',div: 6  },
+    { label: '1/32 beat',   div: 8  },
+    { label: '1/48 (1/32T)',div: 12 },
+  ];
+  const subdivSel = document.createElement('select');
+  subdivs.forEach((s, i) => {
+    const o = document.createElement('option'); o.value = i; o.textContent = s.label;
+    subdivSel.appendChild(o);
+  });
+  subdivSel.value = '3'; // 1/16 default
+  const stepOf = () => TICKS_PER_BEAT / subdivs[+subdivSel.value].div;
+
+  // ── Region ───────────────────────────────────────────────────────────────
+  const regionSel = document.createElement('select');
+  [['sel', 'Current selection'], ['all', 'Entire chart']].forEach(([v, l]) => {
+    const o = document.createElement('option'); o.value = v; o.textContent = l; regionSel.appendChild(o);
+  });
+
+  // ── Strength ─────────────────────────────────────────────────────────────
+  const strengthIn = document.createElement('input');
+  strengthIn.type = 'range'; strengthIn.min = '0'; strengthIn.max = '100'; strengthIn.value = '100'; strengthIn.step = '5';
+  strengthIn.style.cssText = 'flex:1;';
+  const strengthVal = _h('span', 'pvc-val', '100%');
+  strengthVal.style.cssText = 'min-width:38px;text-align:right;color:#aabbcc;';
+  strengthIn.addEventListener('input', () => { strengthVal.textContent = strengthIn.value + '%'; });
+  const strengthRow = _h('div', 'tool-row');
+  strengthRow.appendChild(_h('label', '', 'Strength:'));
+  const sWrap = document.createElement('div');
+  sWrap.style.cssText = 'display:flex;align-items:center;gap:8px;flex:1;';
+  sWrap.append(strengthIn, strengthVal);
+  strengthRow.appendChild(sWrap);
+
+  // ── Target checkboxes ────────────────────────────────────────────────────
+  const mkChk = (id, label, checked) => {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:4px;';
+    const chk = document.createElement('input');
+    chk.type = 'checkbox'; chk.id = 'qz-' + id; chk.checked = checked;
+    const lbl = document.createElement('label');
+    lbl.htmlFor = 'qz-' + id; lbl.textContent = ' ' + label;
+    lbl.style.cssText = 'font-size:12px;color:#aabbcc;cursor:pointer;';
+    wrap.append(chk, lbl);
+    return { wrap, chk };
+  };
+  const btT  = mkChk('bt',  'BT notes',  true);
+  const fxT  = mkChk('fx',  'FX notes',  true);
+  const volT = mkChk('vol', 'VOL lasers', true);
+  const endT = mkChk('ends', 'Snap hold ends too', true);
+
+  sec.appendChild(_row('Grid:', subdivSel));
+  sec.appendChild(_row('Region:', regionSel));
+  sec.appendChild(strengthRow);
+  const tgtTitle = _h('div', '', 'Targets:');
+  tgtTitle.style.cssText = 'font-size:12px;color:#8899bb;margin:8px 0 4px;';
+  sec.appendChild(tgtTitle);
+  sec.append(btT.wrap, fxT.wrap, volT.wrap, endT.wrap);
+
+  // ── Status readout ───────────────────────────────────────────────────────
+  const statusDiv = _h('div', '', '');
+  statusDiv.style.cssText = 'background:#10101e;border:1px solid #334;border-radius:4px;padding:6px 10px;margin:10px 0;font-size:12px;color:#88aacc;min-height:32px;';
+  sec.appendChild(statusDiv);
+
+  function getRange() {
+    const s = typeof sel !== 'undefined' ? sel : null;
+    if (regionSel.value === 'sel' && s && s.active) {
+      return { lo: Math.min(s.startTick, s.endTick), hi: Math.max(s.startTick, s.endTick), scoped: true };
+    }
+    return { lo: -Infinity, hi: Infinity, scoped: false };
+  }
+
+  // Count objects in scope and how many are currently off the chosen grid.
+  function refreshStatus() {
+    const ch = typeof chart !== 'undefined' ? chart : null;
+    const useSel = regionSel.value === 'sel';
+    const s = typeof sel !== 'undefined' ? sel : null;
+    if (useSel && !(s && s.active)) {
+      statusDiv.innerHTML = '<span style="color:#556677;">No active selection — drag a range with the Select tool (key&nbsp;<kbd>1</kbd>), or switch Region to “Entire chart”.</span>';
+      return;
+    }
+    if (!ch) { statusDiv.textContent = 'No chart loaded.'; return; }
+    const { lo, hi } = getRange();
+    const step = stepOf();
+    const onGrid = t => Math.abs(t - Math.round(t / step) * step) < 0.5;
+    let inScope = 0, off = 0;
+    const scan = (lanes, on) => { for (const lane of lanes) for (const n of lane) { if (n.y < lo || n.y >= hi) continue; if (on) { inScope++; if (!onGrid(n.y)) off++; } } };
+    scan(ch.bt, btT.chk.checked);
+    scan(ch.fx, fxT.chk.checked);
+    if (volT.chk.checked) for (const side of ch.lasers) for (const sc of side) { if (sc.y < lo || sc.y >= hi) continue; inScope++; if (!onGrid(sc.y) || sc.points.some(p => !onGrid(sc.y + p.ry))) off++; }
+    const scopeStr = (lo === -Infinity) ? 'entire chart' : `${hi - lo} ticks`;
+    statusDiv.innerHTML = `<strong>${inScope}</strong> object${inScope !== 1 ? 's' : ''} in scope (${scopeStr}) · <span style="color:${off ? '#ffbb55' : '#44ff88'}">${off} off-grid</span> at this resolution.`;
+  }
+
+  // ── Apply / Nudge buttons ────────────────────────────────────────────────
+  const applyBtn = _btn('⊞  Quantize to grid');
+  applyBtn.style.cssText = 'width:100%;margin-top:4px;background:#10221a;border-color:#39ff14;color:#39ff14;';
+  applyBtn.title = 'Snap every in-scope object to the nearest grid line';
+
+  const nudgeRow = document.createElement('div');
+  nudgeRow.style.cssText = 'display:flex;gap:6px;margin-top:6px;';
+  const nudgeL = _btn('◀ Nudge −1 step');
+  const nudgeR = _btn('Nudge +1 step ▶');
+  nudgeL.style.cssText = 'flex:1;'; nudgeR.style.cssText = 'flex:1;';
+  nudgeL.title = nudgeR.title = 'Shift in-scope objects by one grid step (does not snap)';
+  nudgeRow.append(nudgeL, nudgeR);
+
+  const resultDiv = _h('div', '', '');
+  resultDiv.style.cssText = 'margin-top:8px;font-size:12px;min-height:18px;';
+
+  sec.appendChild(applyBtn);
+  sec.appendChild(nudgeRow);
+  sec.appendChild(resultDiv);
+
+  function opts() {
+    const { lo, hi } = getRange();
+    return {
+      lo, hi, step: stepOf(),
+      strength: (+strengthIn.value) / 100,
+      bt: btT.chk.checked, fx: fxT.chk.checked, lasers: volT.chk.checked,
+      holdEnds: endT.chk.checked,
+    };
+  }
+  function guardSel() {
+    if (regionSel.value === 'sel') {
+      const s = typeof sel !== 'undefined' ? sel : null;
+      if (!(s && s.active)) { resultDiv.innerHTML = '<span style="color:#ff6655;">No active selection. Drag a region or choose “Entire chart”.</span>'; return false; }
+    }
+    if (!btT.chk.checked && !fxT.chk.checked && !volT.chk.checked) {
+      resultDiv.innerHTML = '<span style="color:#ff6655;">Pick at least one target (BT / FX / VOL).</span>'; return false;
+    }
+    return true;
+  }
+
+  applyBtn.addEventListener('click', () => {
+    if (typeof chart === 'undefined' || !chart) return;
+    if (!guardSel()) return;
+    if (typeof saveUndo === 'function') saveUndo('Quantize');
+    const n = quantizeRange(chart, opts());
+    if (typeof render === 'function') render();
+    resultDiv.innerHTML = `<span style="color:#44ff88;">✓ Quantized ${n} object${n !== 1 ? 's' : ''}. <kbd>Ctrl+Z</kbd> to undo.</span>`;
+    refreshStatus();
+  });
+
+  const doNudge = (dir) => {
+    if (typeof chart === 'undefined' || !chart) return;
+    if (!guardSel()) return;
+    const { lo, hi } = getRange();
+    const o = opts();
+    if (typeof saveUndo === 'function') saveUndo('Nudge');
+    const n = nudgeRange(chart, { lo, hi, delta: dir * stepOf(), bt: o.bt, fx: o.fx, lasers: o.lasers });
+    if (typeof render === 'function') render();
+    resultDiv.innerHTML = `<span style="color:#44ff88;">✓ Nudged ${n} object${n !== 1 ? 's' : ''} ${dir > 0 ? '+' : '−'}1 step. <kbd>Ctrl+Z</kbd> to undo.</span>`;
+    refreshStatus();
+  };
+  nudgeL.addEventListener('click', () => doNudge(-1));
+  nudgeR.addEventListener('click', () => doNudge(+1));
+
+  subdivSel.addEventListener('change', refreshStatus);
+  regionSel.addEventListener('change', refreshStatus);
+  [btT, fxT, volT].forEach(t => t.chk.addEventListener('change', refreshStatus));
+  c.addEventListener('mouseenter', refreshStatus);
+  refreshStatus();
 }
 
 // ── Horizontal Flip: mirror BT A↔D, B↔C, FX-L↔R, VOL-L↔R (invert v) ────────

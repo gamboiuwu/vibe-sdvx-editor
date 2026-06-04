@@ -114,6 +114,117 @@ export function computeChartStats(chart) {
   };
 }
 
+// ── Quantize / Nudge engine ──────────────────────────────────────────────────
+// Shared, side-effect-isolated tick math used by the Tools Hub "Quantize" tool.
+// Kept here (not in tools.js) so it can be unit-tested without a DOM, and so any
+// future caller (menu, shortcut) uses one source of truth — mirrors the pattern
+// established by flipHorizontalRange / computeChartStats.
+
+// Snap a single tick toward the nearest multiple of `step`. `strength` (0..1)
+// allows partial / "humanize"-style quantize: 1 = full snap, 0 = no change.
+export function quantizeTickValue(tick, step, strength = 1) {
+  if (!(step > 0)) return tick;
+  const snapped = Math.round(tick / step) * step;
+  const s = Math.max(0, Math.min(1, strength));
+  return Math.round(tick + (snapped - tick) * s);
+}
+
+// Quantize every object whose anchor tick lies in [lo, hi) to the grid defined by
+// `step` ticks. Returns the number of objects whose position actually changed.
+// opts: { lo, hi, step, strength, bt, fx, lasers, holdEnds }
+//  - bt/fx/lasers: include that object class (default true)
+//  - holdEnds: also snap the END of BT/FX holds (default true); off = preserve length
+// Laser sections keep their first point at ry 0 automatically and stay monotonic.
+export function quantizeRange(chart, opts = {}) {
+  if (!chart) return 0;
+  const lo = opts.lo == null ? -Infinity : opts.lo;
+  const hi = opts.hi == null ?  Infinity : opts.hi;
+  const step = opts.step;
+  if (!(step > 0)) return 0;
+  const strength = opts.strength == null ? 1 : opts.strength;
+  const doBt = opts.bt !== false, doFx = opts.fx !== false;
+  const doLasers = opts.lasers !== false, holdEnds = opts.holdEnds !== false;
+  const q = t => quantizeTickValue(t, step, strength);
+  let moved = 0;
+
+  const snapNotes = (lanes) => {
+    for (const lane of lanes) {
+      for (const n of lane) {
+        if (n.y < lo || n.y >= hi) continue;
+        const ny = q(n.y);
+        if (holdEnds && n.len > 0) {
+          const end = q(n.y + n.len);
+          n.len = Math.max(0, end - ny);
+        }
+        if (ny !== n.y) moved++;
+        n.y = ny;
+      }
+      lane.sort((a, b) => a.y - b.y);
+    }
+  };
+  if (doBt) snapNotes(chart.bt);
+  if (doFx) snapNotes(chart.fx);
+
+  if (doLasers) {
+    for (const side of chart.lasers) {
+      for (const sec of side) {
+        if (sec.y < lo || sec.y >= hi) continue;
+        const oldY = sec.y;
+        const newY = q(oldY);
+        let changed = newY !== oldY;
+        let prev = 0;
+        for (const pt of sec.points) {
+          let nr = q(oldY + pt.ry) - newY;
+          if (nr < prev) nr = prev;   // enforce ry >= 0 and non-decreasing order
+          if (nr !== pt.ry) changed = true;
+          pt.ry = nr;
+          prev = nr;
+        }
+        sec.y = newY;
+        if (changed) moved++;
+      }
+      side.sort((a, b) => a.y - b.y);
+    }
+  }
+  return moved;
+}
+
+// Shift every object whose anchor tick lies in [lo, hi) by `delta` ticks (may be
+// negative). Anchors are clamped at 0. Laser points are relative to the section
+// anchor so only the section `y` moves. Returns the count of shifted objects.
+export function nudgeRange(chart, opts = {}) {
+  if (!chart || !opts.delta) return 0;
+  const lo = opts.lo == null ? -Infinity : opts.lo;
+  const hi = opts.hi == null ?  Infinity : opts.hi;
+  const delta = opts.delta;
+  const doBt = opts.bt !== false, doFx = opts.fx !== false, doLasers = opts.lasers !== false;
+  let moved = 0;
+
+  const shiftNotes = (lanes) => {
+    for (const lane of lanes) {
+      for (const n of lane) {
+        if (n.y < lo || n.y >= hi) continue;
+        n.y = Math.max(0, n.y + delta);
+        moved++;
+      }
+      lane.sort((a, b) => a.y - b.y);
+    }
+  };
+  if (doBt) shiftNotes(chart.bt);
+  if (doFx) shiftNotes(chart.fx);
+  if (doLasers) {
+    for (const side of chart.lasers) {
+      for (const sec of side) {
+        if (sec.y < lo || sec.y >= hi) continue;
+        sec.y = Math.max(0, sec.y + delta);
+        moved++;
+      }
+      side.sort((a, b) => a.y - b.y);
+    }
+  }
+  return moved;
+}
+
 export class ChartData {
   constructor() {
     this.meta = {
