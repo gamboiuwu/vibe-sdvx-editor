@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.42 · 2026</span>
+  <span class="version">v0.0.43 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.43</span>Quantize Tool</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Quantize tool</strong> &mdash; open via <strong>Tools Hub &rarr; Edit &rarr; Quantize</strong>. Snaps notes <em>and</em> VOL lasers to a chosen rhythmic grid (1/4 through 1/48, including triplets). Unlike <em>BPM Sync</em> &mdash; which snaps every note globally and never touches lasers &mdash; Quantize works on the active <strong>Select</strong> region (or the whole chart) and is the only tool that cleans up off-grid laser anchors, including freehand-drawn paths.</li>
+    <li><span class="tag add">add</span><strong>Strength slider (0&ndash;100%)</strong> for partial / &ldquo;humanize&rdquo; snapping, an optional <strong>&ldquo;Snap hold ends too&rdquo;</strong> toggle, independent <strong>BT / FX / VOL</strong> target checkboxes, and a live readout showing how many in-scope objects are currently off the grid.</li>
+    <li><span class="tag add">add</span><strong>&plusmn; one-step Nudge</strong> buttons shift the in-scope objects by exactly one grid division (lasers move as a whole so their shape is preserved). Every Quantize / Nudge is a single undoable step (<kbd>Ctrl+Z</kbd>).</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.42</span>Sudden+ / Hidden+ Track Cover</h4>
