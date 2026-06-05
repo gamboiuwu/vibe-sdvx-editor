@@ -60,8 +60,16 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.43';
+const APP_VERSION = '0.0.44';
 const CHANGELOG = [
+  {
+    version: '0.0.44',
+    title: 'Camera / lane events now survive export & save',
+    entries: [
+      ['fix', '<strong>Camera and lane effect events are no longer lost on export or save.</strong> Zoom (top / bottom / side), tilt, lane toggle and center-split events imported from a KSH — and any you add in the <strong>Camera Events</strong> panel — were silently dropped by both the KSH and KSON exporters, so exporting (or autosaving) a chart with camera work threw it all away. Both export paths now write these events back out.'],
+      ['fix', 'KSH export emits the standard <code>zoom_top= / tilt= / lane_toggle=</code> body lines at exactly the right ticks (the line grid is widened so odd 1/24-style positions round-trip cleanly). KSON export stores them in a <code>_cameraEvents</code> field, so the editor’s own KSON round-trip — including autosave — is now fully lossless.'],
+    ],
+  },
   {
     version: '0.0.43',
     title: 'Quantize Tool — snap selections & lasers to grid',

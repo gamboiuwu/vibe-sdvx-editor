@@ -124,6 +124,13 @@ export function exportKson(chart) {
       }),
     },
     _glitchEvents: (chart.glitchEvents || []).map(ev => [ev.y, ev.level]),
+    // Camera / lane effect events (zoom_top/bottom/side, tilt, lane_toggle,
+    // center_split). Stored verbatim in raw editor ticks so the editor's own
+    // KSON round-trip (incl. autosave) is lossless. Native KSON readers ignore
+    // this field; the KSH exporter writes the equivalent standard body lines.
+    _cameraEvents: (chart.cameraEvents && chart.cameraEvents.length)
+      ? chart.cameraEvents.map(ev => [ev.y, ev.type, String(ev.value)])
+      : undefined,
     _sections: (chart.sections && chart.sections.length)
       ? chart.sections.map(s => [s.y, s.endY, s.label || '', s.color || '#4488ff'])
       : undefined,
@@ -267,6 +274,17 @@ export function importKson(text) {
       chart.glitchEvents.unshift({ y: 0, level: 0 });
       chart.glitchEvents.sort((a, b) => a.y - b.y);
     }
+  }
+
+  // Camera / lane effect events (custom field)
+  if (Array.isArray(data._cameraEvents) && data._cameraEvents.length) {
+    const CAM_TYPES = new Set([
+      'zoom_top', 'zoom_bottom', 'zoom_side', 'tilt', 'lane_toggle', 'center_split',
+    ]);
+    chart.cameraEvents = data._cameraEvents
+      .filter(e => Array.isArray(e) && CAM_TYPES.has(e[1]))
+      .map(e => ({ y: e[0] ?? 0, type: e[1], value: String(e[2] ?? '0') }))
+      .sort((a, b) => a.y - b.y);
   }
 
   // Section labels (custom field)

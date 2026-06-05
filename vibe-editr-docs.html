@@ -439,6 +439,15 @@
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
 
 <div class="update-entry">
+  <h4><span class="ver-tag">v0.0.44</span>Camera &amp; Lane Events Survive Export and Save</h4>
+  <ul>
+    <li><span class="tag fix">fix</span><strong>Camera and lane effect events are no longer lost on export or save.</strong> Zoom (top / bottom / side), tilt, lane toggle, and center-split events &mdash; whether imported from a KSH or added in the <strong>Camera Events</strong> panel &mdash; were silently dropped by <em>both</em> the KSH and KSON exporters. Exporting or autosaving a chart with camera work threw all of it away. Both export paths now round-trip these events.</li>
+    <li><span class="tag fix">fix</span><strong>KSH export</strong> emits the standard <code>zoom_top=</code> / <code>tilt=</code> / <code>lane_toggle=</code> body lines at exactly the right ticks &mdash; the per-measure line grid is widened to include camera ticks so even odd 1/24-style positions round-trip without quantising.</li>
+    <li><span class="tag fix">fix</span><strong>KSON export</strong> stores the events in a compact <code>_cameraEvents</code> custom field (matching the existing <code>_sections</code> / <code>_glitchEvents</code> convention), so the editor&rsquo;s own KSON round-trip &mdash; <strong>including autosave</strong> &mdash; is now fully lossless. Unknown or malformed event types are filtered defensively on import.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
   <h4><span class="ver-tag">v0.0.43</span>Quantize Tool</h4>
   <ul>
     <li><span class="tag add">add</span><strong>Quantize tool</strong> &mdash; open via <strong>Tools Hub &rarr; Edit &rarr; Quantize</strong>. Snaps notes <em>and</em> VOL lasers to a chosen rhythmic grid (1/4 through 1/48, including triplets). Unlike <em>BPM Sync</em> &mdash; which snaps every note globally and never touches lasers &mdash; Quantize works on the active <strong>Select</strong> region (or the whole chart) and is the only tool that cleans up off-grid laser anchors, including freehand-drawn paths.</li>
