@@ -139,6 +139,13 @@ export function exportKsh(chart) {
       if (ev.y >= startY && ev.y < endY) offsets.add(ev.y - startY);
     }
 
+    // Camera / lane effect events (zoom_top, tilt, lane_toggle, …). These are
+    // emitted as standalone key=value body lines, so their ticks must land on
+    // the line grid or they would be quantised to the wrong position.
+    for (const ev of (chart.cameraEvents ?? [])) {
+      if (ev.y >= startY && ev.y < endY) offsets.add(ev.y - startY);
+    }
+
     // ── Choose line spacing ─────────────────────────────────────────────
     // step = gcd(measTicks, all_offsets). The number of lines per measure
     // is measTicks / step. We cap the step to at least 1/192 of the
@@ -211,6 +218,13 @@ export function exportKsh(chart) {
         }
         return '-';
       }).join('');
+
+      // Camera / lane effect events for this tick — written immediately before
+      // the note line so the importer (which attaches pending events to the
+      // next note line) resolves them to exactly this tick.
+      for (const ev of (chart.cameraEvents ?? [])) {
+        if (ev.y === tick) lines.push(`${ev.type}=${ev.value}`);
+      }
 
       lines.push(`${btStr}|${fxStr}|${laserStr}`);
     }
