@@ -225,6 +225,103 @@ export function nudgeRange(chart, opts = {}) {
   return moved;
 }
 
+// ── Groove / Swing Quantize ──────────────────────────────────────────────────
+// Built-in groove templates. Each entry is a per-step offset table: value[i] is
+// a fractional offset of ONE grid step applied to the step whose snapped index
+// (mod the table length) is i. Index 0 is the on-grid / downbeat step and stays
+// at 0 so strong beats never drift. Positive = push later, negative = pull
+// earlier. e.g. at a 1/8 grid, [0, 0.33] pushes every off-eighth a third of a
+// step late → a triplet "swing" feel.
+export const GROOVE_PRESETS = {
+  'straight':      [0, 0],
+  'swing-light':   [0, 0.15],
+  'swing-med':     [0, 0.25],
+  'swing-heavy':   [0, 0.33],
+  'shuffle':       [0, 0.50],
+  'reverse-swing': [0, -0.15],
+};
+
+// Snap `tick` to the `step` grid, then apply a cyclic per-step groove offset.
+// `pattern` is an array of fractional step offsets (see GROOVE_PRESETS). The
+// step index is taken from the SNAPPED position so a note always picks the same
+// groove slot regardless of which side it rounded from. `strength` blends the
+// original tick toward the groove target (0 = unchanged, 1 = full groove).
+export function grooveTickValue(tick, step, pattern, strength = 1) {
+  if (!(step > 0)) return tick;
+  const snapped = Math.round(tick / step) * step;
+  let off = 0;
+  if (Array.isArray(pattern) && pattern.length) {
+    const n = pattern.length;
+    const idx = ((Math.round(snapped / step) % n) + n) % n;
+    off = (pattern[idx] || 0) * step;
+  }
+  const target = snapped + off;
+  const s = Math.max(0, Math.min(1, strength));
+  return Math.round(tick + (target - tick) * s);
+}
+
+// Apply a groove template to every object whose anchor tick lies in [lo, hi).
+// Mirrors quantizeRange's range/target plumbing exactly — the only difference
+// is the snap function (grooveTickValue instead of a plain grid round). Returns
+// the number of objects whose position actually changed.
+// opts: { lo, hi, step, pattern, strength, bt, fx, lasers, holdEnds }
+export function grooveQuantizeRange(chart, opts = {}) {
+  if (!chart) return 0;
+  const lo = opts.lo == null ? -Infinity : opts.lo;
+  const hi = opts.hi == null ?  Infinity : opts.hi;
+  const step = opts.step;
+  if (!(step > 0)) return 0;
+  const pattern = Array.isArray(opts.pattern) ? opts.pattern : [];
+  // No groove offsets at all → nothing to do (pure straight grid is Quantize's job).
+  if (!pattern.some(v => v)) return 0;
+  const strength = opts.strength == null ? 1 : opts.strength;
+  const doBt = opts.bt !== false, doFx = opts.fx !== false;
+  const doLasers = opts.lasers !== false, holdEnds = opts.holdEnds !== false;
+  const g = t => grooveTickValue(t, step, pattern, strength);
+  let moved = 0;
+
+  const snapNotes = (lanes) => {
+    for (const lane of lanes) {
+      for (const n of lane) {
+        if (n.y < lo || n.y >= hi) continue;
+        const ny = g(n.y);
+        if (holdEnds && n.len > 0) {
+          const end = g(n.y + n.len);
+          n.len = Math.max(0, end - ny);
+        }
+        if (ny !== n.y) moved++;
+        n.y = ny;
+      }
+      lane.sort((a, b) => a.y - b.y);
+    }
+  };
+  if (doBt) snapNotes(chart.bt);
+  if (doFx) snapNotes(chart.fx);
+
+  if (doLasers) {
+    for (const side of chart.lasers) {
+      for (const sec of side) {
+        if (sec.y < lo || sec.y >= hi) continue;
+        const oldY = sec.y;
+        const newY = g(oldY);
+        let changed = newY !== oldY;
+        let prev = 0;
+        for (const pt of sec.points) {
+          let nr = g(oldY + pt.ry) - newY;
+          if (nr < prev) nr = prev;   // ry >= 0 and non-decreasing, as in quantizeRange
+          if (nr !== pt.ry) changed = true;
+          pt.ry = nr;
+          prev = nr;
+        }
+        sec.y = newY;
+        if (changed) moved++;
+      }
+      side.sort((a, b) => a.y - b.y);
+    }
+  }
+  return moved;
+}
+
 export class ChartData {
   constructor() {
     this.meta = {

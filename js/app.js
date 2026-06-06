@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.44';
+const APP_VERSION = '0.0.45';
 const CHANGELOG = [
+  {
+    version: '0.0.45',
+    title: 'Groove / Swing Quantize Templates',
+    entries: [
+      ['add', '<strong>Groove / Swing</strong> tool in <strong>Tools Hub → Edit</strong>. Where Quantize snaps everything to an even grid, Groove snaps <em>then</em> offsets alternating subdivisions by a fraction of a step — giving notes and lasers a <strong>swing or shuffle feel</strong> while staying musically aligned. The downbeat (step 0) never drifts.'],
+      ['add', 'Built-in presets — <strong>Straight, Light / Medium / Heavy swing, Shuffle, Reverse swing</strong> — plus a fully editable per-step offset row and a selectable cycle length (2 / 3 / 4 steps). A <strong>Strength</strong> slider blends partially toward the groove for subtle humanization.'],
+      ['add', 'Works on the active <strong>Select</strong> region or the whole chart, targets <strong>BT / FX / VOL</strong> independently (the only quantizer that grooves laser anchors too), optionally snaps hold ends, and is a single undoable step (<kbd>Ctrl+Z</kbd>). Core math lives in <code>chart.js</code> (<code>grooveQuantizeRange</code>) and is unit-tested.'],
+    ],
+  },
   {
     version: '0.0.44',
     title: 'Camera / lane events now survive export & save',

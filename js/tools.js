@@ -1,5 +1,5 @@
 import { chart, renderer, gameView, render, saveUndo, updateSeekbar, addChartAnnotation, _seekTo, sel, playing, audioBuffer, flipHorizontalRange, flipTemporalRange } from './app.js';
-import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, quantizeRange, nudgeRange } from './chart.js';
+import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS } from './chart.js';
 import { Renderer } from './renderer.js';
 import { updateRadar } from './radar.js';
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -18,6 +18,7 @@ const TOOL_REGISTRY = [
   { id: 'adaptive-compress',  cat: 'Edit',     label: 'Adaptive Compress', icon: '⊟' },
   { id: 'pattern-flip',       cat: 'Edit',     label: 'Pattern Flip',      icon: '⇌' },
   { id: 'quantize',           cat: 'Edit',     label: 'Quantize',          icon: '⊞' },
+  { id: 'groove',             cat: 'Edit',     label: 'Groove / Swing',    icon: '⟋' },
   // Analysis
   { id: 'density-heatmap',cat:'Analysis',label:'Density Heatmap',  icon: '≋'  },
   { id: 'multi-sync',  cat: 'Analysis', label: 'Multi-Chart Sync', icon: '⇄'  },
@@ -549,6 +550,7 @@ function _renderTool(id, container) {
     case 'adaptive-compress': return _toolAdaptiveCompress(container);
     case 'pattern-flip':      return _toolPatternFlip(container);
     case 'quantize':          return _toolQuantize(container);
+    case 'groove':            return _toolGroove(container);
     default: container.textContent = 'Unknown tool: ' + id;
   }
 }
@@ -6826,6 +6828,246 @@ function _toolQuantize(c) {
   regionSel.addEventListener('change', refreshStatus);
   [btT, fxT, volT].forEach(t => t.chk.addEventListener('change', refreshStatus));
   c.addEventListener('mouseenter', refreshStatus);
+  refreshStatus();
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Groove / Swing — non-uniform quantize via per-step offset templates
+   ═══════════════════════════════════════════════════════════════════════════
+   Quantize snaps everything to an even grid. Groove goes the other way: it
+   snaps to the grid first, then nudges alternating subdivisions by a fractional
+   offset so timing gets a swing / shuffle feel while staying musically aligned.
+   Reuses the exact same range / target / strength plumbing as Quantize — the
+   only new piece is the per-step offset table (chart.js grooveQuantizeRange /
+   GROOVE_PRESETS). Read-only on structure, fully undoable like Quantize. */
+function _toolGroove(c) {
+  const sec = _section('Groove / Swing Quantize');
+  c.appendChild(sec);
+
+  const desc = _h('p', '', 'Apply a <strong>swing / shuffle</strong> feel: snaps to the grid, then offsets alternating subdivisions by a fraction of a step so off-beats land late (or early). The downbeat (step 0) never moves. Works on the active <strong>Select</strong> region or the whole chart. Undoable with <kbd>Ctrl+Z</kbd>.');
+  desc.style.cssText = 'font-size:12px;color:#8899bb;margin:0 0 10px;line-height:1.5;';
+  sec.appendChild(desc);
+
+  // ── Grid subdivision (the groove cycle tiles across these steps) ──────────
+  const subdivs = [
+    { label: '1/4 beat',    div: 1  },
+    { label: '1/8 beat',    div: 2  },
+    { label: '1/12 (1/8T)', div: 3  },
+    { label: '1/16 beat',   div: 4  },
+    { label: '1/24 (1/16T)',div: 6  },
+    { label: '1/32 beat',   div: 8  },
+  ];
+  const subdivSel = document.createElement('select');
+  subdivs.forEach((s, i) => {
+    const o = document.createElement('option'); o.value = i; o.textContent = s.label;
+    subdivSel.appendChild(o);
+  });
+  subdivSel.value = '1'; // 1/8 default — classic eighth-note swing
+  const stepOf = () => TICKS_PER_BEAT / subdivs[+subdivSel.value].div;
+
+  // ── Region ───────────────────────────────────────────────────────────────
+  const regionSel = document.createElement('select');
+  [['sel', 'Current selection'], ['all', 'Entire chart']].forEach(([v, l]) => {
+    const o = document.createElement('option'); o.value = v; o.textContent = l; regionSel.appendChild(o);
+  });
+
+  // ── Cycle length (how many steps before the groove repeats) ──────────────
+  const cycleSel = document.createElement('select');
+  [2, 3, 4].forEach(n => { const o = document.createElement('option'); o.value = n; o.textContent = n + ' steps'; cycleSel.appendChild(o); });
+  cycleSel.value = '2';
+
+  // ── Preset ───────────────────────────────────────────────────────────────
+  const presetSel = document.createElement('select');
+  const PRESET_LABELS = {
+    'straight':      'Straight (no swing)',
+    'swing-light':   'Swing — light (+0.15)',
+    'swing-med':     'Swing — medium (+0.25)',
+    'swing-heavy':   'Swing — heavy (+0.33)',
+    'shuffle':       'Shuffle (+0.50)',
+    'reverse-swing': 'Reverse swing (−0.15)',
+    'custom':        'Custom…',
+  };
+  Object.keys(PRESET_LABELS).forEach(k => {
+    const o = document.createElement('option'); o.value = k; o.textContent = PRESET_LABELS[k]; presetSel.appendChild(o);
+  });
+  presetSel.value = 'swing-heavy';
+
+  // ── Editable per-step offset row (built to match cycle length) ───────────
+  const offsetWrap = document.createElement('div');
+  offsetWrap.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 2px;';
+  let offsetInputs = [];
+
+  function buildOffsetRow(values) {
+    const n = +cycleSel.value;
+    offsetWrap.innerHTML = '';
+    offsetInputs = [];
+    for (let i = 0; i < n; i++) {
+      const cell = document.createElement('div');
+      cell.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:2px;';
+      const lab = _h('span', '', i === 0 ? 'down' : '+' + i);
+      lab.style.cssText = 'font-size:10px;color:#7788aa;';
+      const inp = document.createElement('input');
+      inp.type = 'number'; inp.min = '-0.9'; inp.max = '0.9'; inp.step = '0.01';
+      inp.value = (values && values[i] != null ? values[i] : 0).toString();
+      inp.style.cssText = 'width:52px;font-size:12px;';
+      if (i === 0) inp.title = 'Step 0 is the downbeat — keep at 0 so strong beats stay on grid.';
+      inp.addEventListener('input', () => { presetSel.value = 'custom'; refreshStatus(); });
+      cell.append(lab, inp);
+      offsetWrap.appendChild(cell);
+      offsetInputs.push(inp);
+    }
+  }
+  function patternOf() {
+    return offsetInputs.map(i => {
+      let v = parseFloat(i.value); if (!isFinite(v)) v = 0;
+      return Math.max(-0.9, Math.min(0.9, v));
+    });
+  }
+  function applyPreset() {
+    const k = presetSel.value;
+    if (k === 'custom') return;
+    const base = GROOVE_PRESETS[k] || [0, 0];
+    // Fit the preset (length 2) into the current cycle length, zero-padding extra steps.
+    const n = +cycleSel.value;
+    const vals = [];
+    for (let i = 0; i < n; i++) vals.push(i < base.length ? base[i] : 0);
+    buildOffsetRow(vals);
+    refreshStatus();
+  }
+
+  // ── Strength ─────────────────────────────────────────────────────────────
+  const strengthIn = document.createElement('input');
+  strengthIn.type = 'range'; strengthIn.min = '0'; strengthIn.max = '100'; strengthIn.value = '100'; strengthIn.step = '5';
+  strengthIn.style.cssText = 'flex:1;';
+  const strengthVal = _h('span', 'pvc-val', '100%');
+  strengthVal.style.cssText = 'min-width:38px;text-align:right;color:#aabbcc;';
+  strengthIn.addEventListener('input', () => { strengthVal.textContent = strengthIn.value + '%'; refreshStatus(); });
+  const strengthRow = _h('div', 'tool-row');
+  strengthRow.appendChild(_h('label', '', 'Strength:'));
+  const sWrap = document.createElement('div');
+  sWrap.style.cssText = 'display:flex;align-items:center;gap:8px;flex:1;';
+  sWrap.append(strengthIn, strengthVal);
+  strengthRow.appendChild(sWrap);
+
+  // ── Target checkboxes ────────────────────────────────────────────────────
+  const mkChk = (id, label, checked) => {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:4px;';
+    const chk = document.createElement('input');
+    chk.type = 'checkbox'; chk.id = 'gv-' + id; chk.checked = checked;
+    const lbl = document.createElement('label');
+    lbl.htmlFor = 'gv-' + id; lbl.textContent = ' ' + label;
+    lbl.style.cssText = 'font-size:12px;color:#aabbcc;cursor:pointer;';
+    wrap.append(chk, lbl);
+    return { wrap, chk };
+  };
+  const btT  = mkChk('bt',  'BT notes',  true);
+  const fxT  = mkChk('fx',  'FX notes',  true);
+  const volT = mkChk('vol', 'VOL lasers', true);
+  const endT = mkChk('ends', 'Snap hold ends too', true);
+
+  sec.appendChild(_row('Grid:', subdivSel));
+  sec.appendChild(_row('Region:', regionSel));
+  sec.appendChild(_row('Cycle:', cycleSel));
+  sec.appendChild(_row('Preset:', presetSel));
+  const offTitle = _h('div', '', 'Step offsets (× one grid step):');
+  offTitle.style.cssText = 'font-size:12px;color:#8899bb;margin:8px 0 2px;';
+  sec.appendChild(offTitle);
+  sec.appendChild(offsetWrap);
+  sec.appendChild(strengthRow);
+  const tgtTitle = _h('div', '', 'Targets:');
+  tgtTitle.style.cssText = 'font-size:12px;color:#8899bb;margin:8px 0 4px;';
+  sec.appendChild(tgtTitle);
+  sec.append(btT.wrap, fxT.wrap, volT.wrap, endT.wrap);
+
+  // ── Status readout ───────────────────────────────────────────────────────
+  const statusDiv = _h('div', '', '');
+  statusDiv.style.cssText = 'background:#10101e;border:1px solid #334;border-radius:4px;padding:6px 10px;margin:10px 0;font-size:12px;color:#88aacc;min-height:32px;';
+  sec.appendChild(statusDiv);
+
+  function getRange() {
+    const s = typeof sel !== 'undefined' ? sel : null;
+    if (regionSel.value === 'sel' && s && s.active) {
+      return { lo: Math.min(s.startTick, s.endTick), hi: Math.max(s.startTick, s.endTick), scoped: true };
+    }
+    return { lo: -Infinity, hi: Infinity, scoped: false };
+  }
+
+  function refreshStatus() {
+    const ch = typeof chart !== 'undefined' ? chart : null;
+    const useSel = regionSel.value === 'sel';
+    const s = typeof sel !== 'undefined' ? sel : null;
+    if (useSel && !(s && s.active)) {
+      statusDiv.innerHTML = '<span style="color:#556677;">No active selection — drag a range with the Select tool (key&nbsp;<kbd>1</kbd>), or switch Region to “Entire chart”.</span>';
+      return;
+    }
+    if (!ch) { statusDiv.textContent = 'No chart loaded.'; return; }
+    const { lo, hi } = getRange();
+    let inScope = 0;
+    const scan = (lanes, on) => { for (const lane of lanes) for (const n of lane) { if (n.y < lo || n.y >= hi) continue; if (on) inScope++; } };
+    scan(ch.bt, btT.chk.checked);
+    scan(ch.fx, fxT.chk.checked);
+    if (volT.chk.checked) for (const side of ch.lasers) for (const sc of side) { if (sc.y < lo || sc.y >= hi) continue; inScope++; }
+    const pat = patternOf();
+    const patStr = '[' + pat.map(v => (v > 0 ? '+' : '') + v.toFixed(2)).join(', ') + ']';
+    const scopeStr = (lo === -Infinity) ? 'entire chart' : `${hi - lo} ticks`;
+    const stepTicks = stepOf();
+    const active = pat.some(v => v);
+    statusDiv.innerHTML = `<strong>${inScope}</strong> object${inScope !== 1 ? 's' : ''} in scope (${scopeStr}) · groove ${patStr} on a ${stepTicks}-tick step` +
+      (active ? '' : ` · <span style="color:#ffbb55;">all offsets 0 — this is a no-op</span>`);
+  }
+
+  // ── Apply button ─────────────────────────────────────────────────────────
+  const applyBtn = _btn('⟋  Apply groove');
+  applyBtn.style.cssText = 'width:100%;margin-top:4px;background:#10221a;border-color:#39ff14;color:#39ff14;';
+  applyBtn.title = 'Snap to grid, then offset off-beats by the step offsets above';
+
+  const resultDiv = _h('div', '', '');
+  resultDiv.style.cssText = 'margin-top:8px;font-size:12px;min-height:18px;';
+  sec.appendChild(applyBtn);
+  sec.appendChild(resultDiv);
+
+  function opts() {
+    const { lo, hi } = getRange();
+    return {
+      lo, hi, step: stepOf(), pattern: patternOf(),
+      strength: (+strengthIn.value) / 100,
+      bt: btT.chk.checked, fx: fxT.chk.checked, lasers: volT.chk.checked,
+      holdEnds: endT.chk.checked,
+    };
+  }
+  function guard() {
+    if (regionSel.value === 'sel') {
+      const s = typeof sel !== 'undefined' ? sel : null;
+      if (!(s && s.active)) { resultDiv.innerHTML = '<span style="color:#ff6655;">No active selection. Drag a region or choose “Entire chart”.</span>'; return false; }
+    }
+    if (!btT.chk.checked && !fxT.chk.checked && !volT.chk.checked) {
+      resultDiv.innerHTML = '<span style="color:#ff6655;">Pick at least one target (BT / FX / VOL).</span>'; return false;
+    }
+    if (!patternOf().some(v => v)) {
+      resultDiv.innerHTML = '<span style="color:#ff6655;">All step offsets are 0 — set a swing amount first (or pick a preset).</span>'; return false;
+    }
+    return true;
+  }
+
+  applyBtn.addEventListener('click', () => {
+    if (typeof chart === 'undefined' || !chart) return;
+    if (!guard()) return;
+    if (typeof saveUndo === 'function') saveUndo('Groove');
+    const n = grooveQuantizeRange(chart, opts());
+    if (typeof render === 'function') render();
+    resultDiv.innerHTML = `<span style="color:#44ff88;">✓ Grooved ${n} object${n !== 1 ? 's' : ''}. <kbd>Ctrl+Z</kbd> to undo.</span>`;
+    refreshStatus();
+  });
+
+  subdivSel.addEventListener('change', refreshStatus);
+  regionSel.addEventListener('change', refreshStatus);
+  cycleSel.addEventListener('change', () => { applyPreset(); });
+  presetSel.addEventListener('change', applyPreset);
+  [btT, fxT, volT].forEach(t => t.chk.addEventListener('change', refreshStatus));
+  c.addEventListener('mouseenter', refreshStatus);
+
+  buildOffsetRow(GROOVE_PRESETS[presetSel.value]);
   refreshStatus();
 }
 
