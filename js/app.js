@@ -1,4 +1,4 @@
-import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats } from './chart.js';
+import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, hispeedToCmod, cmodToHispeed } from './chart.js';
 import { Renderer, C, laserColors, laserOpacity, laserWideMode, LASER_PRESETS, applyLaserPreset, setLaserColorCustom, buildLaneHeader, setLaserOpacity, setLaserWideMode } from './renderer.js';
 import { GameView } from './game.js';
 import { exportKsh, importKsh, downloadText } from './ksh.js';
@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.45';
+const APP_VERSION = '0.0.46';
 const CHANGELOG = [
+  {
+    version: '0.0.46',
+    title: 'C-MOD / M-MOD HiSpeed in Game Preview',
+    entries: [
+      ['add', '<strong>HiSpeed mode toggle</strong> next to the Game Preview HiSpeed slider. <strong>×</strong> is the classic <strong>multiplier (M-MOD)</strong> — scroll speed rises and falls with the song’s BPM, so notes visibly accelerate through soflan sections. <strong>C</strong> is <strong>C-MOD (constant)</strong> — the lane window scales with the local BPM so the on-screen note velocity stays <em>constant</em> across BPM changes, exactly like the arcade’s C-MOD readability setting.'],
+      ['add', 'In C-MOD the same slider sets the <strong>target scroll BPM</strong> (50–1500 C). Switching modes preserves the on-screen look at the current BPM (× → C uses BPM × multiplier, C → × converts back). The mode and both values are saved with <strong>Save Config</strong> and restored on load.'],
+      ['add', 'Pure scroll math lives in <code>chart.js</code> (<code>modVisibleTicks</code> / <code>hispeedToCmod</code> / <code>cmodToHispeed</code>) as a single DOM-free, unit-tested source of truth; the preview is a render-only overlay that never touches chart data or timing.'],
+    ],
+  },
   {
     version: '0.0.45',
     title: 'Groove / Swing Quantize Templates',
@@ -2760,11 +2769,15 @@ window.addEventListener('DOMContentLoaded', () => {
       const hs = +e.target.value;
       chartSpeed = hs; // kept for legacy references; does NOT affect timing
       document.getElementById('chart-speed-label').textContent = hs.toFixed(2) + '×';
-      // Mirror to preview panel
-      const pvSl  = document.getElementById('pvc-hispeed');
-      const pvLbl = document.getElementById('pvc-hispeed-label');
-      if (pvSl)  pvSl.value = hs;
-      if (pvLbl) pvLbl.textContent = hs.toFixed(1) + '×';
+      // Mirror to preview panel — but only when the preview is in × (M-MOD) mode,
+      // so dragging the menu slider never clobbers the C-MOD value/label.
+      const inCmod = gameView && gameView.hispeedMode === 'cmod';
+      if (!inCmod) {
+        const pvSl  = document.getElementById('pvc-hispeed');
+        const pvLbl = document.getElementById('pvc-hispeed-label');
+        if (pvSl)  pvSl.value = hs;
+        if (pvLbl) pvLbl.textContent = hs.toFixed(1) + '×';
+      }
       if (gameView) { gameView.hispeed = hs; if (!playing) gameView.draw(); }
     });
   }
@@ -8845,8 +8858,60 @@ function _initProjectionControls() {
   // chartSpeed was previously misused here to also control the fallback timer; now decoupled.
   const hsSl  = document.getElementById('pvc-hispeed');
   const hsLbl = document.getElementById('pvc-hispeed-label');
+  const hsModeBtn = document.getElementById('pvc-hispeed-mode');
+
+  // Reconfigure the shared slider + label + mode button to match the active mode.
+  // In C-MOD the same slider drives cmodValue (target effective scroll BPM); in
+  // M-MOD it drives the hispeed multiplier.
+  function _applyHispeedModeUI() {
+    const cmod = gameView && gameView.hispeedMode === 'cmod';
+    if (hsModeBtn) {
+      hsModeBtn.textContent = cmod ? 'C' : '×';
+      hsModeBtn.style.background = cmod ? '#2a1e3f' : '#181828';
+      hsModeBtn.style.color      = cmod ? '#cc99ff' : '#aab';
+      hsModeBtn.style.borderColor = cmod ? '#5a3a8a' : '#3a3a5a';
+    }
+    if (hsSl) {
+      if (cmod) {
+        hsSl.min = '50'; hsSl.max = '1500'; hsSl.step = '10';
+        hsSl.value = gameView.cmodValue;
+        if (hsLbl) hsLbl.textContent = Math.round(gameView.cmodValue) + ' C';
+      } else {
+        hsSl.min = '0.2'; hsSl.max = '10'; hsSl.step = '0.1';
+        if (gameView) hsSl.value = gameView.hispeed;
+        if (hsLbl) hsLbl.textContent = (gameView ? gameView.hispeed : +hsSl.value).toFixed(1) + '×';
+      }
+    }
+  }
+
+  hsModeBtn?.addEventListener('click', () => {
+    if (!gameView) return;
+    const baseBpm = gameView.chart?.getBpmAt?.(gameView.playTick)
+      ?? gameView.chart?.bpmEvents?.[0]?.bpm ?? 180;
+    if (gameView.hispeedMode === 'cmod') {
+      // → M-MOD: convert the C value back to an equivalent multiplier at this BPM
+      gameView.hispeedMode = 'mult';
+      gameView.hispeed = Math.max(0.2, Math.min(10, cmodToHispeed(gameView.cmodValue, baseBpm)));
+    } else {
+      // → C-MOD: convert the current multiplier to an equivalent C value
+      gameView.hispeedMode = 'cmod';
+      gameView.cmodValue = Math.max(50, Math.min(1500, hispeedToCmod(gameView.hispeed, baseBpm)));
+    }
+    _applyHispeedModeUI();
+    gameView.draw();
+  });
+
   hsSl?.addEventListener('input', () => {
-    const hs = +hsSl.value;
+    const v = +hsSl.value;
+    // C-MOD: the slider sets the constant target scroll BPM.
+    if (gameView && gameView.hispeedMode === 'cmod') {
+      gameView.cmodValue = v;
+      if (hsLbl) hsLbl.textContent = Math.round(v) + ' C';
+      gameView.draw();
+      return;
+    }
+    // M-MOD: the slider sets the hispeed multiplier.
+    const hs = v;
     if (hsLbl) hsLbl.textContent = hs.toFixed(1) + '×';
     // Mirror to the top-menu label only (no chartSpeed mutation — timing is independent)
     const topSl  = document.getElementById('chart-speed');
@@ -8856,6 +8921,7 @@ function _initProjectionControls() {
     // Apply exclusively to the game view's visual rendering pipeline
     if (gameView) { gameView.hispeed = hs; gameView.draw(); }
   });
+  _applyHispeedModeUI();
 
   // BT Width slider (wired here so it's near the other preview controls)
   const bwSl  = document.getElementById('pvc-bt-width');
@@ -9027,9 +9093,15 @@ function _initProjectionControls() {
     // Perspective intensity
     const intEl = document.getElementById('pvc-intensity');
     if (intEl) prefs.perspIntensity = +intEl.value;
-    // HiSpeed
-    const hsEl = document.getElementById('pvc-hispeed');
-    if (hsEl) prefs.hispeed = +hsEl.value;
+    // HiSpeed (mode + both values, so the active mode restores faithfully)
+    if (gameView) {
+      prefs.hispeedMode = gameView.hispeedMode;
+      prefs.hispeed     = gameView.hispeed;
+      prefs.cmodValue   = gameView.cmodValue;
+    } else {
+      const hsEl = document.getElementById('pvc-hispeed');
+      if (hsEl) prefs.hispeed = +hsEl.value;
+    }
     // BT Width
     const bwEl = document.getElementById('pvc-bt-width');
     if (bwEl) prefs.btWidthScale = +bwEl.value;
@@ -9067,11 +9139,12 @@ function _initProjectionControls() {
     if (el) { el.value = prefs.perspIntensity; if (gameView) gameView.perspIntensity = prefs.perspIntensity; }
     if (lb) lb.textContent = String(prefs.perspIntensity);
   }
-  if (prefs.hispeed != null) {
-    const el = document.getElementById('pvc-hispeed');
-    const lb = document.getElementById('pvc-hispeed-label');
-    if (el) { el.value = prefs.hispeed; if (gameView) gameView.hispeed = prefs.hispeed; }
-    if (lb) lb.textContent = prefs.hispeed.toFixed(1) + '×';
+  if (prefs.hispeed != null && gameView) gameView.hispeed = prefs.hispeed;
+  if (prefs.cmodValue != null && gameView) gameView.cmodValue = prefs.cmodValue;
+  if (prefs.hispeedMode && gameView) gameView.hispeedMode = (prefs.hispeedMode === 'cmod') ? 'cmod' : 'mult';
+  if (prefs.hispeed != null || prefs.cmodValue != null || prefs.hispeedMode) {
+    // Sync the slider/label/mode-button to the restored mode + values.
+    _applyHispeedModeUI();
   }
   if (prefs.btWidthScale != null) {
     const el = document.getElementById('pvc-bt-width');

@@ -322,6 +322,42 @@ export function grooveQuantizeRange(chart, opts = {}) {
   return moved;
 }
 
+// ── HiSpeed scroll model (M-MOD vs C-MOD) ───────────────────────────────────
+// The Game Preview lane shows a fixed window of chart ticks; how many ticks are
+// visible (VISIBLE_TICKS) sets both note spacing and — combined with the local
+// BPM — the on-screen scroll velocity (pixels per real second).
+//   'mult' (M-MOD): a fixed beats-on-screen window divided by a hispeed
+//      multiplier. The on-screen velocity rises and falls with the song's BPM,
+//      so notes visibly accelerate through BPM-up (soflan) sections. This is the
+//      legacy model and the SDVX "MAX-speed / multiplier" feel.
+//   'cmod' (C-MOD): the window scales in proportion to the local BPM, so the
+//      on-screen velocity stays constant across BPM changes. This is the SDVX
+//      "C-MOD / constant" readability mode players use for soflan-heavy charts.
+// All four helpers are DOM-free so the scroll math is unit-testable in isolation.
+export const MOD_WINDOW_BASE = TICKS_PER_MEASURE * 4; // 768 ticks = 4 measures @ 1×
+
+// Resolve the visible-tick window for the given mode. localBpm is only consulted
+// in 'cmod' mode (the caller passes chart.getBpmAt(playTick) there).
+export function modVisibleTicks(mode, hispeed, cmodValue, localBpm) {
+  if (mode === 'cmod') {
+    const c = Math.max(50, +cmodValue || 400);
+    const b = Math.max(1,  +localBpm  || 120);
+    return Math.max(24, MOD_WINDOW_BASE * b / c);
+  }
+  const h = Number.isFinite(+hispeed) ? +hispeed : 1;
+  return MOD_WINDOW_BASE / Math.max(0.1, h);
+}
+
+// Mode-switch helpers: convert an M-MOD multiplier at a reference BPM to the
+// equivalent C-MOD value (and back) so toggling modes preserves the on-screen
+// look at that BPM. C value ≈ effective scroll BPM = baseBPM × multiplier.
+export function hispeedToCmod(hispeed, baseBpm) {
+  return Math.round(Math.max(1, +baseBpm || 120) * Math.max(0.1, +hispeed || 1));
+}
+export function cmodToHispeed(cmodValue, baseBpm) {
+  return (Math.max(50, +cmodValue || 400)) / Math.max(1, +baseBpm || 120);
+}
+
 export class ChartData {
   constructor() {
     this.meta = {
