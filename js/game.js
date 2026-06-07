@@ -1,4 +1,4 @@
-import { ChartData, TICKS_PER_BEAT, TICKS_PER_MEASURE, BEATS_PER_MEASURE } from './chart.js';
+import { ChartData, TICKS_PER_BEAT, TICKS_PER_MEASURE, BEATS_PER_MEASURE, modVisibleTicks } from './chart.js';
 import { GLLaneRenderer } from './gl-lane.js';
 import { laserOpacity, laserColors } from './renderer.js';
 
@@ -12,7 +12,12 @@ export class GameView {
     this.ctx      = canvas.getContext('2d');
     this.chart    = null;
     this.playTick = 0;
-    this.hispeed  = 1.0;   // visual speed multiplier
+    this.hispeed  = 1.0;   // visual speed multiplier (M-MOD)
+    // HiSpeed mode: 'mult' (M-MOD — speed follows BPM) | 'cmod' (C-MOD —
+    // constant on-screen velocity across BPM changes). cmodValue is the target
+    // effective scroll BPM used when hispeedMode === 'cmod'.
+    this.hispeedMode = 'mult';
+    this.cmodValue   = 400;
 
     // Projection mode: 'ortho' | 'sdvx' | 'hybrid'
     this.projMode = 'sdvx';
@@ -78,7 +83,14 @@ export class GameView {
     return !!this._glRenderer.ok;
   }
 
-  get VISIBLE_TICKS() { return TICKS_PER_MEASURE * 4 / Math.max(0.1, this.hispeed); }
+  get VISIBLE_TICKS() {
+    // In C-MOD, the window scales with the local BPM at the playhead so the
+    // on-screen scroll velocity stays constant across BPM changes. In M-MOD the
+    // window is a fixed beats-on-screen value divided by the hispeed multiplier.
+    const localBpm = (this.hispeedMode === 'cmod' && this.chart && typeof this.chart.getBpmAt === 'function')
+      ? this.chart.getBpmAt(this.playTick) : 0;
+    return modVisibleTicks(this.hispeedMode, this.hispeed, this.cmodValue, localBpm);
+  }
 
   // ── Chart Velocity (visual scroll-speed) helpers ─────────────────────────
   // Effective "dt" from the playhead to a chart tick, integrating

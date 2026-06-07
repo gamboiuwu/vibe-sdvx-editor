@@ -439,6 +439,24 @@
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
 
 <div class="update-entry">
+  <h4><span class="ver-tag">v0.0.46</span>C-MOD / M-MOD HiSpeed in Game Preview</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>HiSpeed mode toggle</strong> next to the Game Preview HiSpeed slider. <strong>&times;</strong> is the classic <strong>multiplier (M-MOD)</strong> &mdash; scroll speed rises and falls with the song&rsquo;s BPM, so notes visibly accelerate through soflan (BPM-change) sections. <strong>C</strong> is <strong>C-MOD (constant)</strong> &mdash; the lane window scales with the local BPM so the on-screen note velocity stays <em>constant</em> across BPM changes, exactly like the arcade&rsquo;s C-MOD readability setting.</li>
+    <li><span class="tag add">add</span>In C-MOD the same slider sets the <strong>target scroll BPM</strong> (50&ndash;1500 C). Switching modes preserves the on-screen look at the current BPM (&times; &rarr; C uses BPM &times; multiplier; C &rarr; &times; converts back). Choose C-MOD for soflan-heavy charts where a fixed multiplier makes fast sections unreadable.</li>
+    <li><span class="tag chg">chg</span>The mode and both values persist via <strong>&#9632; Save Config</strong>. The scroll math is a render-only overlay &mdash; it never changes chart data or playback timing.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.45</span>Groove / Swing Quantize Templates</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Groove / Swing tool</strong> in <strong>Tools Hub &rarr; Edit</strong>. Where Quantize snaps everything to an even grid, Groove snaps <em>then</em> offsets alternating subdivisions by a fraction of a step &mdash; giving notes and lasers a <strong>swing or shuffle feel</strong> while staying musically aligned. The downbeat (step 0) never drifts.</li>
+    <li><span class="tag add">add</span>Built-in presets &mdash; <strong>Straight, Light / Medium / Heavy swing, Shuffle, Reverse swing</strong> &mdash; plus a fully editable per-step offset row and a selectable cycle length (2 / 3 / 4 steps). A <strong>Strength</strong> slider blends partially toward the groove for subtle humanisation.</li>
+    <li><span class="tag add">add</span>Works on the active <strong>Select</strong> region or the whole chart, targets <strong>BT / FX / VOL</strong> independently (the only quantizer that grooves laser anchors too), optionally snaps hold ends, and is a single undoable step (<kbd>Ctrl+Z</kbd>).</li>
+  </ul>
+</div>
+
+<div class="update-entry">
   <h4><span class="ver-tag">v0.0.44</span>Camera &amp; Lane Events Survive Export and Save</h4>
   <ul>
     <li><span class="tag fix">fix</span><strong>Camera and lane effect events are no longer lost on export or save.</strong> Zoom (top / bottom / side), tilt, lane toggle, and center-split events &mdash; whether imported from a KSH or added in the <strong>Camera Events</strong> panel &mdash; were silently dropped by <em>both</em> the KSH and KSON exporters. Exporting or autosaving a chart with camera work threw all of it away. Both export paths now round-trip these events.</li>
