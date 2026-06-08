@@ -146,6 +146,13 @@ export function exportKsh(chart) {
       if (ev.y >= startY && ev.y < endY) offsets.add(ev.y - startY);
     }
 
+    // Stop (beat-stop) events. Emitted as standard `stop=<len>` body lines, so
+    // their start ticks must land on the line grid like camera events or they
+    // would be quantised to the wrong position on round-trip.
+    for (const ev of (chart.stopEvents ?? [])) {
+      if (ev.y >= startY && ev.y < endY) offsets.add(ev.y - startY);
+    }
+
     // ── Choose line spacing ─────────────────────────────────────────────
     // step = gcd(measTicks, all_offsets). The number of lines per measure
     // is measTicks / step. We cap the step to at least 1/192 of the
@@ -224,6 +231,14 @@ export function exportKsh(chart) {
       // next note line) resolves them to exactly this tick.
       for (const ev of (chart.cameraEvents ?? [])) {
         if (ev.y === tick) lines.push(`${ev.type}=${ev.value}`);
+      }
+
+      // Stop events for this tick — written immediately before the note line
+      // so the importer (which attaches pending events to the next note line)
+      // resolves them to exactly this tick. len is in editor ticks (192/measure),
+      // which matches KSH's own resolution, so no scaling is needed.
+      for (const ev of (chart.stopEvents ?? [])) {
+        if (ev.y === tick) lines.push(`stop=${ev.len}`);
       }
 
       lines.push(`${btStr}|${fxStr}|${laserStr}`);
