@@ -60,8 +60,16 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.45';
+const APP_VERSION = '0.0.46';
 const CHANGELOG = [
+  {
+    version: '0.0.46',
+    title: 'Stop (beat-stop) events now survive export & save',
+    entries: [
+      ['fix', '<strong>Stop events are no longer lost on export or save.</strong> KSH <code>stop=</code> scroll-halts imported from a chart — and any you add or edit in the <strong>Stop Events</strong> panel — were used for playback timing and drawn on the editor, but were silently dropped by both the KSH and KSON exporters. Exporting (or autosaving) a chart with stops threw them all away. Both export paths now write them back out.'],
+      ['fix', 'KSH export emits the standard <code>stop=&lt;length&gt;</code> body lines at exactly the right ticks (the per-measure line grid now includes stop positions so odd subdivisions round-trip cleanly). KSON export stores them in a <code>_stopEvents</code> field, so the editor’s own KSON round-trip — including autosave and the multi-chart <code>.ksonpack</code> — is now fully lossless.'],
+    ],
+  },
   {
     version: '0.0.45',
     title: 'Groove / Swing Quantize Templates',

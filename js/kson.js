@@ -131,6 +131,14 @@ export function exportKson(chart) {
     _cameraEvents: (chart.cameraEvents && chart.cameraEvents.length)
       ? chart.cameraEvents.map(ev => [ev.y, ev.type, String(ev.value)])
       : undefined,
+    // Stop (beat-stop) events — KSH `stop=<len>` scroll halts. KSON has no
+    // native stop concept, so they are stored verbatim in raw editor ticks
+    // ([y, len]) for a lossless editor round-trip (incl. autosave), matching
+    // the _cameraEvents/_sections convention. The KSH exporter writes the
+    // equivalent standard `stop=` body lines.
+    _stopEvents: (chart.stopEvents && chart.stopEvents.length)
+      ? chart.stopEvents.map(ev => [ev.y, ev.len])
+      : undefined,
     _sections: (chart.sections && chart.sections.length)
       ? chart.sections.map(s => [s.y, s.endY, s.label || '', s.color || '#4488ff'])
       : undefined,
@@ -284,6 +292,15 @@ export function importKson(text) {
     chart.cameraEvents = data._cameraEvents
       .filter(e => Array.isArray(e) && CAM_TYPES.has(e[1]))
       .map(e => ({ y: e[0] ?? 0, type: e[1], value: String(e[2] ?? '0') }))
+      .sort((a, b) => a.y - b.y);
+  }
+
+  // Stop (beat-stop) events (custom field). Defensive filtering against
+  // malformed/non-finite entries; len must be positive to be a real stop.
+  if (Array.isArray(data._stopEvents) && data._stopEvents.length) {
+    chart.stopEvents = data._stopEvents
+      .filter(e => Array.isArray(e) && Number.isFinite(e[0]) && Number.isFinite(e[1]) && e[1] > 0)
+      .map(e => ({ y: e[0], len: e[1] }))
       .sort((a, b) => a.y - b.y);
   }
 
