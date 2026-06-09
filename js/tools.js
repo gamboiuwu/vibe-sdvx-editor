@@ -1,9 +1,9 @@
 import { chart, renderer, gameView, render, saveUndo, updateSeekbar, addChartAnnotation, _seekTo, sel, playing, audioBuffer, flipHorizontalRange, flipTemporalRange } from './app.js';
-import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS } from './chart.js';
+import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, diffCharts, snapshotChartForDiff } from './chart.js';
 import { Renderer } from './renderer.js';
 import { updateRadar } from './radar.js';
 /* ═══════════════════════════════════════════════════════════════════════════
-   vibe-editr  ·  Tools Hub  ·  24 tools — floating MDI window
+   vibe-editr  ·  Tools Hub  ·  25 tools — floating MDI window
    ═══════════════════════════════════════════════════════════════════════════ */
 
 // ── Tool registry ────────────────────────────────────────────────────────────
@@ -27,6 +27,7 @@ const TOOL_REGISTRY = [
   { id: 'symmetry',    cat: 'Analysis', label: 'Symmetry Check',   icon: '⚖'  },
   { id: 'timing-window',cat:'Analysis', label: 'Timing Windows',   icon: '⏱'  },
   { id: 'chart-stats', cat: 'Analysis', label: 'Chart Statistics', icon: '📊'  },
+  { id: 'revision-compare', cat: 'Analysis', label: 'Revision Compare', icon: '⋈'  },
   // Preview
   { id: 'visual-mode', cat: 'Preview',  label: 'Visual Mode',      icon: '◑'  },
   // Audio
@@ -527,6 +528,7 @@ function _renderTool(id, container) {
     case 'bpm-sync':      return _toolBpmSync(container);
     case 'chart-validator': return _toolChartValidator(container);
     case 'chart-stats':   return _toolChartStats(container);
+    case 'revision-compare': return _toolRevisionCompare(container);
     case 'laser-fixer':   return _toolLaserFixer(container);
     case 'laser-smooth':  return _toolLaserSmooth(container);
     case 'density-heatmap': return _toolDensityHeatmap(container);
@@ -5878,6 +5880,174 @@ function _toolChartStats(c) {
 
   refreshBtn.addEventListener('click', compute);
   setTimeout(compute, 50);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Revision Compare — diff the current chart against a captured baseline or
+   another open tab. Answers "what changed since I last looked?" — notes
+   added/removed, hold lengths, lasers, BPM, metadata, and a difficulty delta.
+   Pure comparison lives in chart.js diffCharts() so it is unit-tested DOM-free.
+   ═══════════════════════════════════════════════════════════════════════════ */
+// Module-level so the captured baseline survives tool re-renders / reopen.
+let _revBaselineSnap = null;
+let _revBaselineLabel = '';
+
+function _toolRevisionCompare(c) {
+  const sec = _section('Revision Compare');
+  c.appendChild(sec);
+
+  const desc = _h('div', '', 'Capture a baseline of the current chart, keep editing, then see exactly what changed — notes, lasers, BPM, metadata and a difficulty delta. You can also compare against another open tab.');
+  desc.style.cssText = 'font-size:9px;color:#556;line-height:1.5;margin-bottom:8px';
+  sec.appendChild(desc);
+
+  const TPM = TICKS_PER_MEASURE, TPB = TICKS_PER_BEAT;
+  const curChart = () => { try { return (typeof chart !== 'undefined') ? chart : null; } catch (_e) { return null; } };
+  const fmtTick = (y) => {
+    const meas = Math.floor(y / TPM) + 1;
+    const beat = Math.floor((y % TPM) / TPB) + 1;
+    return `m${meas}.${beat}`;
+  };
+  const laneName = (kind, lane) => kind === 'bt' ? ('BT-' + 'ABCD'[lane]) : ('FX-' + 'LR'[lane]);
+  const sideName = (s) => 'VOL-' + 'LR'[s];
+
+  // ── Baseline status + capture ────────────────────────────────────────────
+  const status = _h('div', 'tool-result-item', '');
+  status.style.cssText = 'font-size:10px;margin-bottom:6px';
+  const refreshStatus = () => {
+    status.textContent = _revBaselineSnap
+      ? `Baseline: ${_revBaselineLabel}`
+      : 'No baseline captured yet.';
+    status.className = 'tool-result-item ' + (_revBaselineSnap ? 'tool-result-ok' : 'tool-result-warn');
+  };
+
+  const captureBtn = _btn('📸 Capture current as baseline');
+  captureBtn.style.cssText = 'font-size:10px;width:100%;margin-bottom:6px';
+  captureBtn.addEventListener('click', () => {
+    const ch = curChart();
+    if (!ch) return;
+    _revBaselineSnap = snapshotChartForDiff(ch);
+    const tabName = (window.tabs && window.tabs[window.activeTabIdx]?.name) || (ch.meta?.title || 'Chart');
+    const ts = new Date(_revBaselineSnap._capturedAt);
+    _revBaselineLabel = `${tabName} @ ${ts.toLocaleTimeString()}`;
+    refreshStatus();
+  });
+  sec.appendChild(captureBtn);
+  sec.appendChild(status);
+
+  // ── Compare-source selector (baseline / other tabs) ──────────────────────
+  const srcSel = document.createElement('select');
+  srcSel.className = 'tool-select';
+  srcSel.style.cssText = 'width:100%;margin-bottom:6px;font-size:10px';
+  const buildSources = () => {
+    srcSel.innerHTML = '';
+    const optBase = document.createElement('option');
+    optBase.value = 'baseline'; optBase.textContent = 'Compare baseline → current';
+    srcSel.appendChild(optBase);
+    if (window.tabs && window.tabs.length > 1) {
+      window.tabs.forEach((tab, i) => {
+        if (i === window.activeTabIdx) return;
+        const o = document.createElement('option');
+        o.value = 'tab:' + i;
+        o.textContent = `Compare “${tab.name || ('Tab ' + (i + 1))}” → current`;
+        srcSel.appendChild(o);
+      });
+    }
+  };
+  buildSources();
+  sec.appendChild(srcSel);
+
+  const runBtn = _btn('⋈ Compare');
+  runBtn.style.cssText = 'font-size:11px;width:100%;margin-bottom:8px';
+  sec.appendChild(runBtn);
+
+  const report = _h('div', 'tool-result-box');
+  report.style.cssText = 'max-height:320px;overflow-y:auto';
+  sec.appendChild(report);
+
+  // ── Render one diff section (added/removed/changed rows) ──────────────────
+  const addGroup = (title, items, color, fmt) => {
+    if (!items.length) return;
+    const hd = _h('div', '', `${title} (${items.length})`);
+    hd.style.cssText = `font-size:10px;font-weight:bold;color:${color};margin:6px 0 2px`;
+    report.appendChild(hd);
+    items.slice(0, 60).forEach(it => {
+      const row = _h('div', 'tool-kv', '');
+      row.style.cssText = 'cursor:pointer;font-size:10px';
+      row.innerHTML = `<span class="tool-kv-key">${fmt(it)}</span><span class="tool-kv-val">${fmtTick(it.y)}</span>`;
+      row.title = 'Click to seek to ' + fmtTick(it.y);
+      row.addEventListener('click', () => { try { _seekTo(it.y); } catch (_e) {} });
+      report.appendChild(row);
+    });
+    if (items.length > 60) {
+      const more = _h('div', '', `…and ${items.length - 60} more`);
+      more.style.cssText = 'font-size:9px;color:#667;padding:2px 0';
+      report.appendChild(more);
+    }
+  };
+
+  function run() {
+    report.innerHTML = '';
+    const ch = curChart();
+    if (!ch) { report.innerHTML = '<div class="tool-result-item tool-result-err">No chart loaded</div>'; return; }
+
+    let base, baseLabel;
+    if (srcSel.value.startsWith('tab:')) {
+      const idx = parseInt(srcSel.value.slice(4), 10);
+      const t = window.tabs && window.tabs[idx];
+      if (!t || !t.chart) { report.innerHTML = '<div class="tool-result-item tool-result-err">That tab is no longer available.</div>'; return; }
+      base = t.chart; baseLabel = t.name || ('Tab ' + (idx + 1));
+    } else {
+      if (!_revBaselineSnap) { report.innerHTML = '<div class="tool-result-item tool-result-warn">Capture a baseline first.</div>'; return; }
+      base = _revBaselineSnap; baseLabel = _revBaselineLabel;
+    }
+
+    const d = diffCharts(base, ch);
+
+    if (d.identical) {
+      report.innerHTML = `<div class="tool-result-item tool-result-ok">No differences — current chart is identical to ${baseLabel}.</div>`;
+      return;
+    }
+
+    // Summary grid
+    const sd = d.statDelta;
+    const fmtD = (n) => (n > 0 ? '+' + n : String(n));
+    const grid = _statGrid([
+      { label: 'Changes',   value: d.totalChanges, color: '#ffd700' },
+      { label: 'Notes Δ',   value: sd ? fmtD(sd.totalNotes) : '—', color: sd && sd.totalNotes >= 0 ? '#7cff7c' : '#ff7c7c' },
+      { label: 'Lasers Δ',  value: sd ? fmtD(sd.laserSegs)  : '—', color: '#3388ff' },
+      { label: 'Peak Δ',    value: sd ? fmtD(sd.peak)       : '—', color: '#c8c8ff' },
+    ]);
+    report.appendChild(grid);
+
+    addGroup('Notes added',         [...d.bt.added, ...d.fx.added],       '#7cff7c', (n) => laneName(n.kind, n.lane) + (n.len > 0 ? ' hold' : ' chip'));
+    addGroup('Notes removed',       [...d.bt.removed, ...d.fx.removed],   '#ff7c7c', (n) => laneName(n.kind, n.lane) + (n.len > 0 ? ' hold' : ' chip'));
+    addGroup('Hold lengths changed',[...d.bt.lenChanged, ...d.fx.lenChanged], '#ffcc55', (n) => `${laneName(n.kind, n.lane)} ${n.fromLen}→${n.toLen}t`);
+    addGroup('Lasers added',        d.lasers.added,   '#55ddff', (s) => sideName(s.side) + ' section');
+    addGroup('Lasers removed',      d.lasers.removed, '#ff88aa', (s) => sideName(s.side) + ' section');
+    addGroup('Lasers changed',      d.lasers.changed, '#ffaa66', (s) => sideName(s.side) + ' edited');
+    addGroup('BPM added',           d.bpm.added,   '#ffdd44', (e) => `${e.bpm} BPM`);
+    addGroup('BPM removed',         d.bpm.removed, '#cc9933', (e) => `${e.bpm} BPM`);
+    addGroup('BPM changed',         d.bpm.changed, '#ffee77', (e) => `${e.from}→${e.to} BPM`);
+
+    if (d.meta.length) {
+      const hd = _h('div', '', `Metadata (${d.meta.length})`);
+      hd.style.cssText = 'font-size:10px;font-weight:bold;color:#bbaaff;margin:6px 0 2px';
+      report.appendChild(hd);
+      d.meta.forEach(m => {
+        const kv = _h('div', 'tool-kv', '');
+        kv.style.fontSize = '10px';
+        const from = (m.from === '' || m.from == null) ? '∅' : m.from;
+        const to = (m.to === '' || m.to == null) ? '∅' : m.to;
+        kv.innerHTML = `<span class="tool-kv-key">${m.field}</span><span class="tool-kv-val">${from} → ${to}</span>`;
+        report.appendChild(kv);
+      });
+    }
+  }
+
+  runBtn.addEventListener('click', run);
+  refreshStatus();
+  // If a baseline already exists from an earlier session of the tool, show it.
+  if (_revBaselineSnap) setTimeout(run, 50);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
