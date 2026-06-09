@@ -114,6 +114,148 @@ export function computeChartStats(chart) {
   };
 }
 
+// ── Revision Compare (chart diff) engine ─────────────────────────────────────
+// Pure, DOM-free structural comparison of two charts. Used by the Tools Hub
+// "Revision Compare" tool to show exactly what changed between a captured
+// baseline (or another open tab) and the current chart. Kept here so it is a
+// single source of truth and can be unit-tested without a DOM — mirrors the
+// computeChartStats / quantizeRange pattern.
+//
+// `a` is the OLD/baseline chart, `b` is the NEW/current chart. Both may be a
+// real ChartData or a plain snapshot object exposing the same fields
+// (bt, fx, lasers, bpmEvents, meta, totalMeasures, sections). All comparison is
+// by tick position so it is deterministic and order-independent.
+export function diffCharts(a, b) {
+  const empty = { bt: [[], [], [], []], fx: [[], []], lasers: [[], []],
+                  bpmEvents: [], meta: {}, totalMeasures: 0 };
+  a = a || empty; b = b || empty;
+
+  // Compare one set of note lanes (bt: 4 lanes, fx: 2 lanes). A note is keyed by
+  // (lane, y). Same key in both → unchanged, unless the hold length differs
+  // (lenChanged). Only in b → added; only in a → removed.
+  const diffNotes = (lanesA, lanesB, kind) => {
+    const added = [], removed = [], lenChanged = [];
+    const nLanes = Math.max(lanesA.length, lanesB.length);
+    for (let lane = 0; lane < nLanes; lane++) {
+      const mapA = new Map(), mapB = new Map();
+      for (const n of (lanesA[lane] || [])) mapA.set(n.y, n);
+      for (const n of (lanesB[lane] || [])) mapB.set(n.y, n);
+      for (const [y, n] of mapB) {
+        if (!mapA.has(y)) { added.push({ kind, lane, y, len: n.len || 0 }); }
+        else {
+          const old = mapA.get(y);
+          if ((old.len || 0) !== (n.len || 0))
+            lenChanged.push({ kind, lane, y, fromLen: old.len || 0, toLen: n.len || 0 });
+        }
+      }
+      for (const [y, n] of mapA) {
+        if (!mapB.has(y)) removed.push({ kind, lane, y, len: n.len || 0 });
+      }
+    }
+    return { added, removed, lenChanged };
+  };
+
+  // A laser section is keyed by (side, start tick y). Same key in both → compare
+  // the point arrays; any difference in count / ry / v / slam flags it changed.
+  const sameSection = (s1, s2) => {
+    const p1 = s1.points || [], p2 = s2.points || [];
+    if (p1.length !== p2.length) return false;
+    if (!!s1.wide !== !!s2.wide) return false;
+    for (let i = 0; i < p1.length; i++) {
+      if (p1[i].ry !== p2[i].ry) return false;
+      if (Math.abs((p1[i].v ?? 0) - (p2[i].v ?? 0)) > 1e-6) return false;
+      if (!!p1[i].slam !== !!p2[i].slam) return false;
+    }
+    return true;
+  };
+  const diffLasers = () => {
+    const added = [], removed = [], changed = [];
+    for (let side = 0; side < 2; side++) {
+      const mapA = new Map(), mapB = new Map();
+      for (const s of ((a.lasers && a.lasers[side]) || [])) mapA.set(s.y, s);
+      for (const s of ((b.lasers && b.lasers[side]) || [])) mapB.set(s.y, s);
+      for (const [y, s] of mapB) {
+        if (!mapA.has(y)) added.push({ side, y });
+        else if (!sameSection(mapA.get(y), s)) changed.push({ side, y });
+      }
+      for (const [y] of mapA) { if (!mapB.has(y)) removed.push({ side, y }); }
+    }
+    return { added, removed, changed };
+  };
+
+  // BPM events keyed by tick.
+  const diffBpm = () => {
+    const added = [], removed = [], changed = [];
+    const mapA = new Map(), mapB = new Map();
+    for (const e of (a.bpmEvents || [])) mapA.set(e.y, e.bpm);
+    for (const e of (b.bpmEvents || [])) mapB.set(e.y, e.bpm);
+    for (const [y, bpm] of mapB) {
+      if (!mapA.has(y)) added.push({ y, bpm });
+      else if (Math.abs(mapA.get(y) - bpm) > 1e-6) changed.push({ y, from: mapA.get(y), to: bpm });
+    }
+    for (const [y, bpm] of mapA) { if (!mapB.has(y)) removed.push({ y, bpm }); }
+    return { added, removed, changed };
+  };
+
+  // Metadata fields worth surfacing.
+  const metaFields = ['title', 'artist', 'effect', 'difficulty', 'level'];
+  const ma = a.meta || {}, mb = b.meta || {};
+  const meta = [];
+  for (const f of metaFields) {
+    const va = ma[f], vb = mb[f];
+    if (va !== vb && !(va == null && vb == null)) meta.push({ field: f, from: va, to: vb });
+  }
+  if ((a.totalMeasures || 0) !== (b.totalMeasures || 0))
+    meta.push({ field: 'measures', from: a.totalMeasures || 0, to: b.totalMeasures || 0 });
+
+  const bt = diffNotes(a.bt || [], b.bt || [], 'bt');
+  const fx = diffNotes(a.fx || [], b.fx || [], 'fx');
+  const lasers = diffLasers();
+  const bpm = diffBpm();
+
+  // Difficulty / stat deltas (best-effort; null on either side → skipped).
+  let statDelta = null;
+  try {
+    const sa = computeChartStats(a), sb = computeChartStats(b);
+    if (sa && sb) {
+      statDelta = {
+        totalNotes: sb.totalNotes - sa.totalNotes,
+        btTotal:    sb.btTotal - sa.btTotal,
+        fxTotal:    sb.fxTotal - sa.fxTotal,
+        laserSegs:  (sb.segL + sb.segR) - (sa.segL + sa.segR),
+        peak:       sb.peak - sa.peak,
+        from: sa, to: sb,
+      };
+    }
+  } catch (_e) { /* snapshot may lack a method computeChartStats needs */ }
+
+  const totalChanges =
+    bt.added.length + bt.removed.length + bt.lenChanged.length +
+    fx.added.length + fx.removed.length + fx.lenChanged.length +
+    lasers.added.length + lasers.removed.length + lasers.changed.length +
+    bpm.added.length + bpm.removed.length + bpm.changed.length +
+    meta.length;
+
+  return { bt, fx, lasers, bpm, meta, statDelta, totalChanges, identical: totalChanges === 0 };
+}
+
+// Deep, side-effect-free snapshot of just the fields diffCharts/computeChartStats
+// read. Used to capture a "baseline" the user can keep editing away from.
+export function snapshotChartForDiff(chart) {
+  if (!chart) return null;
+  const clone = (x) => JSON.parse(JSON.stringify(x ?? null));
+  return {
+    bt: clone(chart.bt || [[], [], [], []]),
+    fx: clone(chart.fx || [[], []]),
+    lasers: clone(chart.lasers || [[], []]),
+    bpmEvents: clone(chart.bpmEvents || []),
+    meta: clone(chart.meta || {}),
+    sections: clone(chart.sections || []),
+    totalMeasures: chart.totalMeasures || 0,
+    _capturedAt: Date.now(),
+  };
+}
+
 // ── Quantize / Nudge engine ──────────────────────────────────────────────────
 // Shared, side-effect-isolated tick math used by the Tools Hub "Quantize" tool.
 // Kept here (not in tools.js) so it can be unit-tested without a DOM, and so any

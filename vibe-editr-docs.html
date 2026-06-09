@@ -439,6 +439,15 @@
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
 
 <div class="update-entry">
+  <h4><span class="ver-tag">v0.0.47</span>Revision Compare &mdash; See Exactly What Changed</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Revision Compare</strong> tool in <strong>Tools Hub &rarr; Analysis</strong>. <strong>Capture a baseline</strong> snapshot of the current chart, keep editing, then press <em>Compare</em> for an exact change report: BT/FX notes <strong>added</strong> and <strong>removed</strong>, <strong>hold lengths changed</strong>, VOL lasers added / removed / edited, BPM events added / removed / changed, and metadata edits (title, artist, level, difficulty, measures).</li>
+    <li><span class="tag add">add</span>A summary grid shows the <strong>difficulty delta</strong> &mdash; total note change, laser-section change, and peak-density change &mdash; so you can see at a glance whether an edit made a section harder or easier. Every changed row is <strong>click-to-seek</strong>, jumping the playhead straight to the spot that changed.</li>
+    <li><span class="tag add">add</span>Compare against your captured baseline (a lightweight &ldquo;track changes&rdquo; workflow for solo editing) <em>or</em> against <strong>another open chart tab</strong> for version-vs-version review &mdash; directly supporting Split View&rsquo;s comparison use case. The diff engine lives in <code>chart.js</code> (<code>diffCharts</code> / <code>snapshotChartForDiff</code>) as a pure, unit-tested function, and the same tab-state plumbing revives the <strong>Multi-Chart Sync</strong> checker.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
   <h4><span class="ver-tag">v0.0.46</span>Stop (Beat-Stop) Events Survive Export and Save</h4>
   <ul>
     <li><span class="tag fix">fix</span><strong>Stop events are no longer lost on export or save.</strong> KSH <code>stop=</code> scroll-halts &mdash; whether imported from a chart or added/edited in the <strong>Stop Events</strong> panel &mdash; were used for playback timing and drawn on the editor, but were silently dropped by <em>both</em> the KSH and KSON exporters. Exporting or autosaving a chart with stops threw them all away. Both export paths now round-trip them.</li>

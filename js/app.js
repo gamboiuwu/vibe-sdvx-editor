@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.46';
+const APP_VERSION = '0.0.47';
 const CHANGELOG = [
+  {
+    version: '0.0.47',
+    title: 'Revision Compare — see exactly what changed',
+    entries: [
+      ['add', '<strong>Revision Compare</strong> tool in <strong>Tools Hub → Analysis</strong>. <strong>Capture a baseline</strong> of the current chart, keep editing, then hit <em>Compare</em> to get an exact change report: BT/FX notes <strong>added / removed</strong>, <strong>hold lengths changed</strong>, lasers added / removed / edited, BPM events, and metadata edits — plus a difficulty <strong>delta</strong> (note count, laser sections, peak density).'],
+      ['add', 'Every changed row is <strong>click-to-seek</strong> — jump straight to the spot that changed. You can compare against your captured baseline (great for solo "track changes" editing) or against <strong>another open chart tab</strong> for version-vs-version review.'],
+      ['add', 'The comparison engine lives in <code>chart.js</code> (<code>diffCharts</code> / <code>snapshotChartForDiff</code>) as a pure, unit-tested function. Tab state is now exposed for read-only tools, which also revives the <strong>Multi-Chart Sync</strong> checker.'],
+    ],
+  },
   {
     version: '0.0.46',
     title: 'Stop (beat-stop) events now survive export & save',
@@ -500,6 +509,14 @@ const CHANGELOG = [
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 const tabs = [{ name: 'Chart 1', chart: new ChartData(), audioBuffer: null, hispeed: 1.0 }];
 let activeTabIdx = 0;
+// Expose tab state for read-only Tools Hub consumers (Multi-Chart Sync,
+// Revision Compare). The array reference is stable; a getter keeps the active
+// index live without re-assigning on every tab switch.
+if (typeof window !== 'undefined') {
+  window.tabs = tabs;
+  try { Object.defineProperty(window, 'activeTabIdx', { get: () => activeTabIdx, configurable: true }); }
+  catch (_e) { window.activeTabIdx = activeTabIdx; }
+}
 
 // ── State ─────────────────────────────────────────────────────────────────────
 export let chart    = tabs[0].chart;
