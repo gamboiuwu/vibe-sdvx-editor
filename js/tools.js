@@ -1,5 +1,5 @@
-import { chart, renderer, gameView, render, saveUndo, updateSeekbar, addChartAnnotation, _seekTo, sel, playing, audioBuffer, flipHorizontalRange, flipTemporalRange } from './app.js';
-import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS } from './chart.js';
+import { chart, renderer, gameView, render, saveUndo, updateSeekbar, addChartAnnotation, _seekTo, sel, playing, audioBuffer, flipHorizontalRange, flipTemporalRange, updateStopEventList } from './app.js';
+import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, addStopEvent, addStopsAtInterval, clearStops } from './chart.js';
 import { Renderer } from './renderer.js';
 import { updateRadar } from './radar.js';
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -19,6 +19,7 @@ const TOOL_REGISTRY = [
   { id: 'pattern-flip',       cat: 'Edit',     label: 'Pattern Flip',      icon: '⇌' },
   { id: 'quantize',           cat: 'Edit',     label: 'Quantize',          icon: '⊞' },
   { id: 'groove',             cat: 'Edit',     label: 'Groove / Swing',    icon: '⟋' },
+  { id: 'stops',              cat: 'Edit',     label: 'Stop Events',       icon: '⏸' },
   // Analysis
   { id: 'density-heatmap',cat:'Analysis',label:'Density Heatmap',  icon: '≋'  },
   { id: 'multi-sync',  cat: 'Analysis', label: 'Multi-Chart Sync', icon: '⇄'  },
@@ -551,6 +552,7 @@ function _renderTool(id, container) {
     case 'pattern-flip':      return _toolPatternFlip(container);
     case 'quantize':          return _toolQuantize(container);
     case 'groove':            return _toolGroove(container);
+    case 'stops':             return _toolStops(container);
     default: container.textContent = 'Unknown tool: ' + id;
   }
 }
@@ -7068,6 +7070,177 @@ function _toolGroove(c) {
   c.addEventListener('mouseenter', refreshStatus);
 
   buildOffsetRow(GROOVE_PRESETS[presetSel.value]);
+  refreshStatus();
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Stop Events — quick add / bulk-place / clear scroll-halt events
+   ═══════════════════════════════════════════════════════════════════════════
+   Stop (beat-stop) events round-trip losslessly since v0.0.46 but could only be
+   added one at a time by dragging in the editor or removed one at a time in the
+   Stop Events panel. This tool reuses the same Select-region plumbing as
+   Quantize / Groove to: add a stop at the playhead for N beats, stop every
+   downbeat / beat / half-beat across a region (common for build-up & break
+   sections), and clear stops in the region or the whole chart. Core math lives
+   in chart.js (addStopEvent / addStopsAtInterval / clearStops) and is
+   unit-tested. All actions are undoable with Ctrl+Z. */
+function _toolStops(c) {
+  const sec = _section('Stop Events / Scroll Halt');
+  c.appendChild(sec);
+
+  const desc = _h('p', '', 'Place and clear <strong>stop</strong> (scroll-halt) events in bulk. Stops freeze chart scrolling for a set length — common in build-ups and breaks. Bulk placement works on the active <strong>Select</strong> region or the whole chart. Undoable with <kbd>Ctrl+Z</kbd>.');
+  desc.style.cssText = 'font-size:12px;color:#8899bb;margin:0 0 10px;line-height:1.5;';
+  sec.appendChild(desc);
+
+  // ── Stop length (in beats) ───────────────────────────────────────────────
+  const lenIn = document.createElement('input');
+  lenIn.type = 'number'; lenIn.min = '0.0625'; lenIn.max = '16'; lenIn.step = '0.25'; lenIn.value = '1';
+  lenIn.style.cssText = 'width:72px;';
+  const lenTicks = () => Math.max(1, Math.round((+lenIn.value || 1) * TICKS_PER_BEAT));
+  sec.appendChild(_row('Stop length (beats):', lenIn));
+
+  // ── Add at playhead ──────────────────────────────────────────────────────
+  const playBtn = _btn('⏸  Add stop at playhead');
+  playBtn.style.cssText = 'width:100%;margin-top:4px;';
+  playBtn.title = 'Add a stop of the chosen length at the current playhead position';
+  sec.appendChild(playBtn);
+
+  // ── Bulk placement across a region ───────────────────────────────────────
+  const bulkTitle = _h('div', '', 'Bulk place across region:');
+  bulkTitle.style.cssText = 'font-size:12px;color:#8899bb;margin:12px 0 4px;';
+  sec.appendChild(bulkTitle);
+
+  const intervalSel = document.createElement('select');
+  [['meas', 'Every downbeat (measure)', TICKS_PER_MEASURE],
+   ['beat', 'Every beat',               TICKS_PER_BEAT],
+   ['half', 'Every ½ beat',             TICKS_PER_BEAT / 2]].forEach(([v, l]) => {
+    const o = document.createElement('option'); o.value = v; o.textContent = l; intervalSel.appendChild(o);
+  });
+  const intervalTicks = () => {
+    const map = { meas: TICKS_PER_MEASURE, beat: TICKS_PER_BEAT, half: TICKS_PER_BEAT / 2 };
+    return map[intervalSel.value] ?? TICKS_PER_MEASURE;
+  };
+
+  const regionSel = document.createElement('select');
+  [['sel', 'Current selection'], ['all', 'Entire chart']].forEach(([v, l]) => {
+    const o = document.createElement('option'); o.value = v; o.textContent = l; regionSel.appendChild(o);
+  });
+
+  sec.appendChild(_row('Interval:', intervalSel));
+  sec.appendChild(_row('Region:', regionSel));
+
+  const bulkBtn = _btn('⏯  Add stops across region');
+  bulkBtn.style.cssText = 'width:100%;margin-top:4px;';
+  bulkBtn.title = 'Place a stop at each interval grid line within the region';
+  sec.appendChild(bulkBtn);
+
+  // ── Clear ─────────────────────────────────────────────────────────────────
+  const clearRow = document.createElement('div');
+  clearRow.style.cssText = 'display:flex;gap:6px;margin-top:10px;';
+  const clearRegionBtn = _btn('Clear in region');
+  const clearAllBtn    = _btn('Clear ALL stops');
+  clearRegionBtn.style.cssText = 'flex:1;';
+  clearAllBtn.style.cssText = 'flex:1;background:#221012;border-color:#ff5544;color:#ff8877;';
+  clearRow.append(clearRegionBtn, clearAllBtn);
+  sec.appendChild(clearRow);
+
+  // ── Status readout ───────────────────────────────────────────────────────
+  const statusDiv = _h('div', '', '');
+  statusDiv.style.cssText = 'background:#10101e;border:1px solid #334;border-radius:4px;padding:6px 10px;margin:10px 0 0;font-size:12px;color:#88aacc;min-height:32px;';
+  sec.appendChild(statusDiv);
+
+  const resultDiv = _h('div', '', '');
+  resultDiv.style.cssText = 'margin-top:8px;font-size:12px;min-height:18px;';
+  sec.appendChild(resultDiv);
+
+  // Resolve the active region. Whole-chart mode walks to the last object tick.
+  function chartEndTick() {
+    const ch = (typeof chart !== 'undefined') ? chart : null;
+    if (!ch) return 0;
+    let end = 0;
+    for (const lane of ch.bt) for (const n of lane) end = Math.max(end, n.y + (n.len || 0));
+    for (const lane of ch.fx) for (const n of lane) end = Math.max(end, n.y + (n.len || 0));
+    for (const side of ch.lasers) for (const s of side) end = Math.max(end, s.y + (s.points.length ? s.points[s.points.length - 1].ry : 0));
+    // Round up to the next measure so the final downbeat is included.
+    return Math.ceil((end + 1) / TICKS_PER_MEASURE) * TICKS_PER_MEASURE;
+  }
+  function getRange() {
+    const s = (typeof sel !== 'undefined') ? sel : null;
+    if (regionSel.value === 'sel' && s && s.active) {
+      return { lo: Math.min(s.startTick, s.endTick), hi: Math.max(s.startTick, s.endTick), scoped: true };
+    }
+    return { lo: 0, hi: chartEndTick(), scoped: false };
+  }
+
+  function refreshStatus() {
+    const ch = (typeof chart !== 'undefined') ? chart : null;
+    if (!ch) { statusDiv.textContent = 'No chart loaded.'; return; }
+    const total = (ch.stopEvents ?? []).length;
+    const useSel = regionSel.value === 'sel';
+    const s = (typeof sel !== 'undefined') ? sel : null;
+    if (useSel && !(s && s.active)) {
+      statusDiv.innerHTML = `<strong>${total}</strong> stop${total !== 1 ? 's' : ''} in chart. <span style="color:#556677;">No active selection — drag a range with the Select tool (key&nbsp;<kbd>1</kbd>), or switch Region to “Entire chart”.</span>`;
+      return;
+    }
+    const { lo, hi } = getRange();
+    const inScope = (ch.stopEvents ?? []).filter(ev => ev.y >= lo && ev.y < hi).length;
+    const willAdd = Math.max(0, Math.floor((hi - Math.max(0, Math.ceil(lo / intervalTicks()) * intervalTicks())) / intervalTicks()) + (hi > lo ? 0 : 0));
+    statusDiv.innerHTML = `<strong>${total}</strong> stop${total !== 1 ? 's' : ''} in chart · <strong>${inScope}</strong> in region · bulk would touch ~<strong>${Math.max(0, willAdd)}</strong> grid line${willAdd !== 1 ? 's' : ''}.`;
+  }
+
+  function afterMutate() {
+    if (typeof updateStopEventList === 'function') updateStopEventList();
+    if (typeof render === 'function') render();
+    refreshStatus();
+  }
+
+  playBtn.addEventListener('click', () => {
+    if (typeof chart === 'undefined' || !chart) return;
+    const tick = (renderer && renderer.playTick !== undefined) ? Math.max(0, Math.round(renderer.playTick)) : 0;
+    if (typeof saveUndo === 'function') saveUndo('Add stop');
+    const added = addStopEvent(chart, tick, lenTicks());
+    afterMutate();
+    const m = Math.floor(tick / TICKS_PER_MEASURE) + 1;
+    resultDiv.innerHTML = `<span style="color:#44ff88;">✓ ${added ? 'Added' : 'Updated'} stop at M${m} (${lenTicks()}t). <kbd>Ctrl+Z</kbd> to undo.</span>`;
+  });
+
+  bulkBtn.addEventListener('click', () => {
+    if (typeof chart === 'undefined' || !chart) return;
+    if (regionSel.value === 'sel') {
+      const s = (typeof sel !== 'undefined') ? sel : null;
+      if (!(s && s.active)) { resultDiv.innerHTML = '<span style="color:#ff6655;">No active selection. Drag a region or choose “Entire chart”.</span>'; return; }
+    }
+    const { lo, hi } = getRange();
+    if (typeof saveUndo === 'function') saveUndo('Add stops (bulk)');
+    const added = addStopsAtInterval(chart, lo, hi, intervalTicks(), lenTicks());
+    afterMutate();
+    resultDiv.innerHTML = `<span style="color:#44ff88;">✓ Added ${added} stop${added !== 1 ? 's' : ''}. <kbd>Ctrl+Z</kbd> to undo.</span>`;
+  });
+
+  clearRegionBtn.addEventListener('click', () => {
+    if (typeof chart === 'undefined' || !chart) return;
+    if (regionSel.value === 'sel') {
+      const s = (typeof sel !== 'undefined') ? sel : null;
+      if (!(s && s.active)) { resultDiv.innerHTML = '<span style="color:#ff6655;">No active selection. Drag a region or choose “Entire chart”.</span>'; return; }
+    }
+    const { lo, hi } = getRange();
+    if (typeof saveUndo === 'function') saveUndo('Clear stops (region)');
+    const removed = clearStops(chart, lo, hi);
+    afterMutate();
+    resultDiv.innerHTML = `<span style="color:#ffbb55;">✓ Removed ${removed} stop${removed !== 1 ? 's' : ''}. <kbd>Ctrl+Z</kbd> to undo.</span>`;
+  });
+
+  clearAllBtn.addEventListener('click', () => {
+    if (typeof chart === 'undefined' || !chart) return;
+    if (typeof saveUndo === 'function') saveUndo('Clear all stops');
+    const removed = clearStops(chart);
+    afterMutate();
+    resultDiv.innerHTML = `<span style="color:#ffbb55;">✓ Removed all ${removed} stop${removed !== 1 ? 's' : ''}. <kbd>Ctrl+Z</kbd> to undo.</span>`;
+  });
+
+  intervalSel.addEventListener('change', refreshStatus);
+  regionSel.addEventListener('change', refreshStatus);
+  c.addEventListener('mouseenter', refreshStatus);
   refreshStatus();
 }
 

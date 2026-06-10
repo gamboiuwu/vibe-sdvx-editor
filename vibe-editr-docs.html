@@ -439,6 +439,15 @@
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
 
 <div class="update-entry">
+  <h4><span class="ver-tag">v0.0.47</span>Stop-Event Quick Tools</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Stop Events</strong> tool in <strong>Tools Hub &rarr; Edit</strong>. Stop (scroll-halt) events could previously only be placed one at a time by dragging in the editor, or removed one at a time in the Stop Events panel. The new tool lets you <strong>add a stop at the playhead</strong> for a chosen number of beats, <strong>bulk-place stops</strong> at every downbeat / beat / &frac12;&nbsp;beat across the active <strong>Select</strong> region or the whole chart (handy for build-ups and breaks), and <strong>clear stops</strong> in the region or everywhere.</li>
+    <li><span class="tag add">add</span>A live status readout shows the total stop count, how many fall in the region, and roughly how many grid lines a bulk placement would touch. Every action is a single undoable step (<kbd>Ctrl+Z</kbd>) and immediately refreshes both the Stop Events panel and the editor.</li>
+    <li><span class="tag add">add</span>Core math lives in <code>chart.js</code> (<code>addStopEvent</code> / <code>addStopsAtInterval</code> / <code>clearStops</code>) as a DOM-free, unit-tested source of truth &mdash; stops never stack at one tick (a same-tick stop is retuned instead), and bulk placement aligns to the grid and survives KSH &amp; KSON round-trips.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
   <h4><span class="ver-tag">v0.0.46</span>Stop (Beat-Stop) Events Survive Export and Save</h4>
   <ul>
     <li><span class="tag fix">fix</span><strong>Stop events are no longer lost on export or save.</strong> KSH <code>stop=</code> scroll-halts &mdash; whether imported from a chart or added/edited in the <strong>Stop Events</strong> panel &mdash; were used for playback timing and drawn on the editor, but were silently dropped by <em>both</em> the KSH and KSON exporters. Exporting or autosaving a chart with stops threw them all away. Both export paths now round-trip them.</li>

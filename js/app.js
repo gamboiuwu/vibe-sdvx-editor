@@ -60,8 +60,16 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.46';
+const APP_VERSION = '0.0.47';
 const CHANGELOG = [
+  {
+    version: '0.0.47',
+    title: 'Stop-Event Quick Tools',
+    entries: [
+      ['add', '<strong>Stop Events</strong> tool in <strong>Tools Hub → Edit</strong>. Stop (scroll-halt) events could previously only be placed one at a time by dragging in the editor, or removed one at a time in the Stop Events panel. The new tool lets you <strong>add a stop at the playhead</strong> for a chosen number of beats, <strong>bulk-place stops</strong> at every downbeat / beat / ½ beat across the active <strong>Select</strong> region or the whole chart (handy for build-ups and breaks), and <strong>clear stops</strong> in the region or everywhere.'],
+      ['add', 'A live status readout shows the total stop count, how many fall in the region, and roughly how many grid lines a bulk placement would touch. Every action is a single undoable step (<kbd>Ctrl+Z</kbd>) and immediately refreshes the Stop Events panel and editor. Core math lives in <code>chart.js</code> (<code>addStopEvent</code> / <code>addStopsAtInterval</code> / <code>clearStops</code>) as a DOM-free, unit-tested source of truth.'],
+    ],
+  },
   {
     version: '0.0.46',
     title: 'Stop (beat-stop) events now survive export & save',
@@ -7610,7 +7618,7 @@ function _hideFxPopup() {
   if (pop) pop.style.display = 'none';
 }
 
-function updateStopEventList() {
+export function updateStopEventList() {
   const list = document.getElementById('stop-event-list');
   if (!list) return;
   list.innerHTML = '';

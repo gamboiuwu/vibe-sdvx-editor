@@ -225,6 +225,57 @@ export function nudgeRange(chart, opts = {}) {
   return moved;
 }
 
+// ── Stop-event quick edits ───────────────────────────────────────────────────
+// Stop (beat-stop) events are { y: tick, len: ticks } — a scroll halt at tick y
+// lasting `len` editor ticks (192/measure). These helpers are DOM-free so they
+// are the single, unit-testable source of truth for the Tools Hub Stop tool.
+// They never stack two stops on the same start tick: an existing stop at that
+// tick has its length replaced instead, which keeps the timing model sane.
+
+// Add (or replace) a single stop at `tick`. Returns 1 if a new stop was added,
+// 0 if it replaced the length of an existing stop at that tick.
+export function addStopEvent(chart, tick, lenTicks) {
+  if (!chart) return 0;
+  tick     = Math.max(0, Math.round(tick));
+  lenTicks = Math.max(1, Math.round(lenTicks));
+  chart.stopEvents = chart.stopEvents ?? [];
+  const existing = chart.stopEvents.find(ev => ev.y === tick);
+  if (existing) { existing.len = lenTicks; chart.stopEvents.sort((a, b) => a.y - b.y); return 0; }
+  chart.stopEvents.push({ y: tick, len: lenTicks });
+  chart.stopEvents.sort((a, b) => a.y - b.y);
+  return 1;
+}
+
+// Place a stop of `lenTicks` on every grid line of spacing `stepTicks` within
+// [lo, hi). Used for "stop every downbeat/beat in the selection" build-ups.
+// Returns the number of NEW stops added (existing same-tick stops are retuned,
+// not double-counted). lo/hi must be finite; the caller computes the chart end
+// for whole-chart mode.
+export function addStopsAtInterval(chart, lo, hi, stepTicks, lenTicks) {
+  if (!chart || !(stepTicks > 0) || !isFinite(lo) || !isFinite(hi) || hi <= lo) return 0;
+  lenTicks = Math.max(1, Math.round(lenTicks));
+  chart.stopEvents = chart.stopEvents ?? [];
+  const start = Math.max(0, Math.ceil(lo / stepTicks) * stepTicks);
+  let added = 0;
+  for (let t = start; t < hi; t += stepTicks) {
+    const tick = Math.round(t);
+    const ex = chart.stopEvents.find(ev => ev.y === tick);
+    if (ex) ex.len = lenTicks;
+    else { chart.stopEvents.push({ y: tick, len: lenTicks }); added++; }
+  }
+  chart.stopEvents.sort((a, b) => a.y - b.y);
+  return added;
+}
+
+// Remove every stop whose start tick lies in [lo, hi). Defaults clear all.
+// Returns the count removed.
+export function clearStops(chart, lo = -Infinity, hi = Infinity) {
+  if (!chart || !Array.isArray(chart.stopEvents) || !chart.stopEvents.length) return 0;
+  const before = chart.stopEvents.length;
+  chart.stopEvents = chart.stopEvents.filter(ev => !(ev.y >= lo && ev.y < hi));
+  return before - chart.stopEvents.length;
+}
+
 // ── Groove / Swing Quantize ──────────────────────────────────────────────────
 // Built-in groove templates. Each entry is a per-step offset table: value[i] is
 // a fractional offset of ONE grid step applied to the step whose snapped index
