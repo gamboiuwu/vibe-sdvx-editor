@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.46';
+const APP_VERSION = '0.0.47';
 const CHANGELOG = [
+  {
+    version: '0.0.47',
+    title: 'Stop Quick Tools — bulk beat-stop authoring',
+    entries: [
+      ['add', '<strong>Stop Quick Tools</strong> in <strong>Tools Hub → Edit</strong>. The Stop Events panel only added or removed beat-stops one at a time — tedious for stop-heavy build-up / break sections. The new tool adds a stop at the playhead, <strong>fills a region (selection or whole chart) with stops on every downbeat / ½ measure / beat / 2 beats</strong>, and clears stops in one click.'],
+      ['add', 'Stop length is set in <strong>beats</strong>; the fill tool aligns stops to the chosen interval and <strong>updates rather than duplicates</strong> a stop already at the same tick. A live readout shows how many stops a fill would place. Every action is a single undoable step (<kbd>Ctrl+Z</kbd>).'],
+      ['add', 'Built on the v0.0.46 stop round-trip, so tool-created stops <strong>save and export losslessly</strong> through KSH and KSON. Core math lives in <code>chart.js</code> (<code>insertStopEvent / addStopsAtInterval / clearStopEvents</code>) as a single unit-tested source of truth.'],
+    ],
+  },
   {
     version: '0.0.46',
     title: 'Stop (beat-stop) events now survive export & save',
@@ -7610,7 +7619,7 @@ function _hideFxPopup() {
   if (pop) pop.style.display = 'none';
 }
 
-function updateStopEventList() {
+export function updateStopEventList() {
   const list = document.getElementById('stop-event-list');
   if (!list) return;
   list.innerHTML = '';

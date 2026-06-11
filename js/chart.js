@@ -322,6 +322,78 @@ export function grooveQuantizeRange(chart, opts = {}) {
   return moved;
 }
 
+// ── Stop-event quick-tool engine ───────────────────────────────────────────────
+// Stop (beat-stop) events are { y: tick, len: ticks } in editor ticks, kept
+// sorted by y. These DOM-free helpers are the single source of truth for the
+// Stop-Event Quick Tools (Tools Hub → Edit), mirroring how quantize/groove keep
+// their math here so it can be unit-tested without a browser. The Stop Events
+// panel's own one-at-a-time add/delete path is unaffected.
+
+// The last meaningful tick in a chart (end of the latest note/hold/laser/stop),
+// used to bound "entire chart" stop operations. Returns 0 for an empty chart.
+export function chartLastTick(chart) {
+  if (!chart) return 0;
+  let max = 0;
+  const bump = t => { if (isFinite(t) && t > max) max = t; };
+  for (const lane of (chart.bt ?? [])) for (const n of lane) bump(n.y + (n.len ?? 0));
+  for (const lane of (chart.fx ?? [])) for (const n of lane) bump(n.y + (n.len ?? 0));
+  for (const side of (chart.lasers ?? [])) for (const sec of side) {
+    const last = sec.points?.[sec.points.length - 1];
+    bump(sec.y + (last?.ry ?? 0));
+  }
+  for (const ev of (chart.stopEvents ?? [])) bump(ev.y + (ev.len ?? 0));
+  return max;
+}
+
+// Insert one stop at `tick` lasting `len` ticks. If a stop already exists at the
+// exact tick, its length is updated when replace=true, else the call is a no-op.
+// Returns true iff the array changed. Keeps stopEvents sorted by y.
+export function insertStopEvent(chart, tick, len, replace = true) {
+  if (!chart) return false;
+  if (!isFinite(tick) || tick < 0 || !isFinite(len) || len <= 0) return false;
+  chart.stopEvents = chart.stopEvents ?? [];
+  const existing = chart.stopEvents.find(e => e.y === tick);
+  if (existing) {
+    if (!replace || existing.len === len) return false;
+    existing.len = len;
+    return true;
+  }
+  chart.stopEvents.push({ y: tick, len });
+  chart.stopEvents.sort((a, b) => a.y - b.y);
+  return true;
+}
+
+// Add stops at a regular tick interval across [lo, hi). Each lasts `len` ticks.
+// lo/hi may be -Infinity/Infinity to mean the whole chart (walked from 0 to the
+// last object tick). Stops are aligned to multiples of `intervalTicks` so e.g. a
+// one-measure interval lands exactly on each downbeat. Returns the count added.
+export function addStopsAtInterval(chart, lo, hi, intervalTicks, len, replace = true) {
+  if (!chart) return 0;
+  if (!(intervalTicks > 0) || !isFinite(intervalTicks)) return 0;
+  if (!(len > 0) || !isFinite(len)) return 0;
+  chart.stopEvents = chart.stopEvents ?? [];
+  let from = isFinite(lo) ? lo : 0;
+  let to   = isFinite(hi) ? hi : chartLastTick(chart) + 1;
+  if (from < 0) from = 0;
+  if (to <= from) return 0;
+  const start = Math.ceil(from / intervalTicks) * intervalTicks;
+  let added = 0;
+  for (let t = start; t < to; t += intervalTicks) {
+    if (insertStopEvent(chart, t, len, replace)) added++;
+  }
+  return added;
+}
+
+// Remove every stop whose start tick is within [lo, hi). Defaults clear all.
+// Returns the number removed.
+export function clearStopEvents(chart, lo = -Infinity, hi = Infinity) {
+  if (!chart) return 0;
+  const evs = chart.stopEvents ?? [];
+  const before = evs.length;
+  chart.stopEvents = evs.filter(e => !(e.y >= lo && e.y < hi));
+  return before - chart.stopEvents.length;
+}
+
 export class ChartData {
   constructor() {
     this.meta = {
