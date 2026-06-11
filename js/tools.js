@@ -1,9 +1,9 @@
-import { chart, renderer, gameView, render, saveUndo, updateSeekbar, addChartAnnotation, _seekTo, sel, playing, audioBuffer, flipHorizontalRange, flipTemporalRange } from './app.js';
-import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS } from './chart.js';
+import { chart, renderer, gameView, render, saveUndo, updateSeekbar, addChartAnnotation, _seekTo, sel, playing, audioBuffer, flipHorizontalRange, flipTemporalRange, updateStopEventList } from './app.js';
+import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick } from './chart.js';
 import { Renderer } from './renderer.js';
 import { updateRadar } from './radar.js';
 /* ═══════════════════════════════════════════════════════════════════════════
-   vibe-editr  ·  Tools Hub  ·  24 tools — floating MDI window
+   vibe-editr  ·  Tools Hub  ·  26 tools — floating MDI window
    ═══════════════════════════════════════════════════════════════════════════ */
 
 // ── Tool registry ────────────────────────────────────────────────────────────
@@ -19,6 +19,7 @@ const TOOL_REGISTRY = [
   { id: 'pattern-flip',       cat: 'Edit',     label: 'Pattern Flip',      icon: '⇌' },
   { id: 'quantize',           cat: 'Edit',     label: 'Quantize',          icon: '⊞' },
   { id: 'groove',             cat: 'Edit',     label: 'Groove / Swing',    icon: '⟋' },
+  { id: 'stop-tools',         cat: 'Edit',     label: 'Stop Quick Tools',  icon: '⏸' },
   // Analysis
   { id: 'density-heatmap',cat:'Analysis',label:'Density Heatmap',  icon: '≋'  },
   { id: 'multi-sync',  cat: 'Analysis', label: 'Multi-Chart Sync', icon: '⇄'  },
@@ -551,6 +552,7 @@ function _renderTool(id, container) {
     case 'pattern-flip':      return _toolPatternFlip(container);
     case 'quantize':          return _toolQuantize(container);
     case 'groove':            return _toolGroove(container);
+    case 'stop-tools':        return _toolStopTools(container);
     default: container.textContent = 'Unknown tool: ' + id;
   }
 }
@@ -7068,6 +7070,173 @@ function _toolGroove(c) {
   c.addEventListener('mouseenter', refreshStatus);
 
   buildOffsetRow(GROOVE_PRESETS[presetSel.value]);
+  refreshStatus();
+}
+
+// ── Stop Quick Tools ───────────────────────────────────────────────────────────
+// Authoring quality-of-life for beat-stop (KSH `stop=`) events. The Stop Events
+// editor tool / panel only adds & deletes stops one at a time; stop-heavy
+// build-up / break sections need bulk placement. This delegates entirely to the
+// DOM-free engine in chart.js (insertStopEvent / addStopsAtInterval /
+// clearStopEvents) so the math is the single source of truth and unit-testable.
+function _toolStopTools(c) {
+  const sec = _section('Stop Quick Tools');
+  c.appendChild(sec);
+
+  const desc = _h('p', '', 'Bulk-author <strong>beat-stop</strong> events (the KSH <code>stop=</code> scroll-halt). Add one at the playhead, fill a region with stops on every downbeat / beat, or clear stops in one click. All actions are undoable with <kbd>Ctrl+Z</kbd> and round-trip through KSH/KSON.');
+  desc.style.cssText = 'font-size:12px;color:#8899bb;margin:0 0 10px;line-height:1.5;';
+  sec.appendChild(desc);
+
+  // Shared stop length, expressed in beats (KSH stop= length is in editor ticks).
+  const lenIn = document.createElement('input');
+  lenIn.type = 'number'; lenIn.min = '0.0625'; lenIn.max = '64'; lenIn.step = '0.25'; lenIn.value = '1';
+  lenIn.style.cssText = 'width:64px;font-size:12px;';
+  lenIn.title = 'Stop duration in beats (1 beat = ' + TICKS_PER_BEAT + ' ticks).';
+  const lenTicks = () => {
+    let b = parseFloat(lenIn.value); if (!isFinite(b) || b <= 0) b = 1;
+    return Math.max(1, Math.round(b * TICKS_PER_BEAT));
+  };
+  sec.appendChild(_row('Stop length (beats):', lenIn));
+
+  const resultDiv = _h('div', '', '');
+  resultDiv.style.cssText = 'margin-top:10px;font-size:12px;min-height:18px;';
+
+  const refreshAfter = () => {
+    if (typeof render === 'function') render();
+    if (typeof updateStopEventList === 'function') updateStopEventList();
+  };
+
+  // ── A. Add a single stop at the playhead ─────────────────────────────────
+  const aTitle = _h('div', '', 'Add at playhead');
+  aTitle.style.cssText = 'font-size:12px;color:#8899bb;margin:12px 0 4px;font-weight:bold;';
+  sec.appendChild(aTitle);
+
+  const addOneBtn = _btn('⏸  Add stop at playhead');
+  addOneBtn.style.cssText = 'width:100%;background:#1a1424;border-color:#cc88ff;color:#cc88ff;';
+  addOneBtn.addEventListener('click', () => {
+    if (typeof chart === 'undefined' || !chart) return;
+    const tick = Math.max(0, Math.round((renderer && renderer.playTick) || 0));
+    saveUndo && saveUndo('Add stop at playhead');
+    const changed = insertStopEvent(chart, tick, lenTicks());
+    refreshAfter();
+    const m = Math.floor(tick / TICKS_PER_MEASURE) + 1;
+    resultDiv.innerHTML = changed
+      ? `<span style="color:#44ff88;">✓ Stop placed at M${m} (tick ${tick}), ${lenTicks()}t long.</span>`
+      : `<span style="color:#ffbb55;">A stop of that length already exists at M${m} — nothing changed.</span>`;
+  });
+  sec.appendChild(addOneBtn);
+
+  // ── B. Fill a region with stops at an interval ───────────────────────────
+  const bTitle = _h('div', '', 'Fill region with stops');
+  bTitle.style.cssText = 'font-size:12px;color:#8899bb;margin:14px 0 4px;font-weight:bold;';
+  sec.appendChild(bTitle);
+
+  const regionSel = document.createElement('select');
+  [['sel', 'Current selection'], ['all', 'Entire chart']].forEach(([v, l]) => {
+    const o = document.createElement('option'); o.value = v; o.textContent = l; regionSel.appendChild(o);
+  });
+  sec.appendChild(_row('Region:', regionSel));
+
+  const intervalSel = document.createElement('select');
+  const INTERVALS = [
+    { label: 'Every measure (downbeat)', ticks: TICKS_PER_MEASURE },
+    { label: 'Every ½ measure',          ticks: Math.round(TICKS_PER_MEASURE / 2) },
+    { label: 'Every beat',               ticks: TICKS_PER_BEAT },
+    { label: 'Every 2 beats',            ticks: TICKS_PER_BEAT * 2 },
+  ];
+  INTERVALS.forEach((it, i) => { const o = document.createElement('option'); o.value = i; o.textContent = it.label; intervalSel.appendChild(o); });
+  intervalSel.value = '0';
+  sec.appendChild(_row('Interval:', intervalSel));
+
+  const statusDiv = _h('div', '', '');
+  statusDiv.style.cssText = 'background:#10101e;border:1px solid #334;border-radius:4px;padding:6px 10px;margin:8px 0;font-size:12px;color:#88aacc;min-height:30px;';
+  sec.appendChild(statusDiv);
+
+  function getRange() {
+    const s = typeof sel !== 'undefined' ? sel : null;
+    if (regionSel.value === 'sel' && s && s.active) {
+      return { lo: Math.min(s.startTick, s.endTick), hi: Math.max(s.startTick, s.endTick), scoped: true };
+    }
+    return { lo: -Infinity, hi: Infinity, scoped: false };
+  }
+  function refreshStatus() {
+    const ch = typeof chart !== 'undefined' ? chart : null;
+    if (!ch) { statusDiv.textContent = 'No chart loaded.'; return; }
+    if (regionSel.value === 'sel') {
+      const s = typeof sel !== 'undefined' ? sel : null;
+      if (!(s && s.active)) {
+        statusDiv.innerHTML = '<span style="color:#556677;">No active selection — drag a range with the Select tool (key&nbsp;<kbd>1</kbd>), or switch Region to “Entire chart”.</span>';
+        return;
+      }
+    }
+    const { lo, hi } = getRange();
+    const iv = INTERVALS[+intervalSel.value].ticks;
+    const from = isFinite(lo) ? Math.max(0, lo) : 0;
+    const to   = isFinite(hi) ? hi : (chartLastTick(ch) + 1);
+    let count = 0;
+    if (to > from && iv > 0) count = Math.max(0, Math.floor((to - 1 - Math.ceil(from / iv) * iv) / iv) + 1);
+    const scopeStr = isFinite(hi) ? `${hi - lo} ticks` : 'entire chart';
+    statusDiv.innerHTML = `Would place up to <strong>${count}</strong> stop${count !== 1 ? 's' : ''} (${scopeStr}), each ${lenTicks()}t long. <span style="color:#667;">Existing stops at the same ticks are updated, not duplicated.</span>`;
+  }
+
+  const fillBtn = _btn('⏸  Add stops across region');
+  fillBtn.style.cssText = 'width:100%;margin-top:2px;background:#1a1424;border-color:#cc88ff;color:#cc88ff;';
+  fillBtn.addEventListener('click', () => {
+    if (typeof chart === 'undefined' || !chart) return;
+    if (regionSel.value === 'sel') {
+      const s = typeof sel !== 'undefined' ? sel : null;
+      if (!(s && s.active)) { resultDiv.innerHTML = '<span style="color:#ff6655;">No active selection. Drag a region or choose “Entire chart”.</span>'; return; }
+    }
+    const { lo, hi } = getRange();
+    const iv = INTERVALS[+intervalSel.value].ticks;
+    saveUndo && saveUndo('Add stops across region');
+    const n = addStopsAtInterval(chart, lo, hi, iv, lenTicks());
+    refreshAfter();
+    refreshStatus();
+    resultDiv.innerHTML = n > 0
+      ? `<span style="color:#44ff88;">✓ Added ${n} stop${n !== 1 ? 's' : ''}. <kbd>Ctrl+Z</kbd> to undo.</span>`
+      : `<span style="color:#ffbb55;">No new stops added (all positions already had a matching stop).</span>`;
+  });
+  sec.appendChild(fillBtn);
+
+  // ── C. Clear stops ────────────────────────────────────────────────────────
+  const cTitle = _h('div', '', 'Clear stops');
+  cTitle.style.cssText = 'font-size:12px;color:#8899bb;margin:14px 0 4px;font-weight:bold;';
+  sec.appendChild(cTitle);
+
+  const clearScope = document.createElement('select');
+  [['sel', 'In current selection'], ['all', 'All stops in chart']].forEach(([v, l]) => {
+    const o = document.createElement('option'); o.value = v; o.textContent = l; clearScope.appendChild(o);
+  });
+  sec.appendChild(_row('Scope:', clearScope));
+
+  const clearBtn = _btn('🗑  Clear stops');
+  clearBtn.style.cssText = 'width:100%;background:#221314;border-color:#ff6655;color:#ff8877;';
+  clearBtn.addEventListener('click', () => {
+    if (typeof chart === 'undefined' || !chart) return;
+    let lo = -Infinity, hi = Infinity;
+    if (clearScope.value === 'sel') {
+      const s = typeof sel !== 'undefined' ? sel : null;
+      if (!(s && s.active)) { resultDiv.innerHTML = '<span style="color:#ff6655;">No active selection. Drag a region or choose “All stops in chart”.</span>'; return; }
+      lo = Math.min(s.startTick, s.endTick); hi = Math.max(s.startTick, s.endTick);
+    }
+    if (!(chart.stopEvents && chart.stopEvents.length)) { resultDiv.innerHTML = '<span style="color:#ffbb55;">No stops to clear.</span>'; return; }
+    saveUndo && saveUndo('Clear stops');
+    const n = clearStopEvents(chart, lo, hi);
+    refreshAfter();
+    refreshStatus();
+    resultDiv.innerHTML = n > 0
+      ? `<span style="color:#44ff88;">✓ Cleared ${n} stop${n !== 1 ? 's' : ''}. <kbd>Ctrl+Z</kbd> to undo.</span>`
+      : `<span style="color:#ffbb55;">No stops in that range.</span>`;
+  });
+  sec.appendChild(clearBtn);
+
+  sec.appendChild(resultDiv);
+
+  regionSel.addEventListener('change', refreshStatus);
+  intervalSel.addEventListener('change', refreshStatus);
+  lenIn.addEventListener('input', refreshStatus);
+  c.addEventListener('mouseenter', refreshStatus);
   refreshStatus();
 }
 
