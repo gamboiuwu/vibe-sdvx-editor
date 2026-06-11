@@ -439,6 +439,14 @@
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
 
 <div class="update-entry">
+  <h4><span class="ver-tag">v0.0.48</span>Selection Cut / Copy / Delete Splits Lasers Instead of Dropping Them</h4>
+  <ul>
+    <li><span class="tag fix">fix</span><strong>Cutting or deleting a selection over part of a laser no longer destroys the entire laser.</strong> A laser section used to be treated as atomic by its start tick, so a selection either removed the whole section (if it started inside the range) or did nothing (if the range fell in the middle of the laser). <strong>Delete</strong>, <strong>Cut</strong> (<kbd>Ctrl+X</kbd>) and <strong>Copy</strong> now trim the laser at the selection boundary &mdash; and split it into two when the cut lands in its middle &mdash; so the surrounding laser shape survives.</li>
+    <li><span class="tag fix">fix</span>Cut edges get interpolated boundary anchors so the kept laser holds its position, and interior anchors keep their slam / curve / interpolation. <strong>Copy</strong> now captures exactly the in-range laser portion, so cut&rarr;paste round-trips a partial laser just like notes do. The splitter (<code>spliceLaserRange</code> / <code>extractLaserRange</code> / <code>laserVAt</code> in <code>chart.js</code>) is a single unit-tested source of truth shared by all three operations.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
   <h4><span class="ver-tag">v0.0.47</span>Stop Quick Tools &mdash; Bulk Beat-Stop Authoring</h4>
   <ul>
     <li><span class="tag add">add</span><strong>Stop Quick Tools</strong> in <strong>Tools Hub &rarr; Edit</strong>. The Stop Events panel could only add or remove beat-stops one at a time &mdash; tedious for the stop-heavy build-up / break sections that use them most. The new tool covers the three common bulk actions in one place.</li>

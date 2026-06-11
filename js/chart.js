@@ -722,6 +722,116 @@ export class ChartData {
     return merges;
   }
 
+  // ── Laser range slicing (cut / copy / delete a portion of a laser) ────────
+  // Laser sections are atomic-by-start in the naive model, which is wrong for
+  // range edits: selecting part of a laser must trim or split the section, not
+  // drop the whole thing. These helpers are the single source of truth for
+  // selection Copy / Cut / Delete of lasers.
+
+  // Value of a laser section at absolute tick `t` (clamped to the section span).
+  // Approximates bezier segments linearly at the boundary — exact at anchors and
+  // for linear/step/slam segments, which is what matters for clean cut edges.
+  static laserVAt(sec, t) {
+    const pts = sec.points;
+    if (!pts || !pts.length) return 0;
+    const absOf = i => sec.y + pts[i].ry;
+    const last = pts.length - 1;
+    if (t <= absOf(0))    return pts[0].v;
+    if (t >= absOf(last)) return pts[last].v;
+    for (let i = 0; i < last; i++) {
+      const ta = absOf(i), tb = absOf(i + 1);
+      if (t >= ta && t <= tb) {
+        const pa = pts[i], pb = pts[i + 1];
+        if (t === ta) return pa.v;
+        if (t === tb) return pb.v;
+        if (pb.slam) return pa.v;                       // slam jumps at tb; holds pa.v before it
+        if ((pa.interp ?? 'linear') === 'step') return pa.v;
+        if (tb === ta) return pa.v;
+        return pa.v + (pb.v - pa.v) * (t - ta) / (tb - ta);
+      }
+    }
+    return pts[last].v;
+  }
+
+  // Extract the portion of one section between absolute ticks [a, b] as a NEW
+  // section (with interpolated boundary anchors), or null if it would have < 2
+  // points. Preserves interior anchors' v / slam / interp / curve. The returned
+  // section's `y` is the first anchor tick; ry are relative to it.
+  _sliceLaserSection(sec, a, b) {
+    const pts = sec.points;
+    if (!pts || pts.length < 2) return null;
+    const absOf = i => sec.y + pts[i].ry;
+    const s0 = absOf(0), s1 = absOf(pts.length - 1);
+    a = Math.max(a, s0); b = Math.min(b, s1);
+    if (!(b > a)) return null;
+
+    const segInterpAt = t => {
+      for (let i = 0; i < pts.length - 1; i++) {
+        if (t >= absOf(i) && t < absOf(i + 1)) return pts[i].interp ?? 'linear';
+      }
+      return pts[pts.length - 1].interp ?? 'linear';
+    };
+
+    const collected = [];
+    collected.push({ tick: a, v: ChartData.laserVAt(sec, a), slam: false, interp: segInterpAt(a), curve: 0.5 });
+    for (let i = 0; i < pts.length; i++) {
+      const t = absOf(i);
+      if (t > a && t < b) {
+        collected.push({ tick: t, v: pts[i].v, slam: !!pts[i].slam,
+                         interp: pts[i].interp ?? 'linear', curve: pts[i].curve ?? 0.5 });
+      }
+    }
+    collected.push({ tick: b, v: ChartData.laserVAt(sec, b), slam: false, interp: 'linear', curve: 0.5 });
+    if (collected.length < 2) return null;
+
+    const baseY = collected[0].tick;
+    return {
+      y: baseY,
+      wide: sec.wide,
+      points: collected.map((p, idx) => ({
+        ry: p.tick - baseY, v: p.v,
+        slam: idx === 0 ? false : p.slam,
+        interp: p.interp, curve: p.curve,
+      })),
+    };
+  }
+
+  // Return the laser portion within [lo, hi] on `side` as new sections rebased
+  // so tick `lo` maps to 0 (for the clipboard). Non-destructive.
+  extractLaserRange(side, lo, hi) {
+    const arr = this.lasers[side] ?? [];
+    const out = [];
+    for (const sec of arr) {
+      const s0 = sec.y, s1 = sec.y + (sec.points[sec.points.length - 1]?.ry ?? 0);
+      if (s1 < lo || s0 > hi) continue;
+      const piece = this._sliceLaserSection(sec, Math.max(s0, lo), Math.min(s1, hi));
+      if (piece) out.push({ ...piece, y: piece.y - lo, points: piece.points.map(p => ({ ...p })) });
+    }
+    return out;
+  }
+
+  // Remove the laser portion within [lo, hi] on `side` IN PLACE — trimming a
+  // section that straddles a boundary and splitting one whose middle is cut, so
+  // surrounding laser shape survives. Returns the number of sections affected.
+  spliceLaserRange(side, lo, hi) {
+    const arr = this.lasers[side];
+    if (!arr || !arr.length || hi < lo) return 0;
+    const out = [];
+    let affected = 0;
+    for (const sec of arr) {
+      const s0 = sec.y, s1 = sec.y + (sec.points[sec.points.length - 1]?.ry ?? 0);
+      if (s1 < lo || s0 > hi) { out.push(sec); continue; }
+      affected++;
+      const before = (lo > s0) ? this._sliceLaserSection(sec, s0, lo) : null;
+      const after  = (hi < s1) ? this._sliceLaserSection(sec, hi, s1) : null;
+      if (before) out.push(before);
+      if (after)  out.push(after);
+    }
+    out.sort((a, b) => a.y - b.y);
+    this.lasers[side] = out;
+    return affected;
+  }
+
   // ── Slam query interface ─────────────────────────────────────────────────
   // Returns all slam events for one laser side as first-class structured objects:
   //   { y, endY, startV, endV, side }

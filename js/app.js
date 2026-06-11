@@ -60,8 +60,16 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.47';
+const APP_VERSION = '0.0.48';
 const CHANGELOG = [
+  {
+    version: '0.0.48',
+    title: 'Selection cut / copy / delete now splits lasers instead of dropping them',
+    entries: [
+      ['fix', '<strong>Cutting or deleting a selection that covers part of a laser no longer destroys the whole laser.</strong> Previously a laser section was treated as atomic by its start tick — so selecting over a laser either removed the entire section (if it started inside the range) or did nothing at all (if the range fell in its middle). Selection <strong>Delete</strong>, <strong>Cut</strong> (<kbd>Ctrl+X</kbd>) and <strong>Copy</strong> now trim the section at the boundary, and split it in two when the cut lands in the middle, leaving the surrounding laser shape intact.'],
+      ['fix', 'Boundary anchors are interpolated at the cut edges so the surviving laser keeps its position, and interior anchors keep their slam / curve / interpolation. <strong>Copy</strong> now captures exactly the in-range laser portion (so cut→paste round-trips a partial laser), matching how notes already behave. Core logic lives in <code>chart.js</code> (<code>spliceLaserRange</code> / <code>extractLaserRange</code> / <code>laserVAt</code>) as a single unit-tested source of truth.'],
+    ],
+  },
   {
     version: '0.0.47',
     title: 'Stop Quick Tools — bulk beat-stop authoring',
@@ -4215,7 +4223,7 @@ function selCopy() {
   sel.clipboard = {
     bt:     chart.bt.map(l   => l.filter(n => n.y >= lo && n.y <= hi).map(n => ({...n, y: n.y - lo}))),
     fx:     chart.fx.map(l   => l.filter(n => n.y >= lo && n.y <= hi).map(n => ({...n, y: n.y - lo}))),
-    lasers: chart.lasers.map(arr => arr.filter(s => s.y >= lo && s.y <= hi).map(s => ({...s, y: s.y - lo, points: s.points.map(p => ({...p}))}))),
+    lasers: [chart.extractLaserRange(0, lo, hi), chart.extractLaserRange(1, lo, hi)],
     vel:    (chart.scrollSpeedEvents ?? []).filter(e => e.y >= lo && e.y <= hi).map(e => ({...e, y: e.y - lo})),
     glitch: (chart.glitchEvents ?? []).filter(e => e.y >= lo && e.y <= hi).map(e => ({...e, y: e.y - lo})),
     dur: hi - lo,
@@ -4229,7 +4237,7 @@ function selCut() {
   saveUndo('Cut Selection');
   for (let li = 0; li < 4; li++) chart.bt[li] = chart.bt[li].filter(n => !(n.y >= lo && n.y <= hi));
   for (let li = 0; li < 2; li++) chart.fx[li] = chart.fx[li].filter(n => !(n.y >= lo && n.y <= hi));
-  for (let s  = 0; s  < 2; s++)  chart.lasers[s] = chart.lasers[s].filter(sec => !(sec.y >= lo && sec.y <= hi));
+  for (let s  = 0; s  < 2; s++)  chart.spliceLaserRange(s, lo, hi);
   sel.active = false; render();
 }
 
@@ -4242,7 +4250,7 @@ function selDeleteContents() {
   saveUndo('Deleted Selection');
   for (let li = 0; li < 4; li++) chart.bt[li] = chart.bt[li].filter(n => !(n.y >= lo && n.y <= hi));
   for (let li = 0; li < 2; li++) chart.fx[li] = chart.fx[li].filter(n => !(n.y >= lo && n.y <= hi));
-  for (let s  = 0; s  < 2; s++)  chart.lasers[s] = chart.lasers[s].filter(sec => !(sec.y >= lo && sec.y <= hi));
+  for (let s  = 0; s  < 2; s++)  chart.spliceLaserRange(s, lo, hi);
   render();
 }
 
