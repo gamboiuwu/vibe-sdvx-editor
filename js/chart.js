@@ -832,6 +832,82 @@ export class ChartData {
     return affected;
   }
 
+  // v0.0.49: Time-shift every chart object inside [lo, hi] by `delta` ticks.
+  // The single DOM-free source of truth for selection Move / Nudge. Reuses the
+  // v0.0.48 laser-slicing engine (extractLaserRange / spliceLaserRange) so a
+  // selection that covers only PART of a VOL laser slides just that portion in
+  // time (with clean interpolated edges) instead of dragging the whole section.
+  //
+  //  what  — { bt, fx, vol, vel, glitch } booleans (any omitted key defaults to
+  //          true). vel/glitch never move the protected y=0 base event.
+  //
+  // delta is clamped so nothing is pushed before tick 0; the actually-applied
+  // (clamped) delta is RETURNED so the caller can shift the selection range to
+  // match. A zero applied-delta is a no-op (returns 0).
+  shiftRange(lo, hi, delta, what = {}) {
+    const w = {
+      bt: what.bt !== false, fx: what.fx !== false, vol: what.vol !== false,
+      vel: what.vel !== false, glitch: what.glitch !== false,
+    };
+    lo = Math.min(lo, hi); hi = Math.max(lo, hi);
+    if (!Number.isFinite(delta) || delta === 0) return 0;
+
+    // Clamp so the lowest in-range object can't go below tick 0.
+    let minY = Infinity;
+    const scanLane = (arr) => { for (const n of arr) if (n.y >= lo && n.y <= hi && n.y < minY) minY = n.y; };
+    if (w.bt) this.bt.forEach(scanLane);
+    if (w.fx) this.fx.forEach(scanLane);
+    if (w.vol) for (let s = 0; s < 2; s++) for (const sec of (this.lasers[s] ?? [])) {
+      const s0 = sec.y, s1 = sec.y + (sec.points[sec.points.length - 1]?.ry ?? 0);
+      if (s1 >= lo && s0 <= hi) minY = Math.min(minY, Math.max(s0, lo));
+    }
+    if (w.vel) for (const e of (this.scrollSpeedEvents ?? [])) if (e.y > 0 && e.y >= lo && e.y <= hi) minY = Math.min(minY, e.y);
+    if (w.glitch) for (const e of (this.glitchEvents ?? [])) if (e.y > 0 && e.y >= lo && e.y <= hi) minY = Math.min(minY, e.y);
+    if (!Number.isFinite(minY)) return 0; // nothing in range
+    if (minY + delta < 0) delta = -minY;
+    if (delta === 0) return 0;
+
+    // BT / FX notes — pull in-range out, re-add shifted (addBtNote/addFxNote
+    // handle overlap removal + sort so moving onto existing notes is consistent).
+    const shiftNotes = (lanes, add) => {
+      for (let li = 0; li < lanes.length; li++) {
+        const moving = lanes[li].filter(n => n.y >= lo && n.y <= hi);
+        if (!moving.length) continue;
+        lanes[li] = lanes[li].filter(n => !(n.y >= lo && n.y <= hi));
+        moving.forEach(n => add.call(this, li, n.y + delta, n.len ?? 0));
+      }
+    };
+    if (w.bt) shiftNotes(this.bt, this.addBtNote);
+    if (w.fx) shiftNotes(this.fx, this.addFxNote);
+
+    // VOL lasers — slice out the in-range portion (rebased to lo), remove it in
+    // place, then re-insert each piece at lo+delta. Edges stay interpolated.
+    if (w.vol) {
+      for (let s = 0; s < 2; s++) {
+        const pieces = this.extractLaserRange(s, lo, hi); // rebased so lo -> 0
+        if (!pieces.length) continue;
+        this.spliceLaserRange(s, lo, hi);
+        for (const p of pieces) {
+          this.lasers[s].push({ ...p, y: lo + delta + p.y, points: p.points.map(pt => ({ ...pt })) });
+        }
+        this.lasers[s].sort((a, b) => a.y - b.y);
+      }
+    }
+
+    // Scroll-speed / glitch events — move in-range (never the y=0 base).
+    if (w.vel && Array.isArray(this.scrollSpeedEvents)) {
+      const moving = this.scrollSpeedEvents.filter(e => e.y > 0 && e.y >= lo && e.y <= hi);
+      moving.forEach(e => this.removeScrollSpeedEvent?.(e.y));
+      moving.forEach(e => this.addScrollSpeedEvent(e.y + delta, e.speed, e.interp ?? 'step'));
+    }
+    if (w.glitch && Array.isArray(this.glitchEvents)) {
+      const moving = this.glitchEvents.filter(e => e.y > 0 && e.y >= lo && e.y <= hi);
+      moving.forEach(e => this.removeGlitchEvent?.(e.y));
+      moving.forEach(e => this.addGlitchEvent(e.y + delta, e.level));
+    }
+    return delta;
+  }
+
   // ── Slam query interface ─────────────────────────────────────────────────
   // Returns all slam events for one laser side as first-class structured objects:
   //   { y, endY, startV, endV, side }

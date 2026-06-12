@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.48';
+const APP_VERSION = '0.0.49';
 const CHANGELOG = [
+  {
+    version: '0.0.49',
+    title: 'Nudge a selection in time — laser-aware Move',
+    entries: [
+      ['add', '<strong>Time-shift a whole selection</strong> — notes, VOL lasers, and scroll-speed / glitch events — with <kbd>Alt+←</kbd> / <kbd>Alt+→</kbd> (one snap step) or <kbd>Alt+Shift+←/→</kbd> (one measure). Also under the right-click menu as <strong>Nudge in Time</strong>.'],
+      ['add', '<strong>Laser-aware:</strong> when the selection covers only part of a VOL laser, just that portion slides in time — with clean interpolated edges — instead of dragging the whole section, reusing the v0.0.48 slicing engine.'],
+      ['add', 'Nudges clamp at tick 0 (nothing is pushed before the chart start), the selection range follows the move so repeated nudges keep working on the same content, and the y=0 scroll-speed / glitch base events stay pinned. Single undoable step (<kbd>Ctrl+Z</kbd>). Core logic is <code>ChartData.shiftRange()</code> in <code>chart.js</code> — a unit-tested single source of truth.'],
+    ],
+  },
   {
     version: '0.0.48',
     title: 'Selection cut / copy / delete now splits lasers instead of dropping them',
@@ -4254,6 +4263,37 @@ function selDeleteContents() {
   render();
 }
 
+// v0.0.49: Time-shift (Move / Nudge) the entire selection — notes, VOL lasers
+// (laser-aware via the v0.0.48 slicing engine: a selection covering only part of
+// a laser slides just that portion), and scroll-speed / glitch events — by
+// `deltaTicks`. The selection range follows the (clamped) applied delta so
+// repeated nudges keep operating on the same content. Single undo step.
+function selNudgeContents(deltaTicks) {
+  if (!sel.active || !deltaTicks) return;
+  const [lo, hi] = selTickRange();
+  // Cheap pre-check so an empty-range nudge never burns an undo step.
+  const noteIn = arr => arr.some(n => n.y >= lo && n.y <= hi);
+  const laserIn = side => (chart.lasers[side] ?? []).some(sec => {
+    const s1 = sec.y + (sec.points[sec.points.length - 1]?.ry ?? 0);
+    return s1 >= lo && sec.y <= hi;
+  });
+  const evIn = arr => (arr ?? []).some(e => e.y > 0 && e.y >= lo && e.y <= hi);
+  const hasContent = chart.bt.some(noteIn) || chart.fx.some(noteIn) ||
+    laserIn(0) || laserIn(1) || evIn(chart.scrollSpeedEvents) || evIn(chart.glitchEvents);
+  if (!hasContent) return;
+  saveUndo('Nudge Selection');
+  const applied = chart.shiftRange(lo, hi, deltaTicks, {
+    bt: true, fx: true, vol: true, vel: true, glitch: true,
+  });
+  if (!applied) return;
+  sel.startTick += applied;
+  sel.endTick   += applied;
+  updateScrollSpeedEventList?.();
+  updateGlitchEventList?.();
+  updateSelStatus?.();
+  render();
+}
+
 // Cmd+T "Free Transform" for a selection: prompt for a stretch factor, then
 // scale every note/laser inside the range around the selection's start. The
 // selection range itself is rescaled too so subsequent edits keep working
@@ -4917,6 +4957,14 @@ function ensureCtxMenu() {
         </div>
       </div>
     </div>
+    <div class="ctx-item ctx-has-sub">Nudge in Time <span style="font-size:9px;color:#aaa">(Alt+←/→)</span>
+      <div class="ctx-sub">
+        <div class="ctx-item" data-act="nudge-left">◀ Earlier — one snap step</div>
+        <div class="ctx-item" data-act="nudge-right">Later — one snap step ▶</div>
+        <div class="ctx-item" data-act="nudge-left-beat">◀◀ Earlier — one measure</div>
+        <div class="ctx-item" data-act="nudge-right-beat">Later — one measure ▶▶</div>
+      </div>
+    </div>
     <div class="ctx-item ctx-has-sub">Adjust Speed
       <div class="ctx-sub">
         <div class="ctx-item" data-act="speed-half">Speed ½× (slower)</div>
@@ -4966,6 +5014,10 @@ function ensureCtxMenu() {
     else if (act === 'tmirror-bt')  selTemporalMirror('bt');
     else if (act === 'tmirror-vol') selTemporalMirror('vol');
     else if (act === 'swap-lasers') selSwapLasers();
+    else if (act === 'nudge-left')       selNudgeContents(-(snap || 6));
+    else if (act === 'nudge-right')      selNudgeContents(snap || 6);
+    else if (act === 'nudge-left-beat')  selNudgeContents(-TICKS_PER_MEASURE);
+    else if (act === 'nudge-right-beat') selNudgeContents(TICKS_PER_MEASURE);
     else if (act === 'speed-half')   selAdjustSpeed(0.5);
     else if (act === 'speed-double') selAdjustSpeed(2.0);
     else if (act === 'rand-all') selRandom('all');
@@ -6600,13 +6652,25 @@ function onKeyDown(e) {
       }
       break;
 
-    // Column navigation
+    // Column navigation — OR, with Alt held + an active selection, time-nudge
+    // the selection contents (notes + lasers + events) by one snap step. Add
+    // Shift for a coarse whole-measure nudge. (v0.0.49)
     case 'ArrowLeft':
+      if (e.altKey && sel.active) {
+        e.preventDefault();
+        selNudgeContents(-(e.shiftKey ? TICKS_PER_MEASURE : (snap || 6)));
+        break;
+      }
       e.preventDefault();
       renderer.scrollCol = Math.max(0, renderer.scrollCol - (ctrl ? renderer.numCols : 1));
       if (!playing) { renderer.playTick = renderer.scrollCol * renderer.measPerCol * TICKS_PER_MEASURE; updateSeekbar(renderer.playTick); }
       render(); break;
     case 'ArrowRight':
+      if (e.altKey && sel.active) {
+        e.preventDefault();
+        selNudgeContents(e.shiftKey ? TICKS_PER_MEASURE : (snap || 6));
+        break;
+      }
       e.preventDefault();
       renderer.scrollCol = Math.min(renderer.totalCols() - 1, renderer.scrollCol + (ctrl ? renderer.numCols : 1));
       if (!playing) { renderer.playTick = renderer.scrollCol * renderer.measPerCol * TICKS_PER_MEASURE; updateSeekbar(renderer.playTick); }
