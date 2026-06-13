@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.49';
+const APP_VERSION = '0.0.50';
 const CHANGELOG = [
+  {
+    version: '0.0.50',
+    title: 'Insert Time — open a blank gap in the chart',
+    entries: [
+      ['add', '<strong>Edit → Insert Time…</strong> opens a blank musical gap at any measure/beat and pushes every note, VOL laser, BPM / time-sig / camera / stop / velocity / glitch event at or after that point forward. It is the exact inverse of <strong>Delete &amp; Shift</strong> (ripple delete) — add an intro, a break, or fix an off-by-a-measure offset without re-placing anything.'],
+      ['add', 'Holds and laser sections that <strong>span</strong> the insert point are lengthened (the gap opens inside them) instead of being torn apart, so sustained notes and continuous lasers stay intact.'],
+      ['add', 'The insert point pre-fills from the playhead (or the active selection start). Amount is entered in measures + beats. Time-signature changes shift by whole measures; the y=0 BPM / velocity / glitch base events stay pinned. Single undoable step (<kbd>Ctrl+Z</kbd>). Core logic is the DOM-free, unit-tested <code>ChartData.insertTime()</code> in <code>chart.js</code>.'],
+    ],
+  },
   {
     version: '0.0.49',
     title: 'Nudge a selection in time — laser-aware Move',
@@ -3323,6 +3332,35 @@ window.addEventListener('DOMContentLoaded', () => {
     chart.addTimeSigEvent(measure, +document.getElementById('ts-ev-num').value, +document.getElementById('ts-ev-den').value);
     document.getElementById('modal-timesig').style.display = 'none';
     updateTimeSigList();
+  });
+
+  // Insert Time modal — push everything at/after a point forward (inverse of ripple delete)
+  document.getElementById('btn-insert-time')?.addEventListener('click', () => {
+    // Prefill the insert point with the current playhead (or selection start).
+    let atTick = renderer?.playTick ?? 0;
+    if (sel?.active) { const [lo] = selTickRange(); atTick = lo; }
+    atTick = Math.max(0, Math.round(atTick));
+    const measure = Math.floor(atTick / TICKS_PER_MEASURE);
+    const beat    = Math.floor((atTick % TICKS_PER_MEASURE) / TICKS_PER_BEAT);
+    document.getElementById('it-ev-measure').value = measure + 1;
+    document.getElementById('it-ev-beat').value    = beat + 1;
+    document.getElementById('modal-insert-time').style.display = 'flex';
+  });
+  document.getElementById('it-ev-cancel')?.addEventListener('click', () => document.getElementById('modal-insert-time').style.display = 'none');
+  document.getElementById('it-ev-ok')?.addEventListener('click', () => {
+    const measure  = Math.max(0, (+document.getElementById('it-ev-measure').value  || 1) - 1);
+    const beat     = Math.max(0, (+document.getElementById('it-ev-beat').value     || 1) - 1);
+    const measures = Math.max(0,  +document.getElementById('it-ev-measures').value || 0);
+    const beats    = Math.max(0,  +document.getElementById('it-ev-beats').value    || 0);
+    const atTick = measure * TICKS_PER_MEASURE + beat * TICKS_PER_BEAT;
+    const span   = measures * TICKS_PER_MEASURE + beats * TICKS_PER_BEAT;
+    document.getElementById('modal-insert-time').style.display = 'none';
+    if (span <= 0) return;
+    saveUndo(`Insert ${measures}m ${beats}b at M${measure + 1}`);
+    chart.insertTime(atTick, span);
+    pushMeta(); updateBpmList(); updateTimeSigList(); updateCameraEventList();
+    updateStopEventList(); updateScrollSpeedEventList();
+    render();
   });
 
   // Chart Velocity modal

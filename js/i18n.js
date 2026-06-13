@@ -207,6 +207,7 @@ export const I18N = {
     'edit.sranFx':        'S-Ran FX',
     'edit.sranVol':       'S-Ran VOL',
     'edit.rippleDelete':  'Delete & Shift',
+    'edit.insertTime':    'Insert Time…',
 
     // ── Chart menu ──
     'chart.songMeta':     'Song Metadata…',
@@ -456,7 +457,7 @@ export const I18N = {
     'edit.adjustSpeed': 'Ajustar velocidad ▸', 'edit.speedHalf': '½× más lento (expandir ticks)',
     'edit.speedDouble': '2× más rápido (comprimir ticks)', 'edit.modify': 'Modificar ▸',
     'edit.sranAll': 'S-Ran (Todo)', 'edit.sranBt': 'S-Ran BT', 'edit.sranFx': 'S-Ran FX',
-    'edit.sranVol': 'S-Ran VOL', 'edit.rippleDelete': 'Eliminar y desplazar',
+    'edit.sranVol': 'S-Ran VOL', 'edit.rippleDelete': 'Eliminar y desplazar', 'edit.insertTime': 'Insertar tiempo…',
 
     'chart.songMeta': 'Metadatos de canción…', 'chart.addBpm': 'Agregar cambio de BPM…',
     'chart.addTimeSig': 'Agregar compás…', 'chart.addVelocity': 'Agregar velocidad…',
@@ -622,7 +623,7 @@ export const I18N = {
     'edit.adjustSpeed': 'Ajuster la vitesse ▸', 'edit.speedHalf': '½× plus lent (étirer les ticks)',
     'edit.speedDouble': '2× plus rapide (compresser les ticks)', 'edit.modify': 'Modifier ▸',
     'edit.sranAll': 'S-Ran (Tout)', 'edit.sranBt': 'S-Ran BT', 'edit.sranFx': 'S-Ran FX',
-    'edit.sranVol': 'S-Ran VOL', 'edit.rippleDelete': 'Supprimer & décaler',
+    'edit.sranVol': 'S-Ran VOL', 'edit.rippleDelete': 'Supprimer & décaler', 'edit.insertTime': 'Insérer du temps…',
 
     'chart.songMeta': 'Métadonnées de la chanson…', 'chart.addBpm': 'Ajouter un changement de BPM…',
     'chart.addTimeSig': 'Ajouter une mesure…', 'chart.addVelocity': 'Ajouter une vélocité…',
@@ -785,7 +786,7 @@ export const I18N = {
     'edit.adjustSpeed': '速度を調整 ▸', 'edit.speedHalf': '½× 遅く（ticks を展開）',
     'edit.speedDouble': '2× 速く（ticks を圧縮）', 'edit.modify': '変更 ▸',
     'edit.sranAll': 'S-Ran（全て）', 'edit.sranBt': 'S-Ran BT', 'edit.sranFx': 'S-Ran FX',
-    'edit.sranVol': 'S-Ran VOL', 'edit.rippleDelete': '削除してシフト',
+    'edit.sranVol': 'S-Ran VOL', 'edit.rippleDelete': '削除してシフト', 'edit.insertTime': '時間を挿入…',
 
     'chart.songMeta': '曲メタデータ…', 'chart.addBpm': 'BPM 変更を追加…',
     'chart.addTimeSig': '拍子を追加…', 'chart.addVelocity': '譜面速度を追加…',
@@ -948,7 +949,7 @@ export const I18N = {
     'edit.adjustSpeed': '调整速度 ▸', 'edit.speedHalf': '½× 减速（展开 tick）',
     'edit.speedDouble': '2× 加速（压缩 tick）', 'edit.modify': '修改 ▸',
     'edit.sranAll': 'S-Ran（全部）', 'edit.sranBt': 'S-Ran BT', 'edit.sranFx': 'S-Ran FX',
-    'edit.sranVol': 'S-Ran VOL', 'edit.rippleDelete': '删除并移位',
+    'edit.sranVol': 'S-Ran VOL', 'edit.rippleDelete': '删除并移位', 'edit.insertTime': '插入时间…',
 
     'chart.songMeta': '曲目元数据…', 'chart.addBpm': '添加 BPM 变化…',
     'chart.addTimeSig': '添加拍号…', 'chart.addVelocity': '添加谱面速度…',

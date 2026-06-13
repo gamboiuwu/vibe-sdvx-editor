@@ -76,6 +76,7 @@
           </div>
         </div>
         <div class="menu-sep"></div>
+        <button class="menu-item" id="btn-insert-time"><span data-i18n="edit.insertTime">Insert Time…</span></button>
         <button class="menu-item danger-item" id="btn-ripple-delete"><span data-i18n="edit.rippleDelete">Delete &amp; Shift</span>  <kbd>Shift+Del</kbd></button>
       </div>
     </div>
@@ -672,6 +673,22 @@
     <div class="modal-buttons">
       <button id="ts-ev-ok">Add</button>
       <button id="ts-ev-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Insert blank time (push everything after a point forward) -->
+<div id="modal-insert-time" class="modal" style="display:none">
+  <div class="modal-box">
+    <h3>Insert Time</h3>
+    <div style="font-size:10px;color:#888;margin:0 0 8px">Opens a blank gap and pushes every note, laser and event at or after the insert point forward. Holds spanning the point are lengthened. The inverse of <b>Delete &amp; Shift</b> (ripple delete).</div>
+    <div class="form-group"><label>Insert at — Measure</label><input type="number" id="it-ev-measure" min="1" value="1"></div>
+    <div class="form-group"><label>Beat</label><input type="number" id="it-ev-beat" min="1" value="1"></div>
+    <div class="form-group"><label>Amount — Measures</label><input type="number" id="it-ev-measures" min="0" value="1"></div>
+    <div class="form-group"><label>+ Beats</label><input type="number" id="it-ev-beats" min="0" value="0"></div>
+    <div class="modal-buttons">
+      <button id="it-ev-ok">Insert</button>
+      <button id="it-ev-cancel">Cancel</button>
     </div>
   </div>
 </div>

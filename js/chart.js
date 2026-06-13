@@ -908,6 +908,72 @@ export class ChartData {
     return delta;
   }
 
+  // ── Insert blank time (the inverse of app.js selRippleDelete) ──────────────
+  // Open a `span`-tick gap at tick `at`: every object that starts at or after
+  // `at` is pushed forward by `span`, while holds and laser sections that
+  // STRADDLE `at` (start < at < end) are LENGTHENED by `span` so the gap opens
+  // inside them rather than tearing them apart. Base events pinned at y=0
+  // (bpm / scroll-speed / glitch) never move because 0 < at. Measure-indexed
+  // time-signature events shift by whole measures only. DOM-free single source
+  // of truth — both the editor (app.js) and any test driver call this. Returns
+  // the number of ticks actually inserted (0 if span <= 0).
+  insertTime(at, span) {
+    at   = Math.max(0, Math.round(at));
+    span = Math.round(span);
+    if (!Number.isFinite(span) || span <= 0) return 0;
+
+    // BT / FX notes — start >= at shift; straddling holds lengthen; before kept.
+    const shiftLane = (arr) => arr.map(n => {
+      const end = n.y + (n.len ?? 0);
+      if (n.y >= at) return { ...n, y: n.y + span };       // entirely at/after → shift
+      if (end <= at) return n;                             // entirely before → keep
+      return { ...n, len: (n.len ?? 0) + span };           // straddles → lengthen the hold
+    });
+    for (let li = 0; li < this.bt.length; li++) {
+      this.bt[li] = shiftLane(this.bt[li]); this.bt[li].sort((a, b) => a.y - b.y);
+    }
+    for (let li = 0; li < this.fx.length; li++) {
+      this.fx[li] = shiftLane(this.fx[li]); this.fx[li].sort((a, b) => a.y - b.y);
+    }
+
+    // VOL lasers — section start >= at shifts whole; a straddling section keeps
+    // its start and pushes only the points sitting at/after `at`, lengthening
+    // the segment that spans the cut so the laser shape stays continuous.
+    for (let s = 0; s < this.lasers.length; s++) {
+      this.lasers[s] = (this.lasers[s] ?? []).map(sec => {
+        const lastRy = sec.points[sec.points.length - 1]?.ry ?? 0;
+        const s0 = sec.y, s1 = sec.y + lastRy;
+        if (s0 >= at) return { ...sec, y: sec.y + span, points: sec.points.map(p => ({ ...p })) };
+        if (s1 <= at) return sec;                          // entirely before → keep
+        return { ...sec, points: sec.points.map(p =>
+          (sec.y + p.ry) >= at ? { ...p, ry: p.ry + span } : { ...p }) };
+      });
+      this.lasers[s].sort((a, b) => a.y - b.y);
+    }
+
+    // Tick-indexed events — shift those at/after `at` (the y=0 base stays put).
+    const shiftEvY = (arr) => (arr || [])
+      .map(e => e.y >= at ? { ...e, y: e.y + span } : e)
+      .sort((a, b) => a.y - b.y);
+    this.bpmEvents         = shiftEvY(this.bpmEvents);
+    this.cameraEvents      = shiftEvY(this.cameraEvents);
+    this.stopEvents        = shiftEvY(this.stopEvents);
+    this.scrollSpeedEvents = shiftEvY(this.scrollSpeedEvents);
+    this.glitchEvents      = shiftEvY(this.glitchEvents);
+
+    // Time-signature events are measure-indexed; only shift by whole measures.
+    if (this.timeSigEvents?.length) {
+      const dMeas = Math.round(span / TICKS_PER_MEASURE);
+      if (dMeas !== 0) {
+        this.timeSigEvents = this.timeSigEvents
+          .map(ev => (ev.measure * TICKS_PER_MEASURE) >= at
+            ? { ...ev, measure: ev.measure + dMeas } : ev)
+          .sort((a, b) => a.measure - b.measure);
+      }
+    }
+    return span;
+  }
+
   // ── Slam query interface ─────────────────────────────────────────────────
   // Returns all slam events for one laser side as first-class structured objects:
   //   { y, endY, startV, endV, side }
