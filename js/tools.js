@@ -20,6 +20,7 @@ const TOOL_REGISTRY = [
   { id: 'quantize',           cat: 'Edit',     label: 'Quantize',          icon: '⊞' },
   { id: 'groove',             cat: 'Edit',     label: 'Groove / Swing',    icon: '⟋' },
   { id: 'stop-tools',         cat: 'Edit',     label: 'Stop Quick Tools',  icon: '⏸' },
+  { id: 'laser-reconnect',    cat: 'Edit',     label: 'Reconnect Lasers',  icon: '🔗' },
   // Analysis
   { id: 'density-heatmap',cat:'Analysis',label:'Density Heatmap',  icon: '≋'  },
   { id: 'multi-sync',  cat: 'Analysis', label: 'Multi-Chart Sync', icon: '⇄'  },
@@ -553,6 +554,7 @@ function _renderTool(id, container) {
     case 'quantize':          return _toolQuantize(container);
     case 'groove':            return _toolGroove(container);
     case 'stop-tools':        return _toolStopTools(container);
+    case 'laser-reconnect':   return _toolLaserReconnect(container);
     default: container.textContent = 'Unknown tool: ' + id;
   }
 }
@@ -7070,6 +7072,84 @@ function _toolGroove(c) {
   c.addEventListener('mouseenter', refreshStatus);
 
   buildOffsetRow(GROOVE_PRESETS[presetSel.value]);
+  refreshStatus();
+}
+
+// ── Reconnect Lasers ────────────────────────────────────────────────────────────
+// v0.0.50 (Point 28b / 27c): bulk laser seam healing. The editor already merges
+// touching laser endpoints right after a freehand draw or a drag (per-side
+// autoConnectLasersFixup), and v0.0.50 makes a selection Move / Nudge self-heal
+// too. This surfaces the same engine as a one-click chart-wide cleanup: laser
+// sections fragmented by Cut/Splice edits, freehand strokes, or KSM imports get
+// merged wherever one section's end sits on the same tick AND position as the
+// next section's start (slam, curve, or normal junction). Delegates entirely to
+// the DOM-free chart.js engine (reconnectAllLasers -> autoConnectLasers) so the
+// merge math is the single source of truth and unit-testable.
+function _toolLaserReconnect(c) {
+  const sec = _section('Reconnect Lasers');
+  c.appendChild(sec);
+
+  const desc = _h('p', '', 'Merge <strong>touching VOL laser sections</strong> into continuous lasers. Whenever one section’s end lands on the same tick and lane position as the next section’s start — a seam left behind by Cut / Delete edits, freehand strokes, or KSM imports — the two are joined into one (slam, curve, and normal junctions are all preserved). Visually identical in SDVX, but cleaner to edit, lighter to render, and free of invisible same-value seams. Undoable with <kbd>Ctrl+Z</kbd>.');
+  desc.style.cssText = 'font-size:12px;color:#8899bb;margin:0 0 10px;line-height:1.5;';
+  sec.appendChild(desc);
+
+  const statusDiv = _h('div', '', '');
+  statusDiv.style.cssText = 'background:#10101e;border:1px solid #334;border-radius:4px;padding:6px 10px;margin:8px 0;font-size:12px;color:#88aacc;min-height:30px;';
+  sec.appendChild(statusDiv);
+
+  const resultDiv = _h('div', '', '');
+  resultDiv.style.cssText = 'margin-top:10px;font-size:12px;min-height:18px;';
+
+  // Count how many adjacent same-tick / same-value seams currently exist on a
+  // side (a non-destructive preview of what Reconnect would merge). Mirrors the
+  // engine's touching+sameV test without mutating anything.
+  function countSeams(side) {
+    const ch = typeof chart !== 'undefined' ? chart : null;
+    if (!ch || !ch.lasers || !ch.lasers[side]) return 0;
+    const arr = ch.lasers[side].slice().sort((a, b) => a.y - b.y);
+    let seams = 0;
+    for (let i = 0; i < arr.length - 1; i++) {
+      const a = arr[i], b = arr[i + 1];
+      if (!a.points || !a.points.length || !b.points || !b.points.length) continue;
+      const aLast = a.points[a.points.length - 1];
+      const aLastTick = a.y + aLast.ry;
+      const bFirst = b.points[0];
+      const bFirstTick = b.y + bFirst.ry;
+      if (Math.abs(bFirstTick - aLastTick) <= 1 && Math.abs(bFirst.v - aLast.v) <= 0.01) seams++;
+    }
+    return seams;
+  }
+
+  function refreshStatus() {
+    const ch = typeof chart !== 'undefined' ? chart : null;
+    if (!ch || !ch.lasers) { statusDiv.textContent = 'No chart loaded.'; return; }
+    const lc = (ch.lasers[0] || []).length, rc = (ch.lasers[1] || []).length;
+    const seams = countSeams(0) + countSeams(1);
+    statusDiv.innerHTML =
+      `Sections: <strong>L ${lc}</strong> &nbsp; <strong>R ${rc}</strong>. ` +
+      (seams > 0
+        ? `<span style="color:#ffbb55;">${seams} touching seam${seams !== 1 ? 's' : ''} can be merged.</span>`
+        : `<span style="color:#66bb88;">No touching seams — lasers are already continuous.</span>`);
+  }
+
+  const btn = _btn('🔗  Reconnect touching lasers');
+  btn.style.cssText = 'width:100%;background:#141a24;border-color:#66ccff;color:#66ccff;';
+  btn.addEventListener('click', () => {
+    if (typeof chart === 'undefined' || !chart || typeof chart.reconnectAllLasers !== 'function') return;
+    const before = (chart.lasers[0] || []).length + (chart.lasers[1] || []).length;
+    saveUndo && saveUndo('Reconnect lasers');
+    const merges = chart.reconnectAllLasers();
+    if (typeof render === 'function') render();
+    refreshStatus();
+    const after = (chart.lasers[0] || []).length + (chart.lasers[1] || []).length;
+    resultDiv.innerHTML = merges > 0
+      ? `<span style="color:#44ff88;">✓ Merged ${merges} seam${merges !== 1 ? 's' : ''} — ${before} → ${after} laser section${after !== 1 ? 's' : ''}. <kbd>Ctrl+Z</kbd> to undo.</span>`
+      : `<span style="color:#ffbb55;">Nothing to merge — no touching same-position seams found.</span>`;
+  });
+  sec.appendChild(btn);
+  sec.appendChild(resultDiv);
+
+  c.addEventListener('mouseenter', refreshStatus);
   refreshStatus();
 }
 
