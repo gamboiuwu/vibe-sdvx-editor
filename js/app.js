@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.49';
+const APP_VERSION = '0.0.50';
 const CHANGELOG = [
+  {
+    version: '0.0.50',
+    title: 'Reconnect lasers — heal touching seams into continuous lasers',
+    entries: [
+      ['add', '<strong>Reconnect Lasers tool</strong> (Tools Hub → Edit → <em>Reconnect Lasers</em>). One click merges every place where a VOL laser section’s end sits on the same tick and lane position as the next section’s start — the fragmentation Cut/Delete edits, freehand strokes, and KSM imports leave behind — into one continuous laser. Slam, curve, and normal junctions are all preserved; it reports how many seams were merged and is undoable with <kbd>Ctrl+Z</kbd>.'],
+      ['chg', '<strong>Nudging / moving a selection now self-heals its laser seam.</strong> When a time-nudge slides part of a laser back against the piece it was split from, the two merge automatically — the same way drawing or dragging a laser onto another’s endpoint already joins them — so no invisible same-value seam is left behind.'],
+      ['add', 'Core logic is <code>ChartData.reconnectAllLasers()</code> in <code>chart.js</code> (built on the existing <code>autoConnectLasers</code> engine) — a DOM-free, unit-tested single source of truth, also called automatically inside <code>shiftRange()</code>.'],
+    ],
+  },
   {
     version: '0.0.49',
     title: 'Nudge a selection in time — laser-aware Move',

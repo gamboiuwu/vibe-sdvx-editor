@@ -722,6 +722,21 @@ export class ChartData {
     return merges;
   }
 
+  // v0.0.50: Chart-wide laser seam healing. Runs autoConnectLasers on BOTH
+  // sides and returns the TOTAL number of merges performed. This is the bulk
+  // counterpart to the per-side fixup the editor already runs after a draw /
+  // drag: it merges every place where one laser section's end sits on the same
+  // tick and position as the next section's start (slam, curve, or normal
+  // junction), collapsing the kind of fragmentation that Cut/Splice edits,
+  // freehand strokes, and KSM imports leave behind into continuous lasers.
+  // Non-destructive to shape — two touching same-value sections are visually
+  // identical to one merged section in both SDVX and the KSON model.
+  reconnectAllLasers(tickEps = 1) {
+    let total = 0;
+    for (let s = 0; s < 2; s++) total += this.autoConnectLasers(s, tickEps);
+    return total;
+  }
+
   // ── Laser range slicing (cut / copy / delete a portion of a laser) ────────
   // Laser sections are atomic-by-start in the naive model, which is wrong for
   // range edits: selecting part of a laser must trim or split the section, not
@@ -891,6 +906,12 @@ export class ChartData {
           this.lasers[s].push({ ...p, y: lo + delta + p.y, points: p.points.map(pt => ({ ...pt })) });
         }
         this.lasers[s].sort((a, b) => a.y - b.y);
+        // v0.0.50 (Point 28b): heal the seam. When the moved portion lands
+        // exactly against the piece it was split from (the common case for a
+        // nudge that brings two pieces back together), merge them into one
+        // continuous laser instead of leaving an invisible same-value seam —
+        // consistent with how a draw / drag onto an endpoint already merges.
+        this.autoConnectLasers(s);
       }
     }
 
