@@ -60,8 +60,16 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.49';
+const APP_VERSION = '0.0.50';
 const CHANGELOG = [
+  {
+    version: '0.0.50',
+    title: 'Nudged laser pieces auto-reconnect into one continuous laser',
+    entries: [
+      ['add', '<strong>Sliding part of a laser back into contact now merges it.</strong> When a <strong>Nudge in Time</strong> (<kbd>Alt+←/→</kbd>, <kbd>Alt+Shift+←/→</kbd>) moves a partial-laser selection so its edge lands exactly on an adjacent section\'s edge, the two pieces auto-join into one continuous laser — no more invisible seam where a cut/nudge once split it.'],
+      ['add', 'The merge only fires when the ends genuinely coincide (same tick &amp; position), so a nudge that opens a gap still leaves the pieces separate. Built on the existing <code>ChartData.autoConnectLasers()</code> engine, now run automatically inside <code>ChartData.shiftRange()</code> (opt out with <code>{ reconnect: false }</code>). Single undoable step (<kbd>Ctrl+Z</kbd>).'],
+    ],
+  },
   {
     version: '0.0.49',
     title: 'Nudge a selection in time — laser-aware Move',
