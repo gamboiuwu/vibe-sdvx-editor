@@ -848,6 +848,10 @@ export class ChartData {
     const w = {
       bt: what.bt !== false, fx: what.fx !== false, vol: what.vol !== false,
       vel: what.vel !== false, glitch: what.glitch !== false,
+      // v0.0.50: after sliding a partial laser, auto-merge any section whose end
+      // now coincides with the next section's start (avoids invisible seams when
+      // a nudge brings two pieces back together). Default on; opt out with false.
+      reconnect: what.reconnect !== false,
     };
     lo = Math.min(lo, hi); hi = Math.max(lo, hi);
     if (!Number.isFinite(delta) || delta === 0) return 0;
@@ -891,6 +895,12 @@ export class ChartData {
           this.lasers[s].push({ ...p, y: lo + delta + p.y, points: p.points.map(pt => ({ ...pt })) });
         }
         this.lasers[s].sort((a, b) => a.y - b.y);
+        // v0.0.50: a slide can leave the moved piece touching an untouched
+        // section (its end == the next start). Merge them into one continuous
+        // laser so the seam disappears, exactly as authoring two touching
+        // sections does. Only fires when ends genuinely coincide, so a slide
+        // that opens a gap still leaves separate sections.
+        if (w.reconnect) this.autoConnectLasers(s);
       }
     }
 
