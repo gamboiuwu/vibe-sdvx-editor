@@ -1,5 +1,5 @@
 import { chart, renderer, gameView, render, saveUndo, updateSeekbar, addChartAnnotation, _seekTo, sel, playing, audioBuffer, flipHorizontalRange, flipTemporalRange, updateStopEventList } from './app.js';
-import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick } from './chart.js';
+import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick, STOP_PRESETS, stopPresetTicks, applyStopPreset } from './chart.js';
 import { Renderer } from './renderer.js';
 import { updateRadar } from './radar.js';
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -7199,6 +7199,118 @@ function _toolStopTools(c) {
   });
   sec.appendChild(fillBtn);
 
+  // ── B2. Pattern presets ──────────────────────────────────────────────────
+  // Recognisable build-up rhythms the uniform Fill above cannot express
+  // (accelerating / decelerating stutters, last-measure-before-the-drop, …).
+  // Generators live in chart.js (stopPresetTicks / applyStopPreset) so the
+  // math is the single DOM-free source of truth, shared with the count preview.
+  const pTitle = _h('div', '', 'Pattern presets');
+  pTitle.style.cssText = 'font-size:12px;color:#8899bb;margin:14px 0 4px;font-weight:bold;';
+  sec.appendChild(pTitle);
+
+  const presetSel = document.createElement('select');
+  Object.entries(STOP_PRESETS).forEach(([k, v]) => {
+    const o = document.createElement('option'); o.value = k; o.textContent = v.label; presetSel.appendChild(o);
+  });
+  presetSel.value = 'accel-stutter';
+  sec.appendChild(_row('Pattern:', presetSel));
+
+  const presetStatus = _h('div', '', '');
+  presetStatus.style.cssText = 'background:#10101e;border:1px solid #334;border-radius:4px;padding:6px 10px;margin:8px 0;font-size:12px;color:#88aacc;min-height:30px;';
+  sec.appendChild(presetStatus);
+
+  // Patterns use the same Region selector (selection | entire chart) as Fill.
+  function refreshPresetStatus() {
+    const ch = typeof chart !== 'undefined' ? chart : null;
+    if (!ch) { presetStatus.textContent = 'No chart loaded.'; return; }
+    if (regionSel.value === 'sel') {
+      const s = typeof sel !== 'undefined' ? sel : null;
+      if (!(s && s.active)) {
+        presetStatus.innerHTML = '<span style="color:#556677;">No active selection — drag a range with the Select tool (key&nbsp;<kbd>1</kbd>), or switch Region to “Entire chart”.</span>';
+        return;
+      }
+    }
+    const { lo, hi } = getRange();
+    const from = isFinite(lo) ? Math.max(0, lo) : 0;
+    const to   = isFinite(hi) ? hi : (chartLastTick(ch) + 1);
+    const ticks = stopPresetTicks(presetSel.value, from, to);
+    const scopeStr = isFinite(hi) ? `${hi - lo} ticks` : 'entire chart';
+    presetStatus.innerHTML = `<strong>${STOP_PRESETS[presetSel.value].label}</strong> would place <strong>${ticks.length}</strong> stop${ticks.length !== 1 ? 's' : ''} (${scopeStr}), each ${lenTicks()}t long. <span style="color:#667;">Existing stops at the same ticks are updated, not duplicated.</span>`;
+  }
+
+  const presetBtn = _btn('⏸  Apply pattern');
+  presetBtn.style.cssText = 'width:100%;margin-top:2px;background:#1a1424;border-color:#cc88ff;color:#cc88ff;';
+  presetBtn.addEventListener('click', () => {
+    if (typeof chart === 'undefined' || !chart) return;
+    if (regionSel.value === 'sel') {
+      const s = typeof sel !== 'undefined' ? sel : null;
+      if (!(s && s.active)) { resultDiv.innerHTML = '<span style="color:#ff6655;">No active selection. Drag a region or choose “Entire chart”.</span>'; return; }
+    }
+    const { lo, hi } = getRange();
+    saveUndo && saveUndo('Apply stop pattern');
+    const n = applyStopPreset(chart, presetSel.value, lo, hi, lenTicks());
+    refreshAfter();
+    refreshPresetStatus();
+    resultDiv.innerHTML = n > 0
+      ? `<span style="color:#44ff88;">✓ Applied “${STOP_PRESETS[presetSel.value].label}” — ${n} stop${n !== 1 ? 's' : ''}. <kbd>Ctrl+Z</kbd> to undo.</span>`
+      : `<span style="color:#ffbb55;">No new stops added (all positions already had a matching stop).</span>`;
+  });
+  sec.appendChild(presetBtn);
+
+  // Saved custom fills — persist the current Region+Interval+Length as a named
+  // entry in localStorage (Pattern Snippet Library convention), recallable later.
+  const SAVED_KEY = 'vibeStopFillPresets';
+  const loadSaved = () => { try { return JSON.parse(localStorage.getItem(SAVED_KEY) || '[]'); } catch { return []; } };
+  const storeSaved = (a) => { try { localStorage.setItem(SAVED_KEY, JSON.stringify(a)); } catch {} };
+
+  const savedSel = document.createElement('select');
+  savedSel.style.cssText = 'flex:1;font-size:12px;';
+  function refreshSavedSel() {
+    savedSel.innerHTML = '';
+    const arr = loadSaved();
+    if (!arr.length) {
+      const o = document.createElement('option'); o.value = ''; o.textContent = '(no saved fills)'; o.disabled = true; savedSel.appendChild(o);
+    } else {
+      arr.forEach((p, i) => { const o = document.createElement('option'); o.value = String(i); o.textContent = p.name; savedSel.appendChild(o); });
+    }
+  }
+  refreshSavedSel();
+
+  const saveBtn = _btn('💾');
+  saveBtn.title = 'Save current Interval + Stop length as a named fill';
+  saveBtn.style.cssText = 'flex:0 0 auto;';
+  saveBtn.addEventListener('click', () => {
+    const name = (typeof prompt === 'function') ? prompt('Name this stop fill:') : '';
+    if (!name) return;
+    const arr = loadSaved().filter(p => p.name !== name);
+    arr.push({ name, interval: +intervalSel.value, lenBeats: parseFloat(lenIn.value) || 1 });
+    storeSaved(arr); refreshSavedSel();
+    resultDiv.innerHTML = `<span style="color:#44ff88;">✓ Saved fill “${name}”.</span>`;
+  });
+  const recallBtn = _btn('Load');
+  recallBtn.title = 'Restore the saved Interval + Stop length into the Fill controls above';
+  recallBtn.style.cssText = 'flex:0 0 auto;';
+  recallBtn.addEventListener('click', () => {
+    const arr = loadSaved(); const i = +savedSel.value;
+    if (!arr[i]) return;
+    intervalSel.value = String(arr[i].interval ?? 0);
+    lenIn.value = String(arr[i].lenBeats ?? 1);
+    refreshStatus(); refreshPresetStatus();
+    resultDiv.innerHTML = `<span style="color:#88ccff;">Loaded fill “${arr[i].name}” into the controls above. Click “Add stops across region”.</span>`;
+  });
+  const delBtn = _btn('🗑');
+  delBtn.title = 'Delete the selected saved fill';
+  delBtn.style.cssText = 'flex:0 0 auto;';
+  delBtn.addEventListener('click', () => {
+    const arr = loadSaved(); const i = +savedSel.value;
+    if (!arr[i]) return;
+    arr.splice(i, 1); storeSaved(arr); refreshSavedSel();
+  });
+  const savedRow = document.createElement('div');
+  savedRow.style.cssText = 'display:flex;gap:4px;align-items:center;margin-top:6px;';
+  savedRow.append(savedSel, recallBtn, saveBtn, delBtn);
+  sec.appendChild(savedRow);
+
   // ── C. Clear stops ────────────────────────────────────────────────────────
   const cTitle = _h('div', '', 'Clear stops');
   cTitle.style.cssText = 'font-size:12px;color:#8899bb;margin:14px 0 4px;font-weight:bold;';
@@ -7233,11 +7345,13 @@ function _toolStopTools(c) {
 
   sec.appendChild(resultDiv);
 
-  regionSel.addEventListener('change', refreshStatus);
+  regionSel.addEventListener('change', () => { refreshStatus(); refreshPresetStatus(); });
   intervalSel.addEventListener('change', refreshStatus);
-  lenIn.addEventListener('input', refreshStatus);
-  c.addEventListener('mouseenter', refreshStatus);
+  presetSel.addEventListener('change', refreshPresetStatus);
+  lenIn.addEventListener('input', () => { refreshStatus(); refreshPresetStatus(); });
+  c.addEventListener('mouseenter', () => { refreshStatus(); refreshPresetStatus(); });
   refreshStatus();
+  refreshPresetStatus();
 }
 
 // ── Horizontal Flip: mirror BT A↔D, B↔C, FX-L↔R, VOL-L↔R (invert v) ────────

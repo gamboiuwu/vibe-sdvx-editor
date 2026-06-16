@@ -394,6 +394,110 @@ export function clearStopEvents(chart, lo = -Infinity, hi = Infinity) {
   return before - chart.stopEvents.length;
 }
 
+// ── Stop-pattern presets ──────────────────────────────────────────────────
+// Built-in recognisable beat-stop rhythms that the uniform addStopsAtInterval
+// cannot express (it places one stop per fixed interval). Each generator takes
+// a finite, normalised region [lo, hi) (lo>=0, hi>lo — the caller resolves the
+// whole-chart -Infinity/Infinity case before calling) and returns the array of
+// ABSOLUTE ticks where a stop should be placed. All ticks are clamped to the
+// region, kept on the editor grid, de-duplicated, and sorted ascending so the
+// result feeds insertStopEvent cleanly. Pure / DOM-free for unit testing.
+//
+// "Accelerating stutter" is the classic SDVX build-up: each successive measure
+// of the region is subdivided more finely (1 → 2 → 4 → 8 stops), so the halts
+// crowd together heading into the drop at hi. "Decelerating" is its reverse.
+export const STOP_PRESETS = {
+  'downbeats':      { label: 'Every downbeat' },
+  'beats':          { label: 'Every beat' },
+  'accel-stutter':  { label: 'Accelerating stutter (build-up)' },
+  'decel-stutter':  { label: 'Decelerating stutter' },
+  'last-measure':   { label: 'Every beat, final measure only' },
+  'gallop':         { label: 'Gallop (dotted-8th stutter)' },
+};
+
+// Number of evenly-spaced stops in a measure given a subdivision count, as the
+// measure's absolute start tick `m0`, bounded by [lo, hi).
+function _measureSubdivTicks(m0, subdiv, lo, hi) {
+  const out = [];
+  const step = TICKS_PER_MEASURE / subdiv;
+  for (let k = 0; k < subdiv; k++) {
+    const t = Math.round(m0 + k * step);
+    if (t >= lo && t < hi) out.push(t);
+  }
+  return out;
+}
+
+export function stopPresetTicks(key, lo, hi) {
+  if (!(isFinite(lo) && isFinite(hi)) || hi <= lo) return [];
+  lo = Math.max(0, Math.floor(lo));
+  hi = Math.floor(hi);
+  if (hi <= lo) return [];
+  const TPM = TICKS_PER_MEASURE, TPB = TICKS_PER_BEAT;
+  // Measures touched by the region, aligned to absolute measure boundaries.
+  const firstM = Math.floor(lo / TPM) * TPM;
+  const measures = [];
+  for (let m = firstM; m < hi; m += TPM) measures.push(m);
+
+  let ticks = [];
+  switch (key) {
+    case 'downbeats':
+      for (const m of measures) if (m >= lo && m < hi) ticks.push(m);
+      break;
+    case 'beats':
+      for (const m of measures) ticks.push(..._measureSubdivTicks(m, BEATS_PER_MEASURE, lo, hi));
+      break;
+    case 'accel-stutter': {
+      // i-th measure (from region start) gets 2^min(i,3) stops: 1,2,4,8,8,…
+      measures.forEach((m, i) => {
+        const subdiv = 1 << Math.min(i, 3);
+        ticks.push(..._measureSubdivTicks(m, subdiv, lo, hi));
+      });
+      break;
+    }
+    case 'decel-stutter': {
+      // Mirror of accel: densest measure first, thinning toward hi.
+      const n = measures.length;
+      measures.forEach((m, i) => {
+        const subdiv = 1 << Math.min(n - 1 - i, 3);
+        ticks.push(..._measureSubdivTicks(m, subdiv, lo, hi));
+      });
+      break;
+    }
+    case 'last-measure': {
+      // Every beat of the final whole measure that ends within the region.
+      const lastStart = measures.length ? measures[measures.length - 1] : firstM;
+      ticks.push(..._measureSubdivTicks(lastStart, BEATS_PER_MEASURE, lo, hi));
+      break;
+    }
+    case 'gallop': {
+      // Dotted-8th feel: a stop every 0.75 beat across the region.
+      const step = Math.round(TPB * 0.75);
+      const start = Math.ceil(lo / step) * step;
+      for (let t = start; t < hi; t += step) if (t >= lo) ticks.push(t);
+      break;
+    }
+    default:
+      return [];
+  }
+  // De-dupe + sort.
+  ticks = Array.from(new Set(ticks.filter(t => t >= lo && t < hi))).sort((a, b) => a - b);
+  return ticks;
+}
+
+// Apply a built-in stop preset across [lo, hi). lo/hi may be -Infinity/Infinity
+// for the whole chart (resolved against chartLastTick). Returns the count added.
+export function applyStopPreset(chart, key, lo, hi, len, replace = true) {
+  if (!chart || !STOP_PRESETS[key]) return 0;
+  if (!(len > 0) || !isFinite(len)) return 0;
+  const from = isFinite(lo) ? lo : 0;
+  const to   = isFinite(hi) ? hi : chartLastTick(chart) + 1;
+  const ticks = stopPresetTicks(key, from, to);
+  chart.stopEvents = chart.stopEvents ?? [];
+  let added = 0;
+  for (const t of ticks) if (insertStopEvent(chart, t, len, replace)) added++;
+  return added;
+}
+
 export class ChartData {
   constructor() {
     this.meta = {

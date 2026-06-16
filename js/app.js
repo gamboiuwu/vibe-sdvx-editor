@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.49';
+const APP_VERSION = '0.0.50';
 const CHANGELOG = [
+  {
+    version: '0.0.50',
+    title: 'Stop-pattern presets — accelerating build-ups in one click',
+    entries: [
+      ['add', '<strong>Stop Quick Tools → Pattern presets:</strong> place a recognisable beat-stop rhythm across the selection or whole chart in one click. <em>Accelerating stutter</em> (the classic SDVX build-up — each measure subdivides more finely, 1→2→4→8 stops, crowding into the drop), <em>Decelerating stutter</em>, <em>Every beat of the final measure</em>, <em>Gallop</em> (dotted-8th), plus plain every-downbeat / every-beat.'],
+      ['add', '<strong>Saved fills:</strong> store the current Interval + Stop length as a named fill in your browser (alongside the Pattern Snippet Library) and reload it later. Live count preview before you apply.'],
+      ['add', 'Pattern math lives in <code>chart.js</code> (<code>stopPresetTicks</code> / <code>applyStopPreset</code>) as a unit-tested DOM-free source of truth, reuses the v0.0.47 stop engine, and inherits the v0.0.46 lossless KSH/KSON round-trip. Single undoable step (<kbd>Ctrl+Z</kbd>).'],
+    ],
+  },
   {
     version: '0.0.49',
     title: 'Nudge a selection in time — laser-aware Move',
