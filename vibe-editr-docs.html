@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.43 · 2026</span>
+  <span class="version">v0.0.50 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,23 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.50</span>Stop-Pattern Presets &mdash; Accelerating Build-Ups in One Click</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Stop Quick Tools &rarr; Pattern presets:</strong> drop a recognisable beat-stop rhythm across the selection or whole chart in one click. <em>Accelerating stutter</em> is the classic SDVX build-up &mdash; each successive measure subdivides more finely (1&rarr;2&rarr;4&rarr;8 stops) so the halts crowd together heading into the drop. Also <em>Decelerating stutter</em>, <em>Every beat of the final measure</em>, <em>Gallop</em> (dotted-8th), and plain every-downbeat / every-beat.</li>
+    <li><span class="tag add">add</span><strong>Saved fills:</strong> store the current Interval + Stop length as a named fill in the browser (alongside the Pattern Snippet Library) and reload it later. A live count preview shows how many stops a pattern will place before you commit.</li>
+    <li><span class="tag add">add</span>Pattern math lives in <code>chart.js</code> (<code>stopPresetTicks / applyStopPreset</code>) as a unit-tested DOM-free source of truth, reuses the v0.0.47 stop engine, and inherits the v0.0.46 lossless KSH/KSON round-trip. Single undoable step (<kbd>Ctrl+Z</kbd>).</li>
+  </ul>
+</div>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.49</span>Nudge a Selection in Time &mdash; Laser-Aware Move</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Time-shift a whole selection</strong> &mdash; notes, VOL lasers, and scroll-speed / glitch events &mdash; with <kbd>Alt+&larr;</kbd> / <kbd>Alt+&rarr;</kbd> (one snap step) or <kbd>Alt+Shift+&larr;/&rarr;</kbd> (one measure), or via the right-click <strong>Nudge in Time</strong> menu.</li>
+    <li><span class="tag add">add</span><strong>Laser-aware:</strong> when the selection covers only part of a VOL laser, just that portion slides &mdash; with clean interpolated edges &mdash; reusing the v0.0.48 slicing engine. Nudges clamp at tick 0, the selection range follows the move, and the y=0 base events stay pinned. Core logic is <code>ChartData.shiftRange()</code> in <code>chart.js</code>, a unit-tested single source of truth. Single undoable step (<kbd>Ctrl+Z</kbd>).</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.48</span>Selection Cut / Copy / Delete Splits Lasers Instead of Dropping Them</h4>
