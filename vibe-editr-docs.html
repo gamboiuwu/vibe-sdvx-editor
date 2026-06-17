@@ -417,6 +417,9 @@
   <tr><td><kbd>Ctrl+C</kbd></td><td>Copy selection</td></tr>
   <tr><td><kbd>Ctrl+X</kbd></td><td>Cut selection</td></tr>
   <tr><td><kbd>Ctrl+V</kbd></td><td>Paste</td></tr>
+  <tr><td><kbd>Shift+Del</kbd></td><td>Ripple delete (delete selection &amp; close the gap)</td></tr>
+  <tr><td><kbd>Insert</kbd></td><td>Ripple insert (open a blank gap &amp; push content later)</td></tr>
+  <tr><td><kbd>Alt+← / →</kbd></td><td>Nudge selection in time (one snap step)</td></tr>
   <tr><td><kbd>C</kbd></td><td>Open context menu</td></tr>
   <tr><td><kbd>Esc</kbd></td><td>Clear selection / close menus</td></tr>
   <tr><td><kbd>Home</kbd></td><td>Go to start</td></tr>
@@ -437,6 +440,24 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.50</span>Insert Time &mdash; Ripple-Insert Blank Space Into a Chart</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Insert Time (ripple insert)</strong> &mdash; the inverse of Ripple Delete. It opens a blank gap and pushes every downstream note, VOL laser, and BPM / time-sig / camera / stop / scroll-speed / glitch event later by the same amount, so you can make room for a new fill or intro without re-timing everything by hand. Press <kbd>Insert</kbd>, or use the right-click <strong>Insert / Remove Time</strong> submenu.</li>
+    <li><span class="tag add">add</span>With an active <strong>Select</strong> region the gap equals the selection length and opens at its start (the selected range becomes blank); with no selection, <strong>one measure</strong> is inserted at the playhead. The freshly opened gap is left selected so you can begin filling it immediately.</li>
+    <li><span class="tag add">add</span><strong>Boundary-aware:</strong> a BT/FX hold that straddles the insertion seam is stretched across the gap, and a VOL laser that crosses it holds its position flat through the blank before continuing &mdash; no broken holds or jumped lasers. Single undoable step (<kbd>Ctrl+Z</kbd>). Core logic is <code>ChartData.insertTime()</code> in <code>chart.js</code> &mdash; a unit-tested single source of truth that mirrors the existing Ripple Delete boundary rules.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.49</span>Nudge a Selection in Time &mdash; Laser-Aware Move</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Time-shift a whole selection</strong> &mdash; notes, VOL lasers, and scroll-speed / glitch events &mdash; with <kbd>Alt+&larr;</kbd> / <kbd>Alt+&rarr;</kbd> (one snap step) or <kbd>Alt+Shift+&larr;/&rarr;</kbd> (one measure). Also available from the right-click menu as <strong>Nudge in Time</strong>.</li>
+    <li><span class="tag add">add</span><strong>Laser-aware:</strong> when the selection covers only part of a VOL laser, just that portion slides in time &mdash; with clean interpolated edges &mdash; instead of dragging the whole section, reusing the v0.0.48 slicing engine.</li>
+    <li><span class="tag add">add</span>Nudges clamp at tick 0 (nothing is pushed before the chart start), the selection range follows the move so repeated nudges keep working on the same content, and the y=0 scroll-speed / glitch base events stay pinned. Single undoable step (<kbd>Ctrl+Z</kbd>). Core logic is <code>ChartData.shiftRange()</code> in <code>chart.js</code> &mdash; a unit-tested single source of truth.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.48</span>Selection Cut / Copy / Delete Splits Lasers Instead of Dropping Them</h4>

@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.49';
+const APP_VERSION = '0.0.50';
 const CHANGELOG = [
+  {
+    version: '0.0.50',
+    title: 'Insert Time — ripple-insert blank space into a chart',
+    entries: [
+      ['add', '<strong>Insert Time (ripple insert)</strong> — the inverse of Ripple Delete. Opens a blank gap and pushes every downstream note, VOL laser, BPM / time-sig / camera / stop / scroll-speed / glitch event later by the same amount, so you can make room for a new fill or intro without re-timing everything by hand. Press <kbd>Insert</kbd>, or use the right-click <strong>Insert / Remove Time</strong> submenu.'],
+      ['add', 'With an active <strong>Select</strong> region the gap equals the selection length and opens at its start (the selected range becomes blank); with no selection, <strong>one measure</strong> is inserted at the playhead. The freshly opened gap is left selected so you can start filling it immediately.'],
+      ['add', '<strong>Boundary-aware:</strong> a BT/FX hold that straddles the insertion seam is stretched across the gap, and a VOL laser that crosses it holds its position flat through the blank before continuing — no broken holds or jumped lasers. Single undoable step (<kbd>Ctrl+Z</kbd>). Core logic is <code>ChartData.insertTime()</code> in <code>chart.js</code> — a unit-tested single source of truth.'],
+    ],
+  },
   {
     version: '0.0.49',
     title: 'Nudge a selection in time — laser-aware Move',
@@ -4714,6 +4723,35 @@ function selRippleDelete() {
   render();
 }
 
+// ── Ripple Insert (Insert Time) ────────────────────────────────────────────────
+// Open a blank gap, pushing all downstream content later — the inverse of
+// Ripple Delete. With an active selection the gap equals the selection length
+// and opens at the selection start (so the selected range becomes blank and
+// everything from there on slides later). With no selection, one measure is
+// inserted at the playhead. Holds straddling the seam stretch; lasers hold
+// position across the gap. Single undoable step.
+function selRippleInsert() {
+  let at, span;
+  if (sel.active) {
+    const [lo, hi] = selTickRange();
+    at = lo; span = hi - lo;
+  } else {
+    at = snapTick(renderer ? renderer.playTick : 0);
+    span = TICKS_PER_MEASURE;
+  }
+  if (span <= 0) return;
+  saveUndo('Insert Time');
+  const applied = chart.insertTime(at, span);
+  // Leave the freshly opened blank selected so the user can fill it immediately.
+  sel.active    = true;
+  sel.startTick = at;
+  sel.endTick   = at + applied;
+  updateBpmList?.();
+  updateCameraEventList?.();
+  updateStopEventList?.();
+  render();
+}
+
 // ── Random ────────────────────────────────────────────────────────────────────
 function selRandom(what) {
   saveUndo(`Randomized ${what.toUpperCase()}`);
@@ -4965,6 +5003,12 @@ function ensureCtxMenu() {
         <div class="ctx-item" data-act="nudge-right-beat">Later — one measure ▶▶</div>
       </div>
     </div>
+    <div class="ctx-item ctx-has-sub">Insert / Remove Time
+      <div class="ctx-sub">
+        <div class="ctx-item" data-act="ripple-insert">⊞ Insert blank time <span style="font-size:9px;color:#aaa">(opens a gap)</span></div>
+        <div class="ctx-item" data-act="ripple-delete">⊟ Delete &amp; close gap <span style="font-size:9px;color:#aaa">(Shift+Del)</span></div>
+      </div>
+    </div>
     <div class="ctx-item ctx-has-sub">Adjust Speed
       <div class="ctx-sub">
         <div class="ctx-item" data-act="speed-half">Speed ½× (slower)</div>
@@ -5018,6 +5062,8 @@ function ensureCtxMenu() {
     else if (act === 'nudge-right')      selNudgeContents(snap || 6);
     else if (act === 'nudge-left-beat')  selNudgeContents(-TICKS_PER_MEASURE);
     else if (act === 'nudge-right-beat') selNudgeContents(TICKS_PER_MEASURE);
+    else if (act === 'ripple-insert')    selRippleInsert();
+    else if (act === 'ripple-delete')    selRippleDelete();
     else if (act === 'speed-half')   selAdjustSpeed(0.5);
     else if (act === 'speed-double') selAdjustSpeed(2.0);
     else if (act === 'rand-all') selRandom('all');
@@ -6746,6 +6792,13 @@ function onKeyDown(e) {
       // untouched.
       if (e.shiftKey) selRippleDelete();
       else            selDeleteContents();
+      break;
+
+    case 'Insert':
+      // Ripple-insert: open a blank gap (selection length, or one measure at
+      // the playhead) and push downstream content later. Inverse of Shift+Del.
+      e.preventDefault();
+      selRippleInsert();
       break;
 
     case 'G':
