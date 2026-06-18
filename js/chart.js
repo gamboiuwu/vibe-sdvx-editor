@@ -728,9 +728,39 @@ export class ChartData {
   // drop the whole thing. These helpers are the single source of truth for
   // selection Copy / Cut / Delete of lasers.
 
+  // v0.0.50 — Bezier-faithful evaluation of a single laser segment at absolute
+  // tick `t`. Mirrors EXACTLY the cubic the renderer draws (renderer.js): the two
+  // control points share Y = ta + (tb-ta)*curve, and X goes va → va → vb → vb. So
+  // the parametric form in u∈[0,1] is
+  //     Tick(u) = (1-u)³·ta + 3u(1-u)·ctrlT + u³·tb        (ctrlT = ta+(tb-ta)·c)
+  //     V(u)    = va·(1-u)²(1+2u) + vb·u²(3-2u)
+  // Tick(u) is monotonic for c∈[0,1] (control points stay inside [ta,tb]), so we
+  // bisect u to invert Tick(u)=t, then read V(u). This makes a cut / slice / nudge
+  // edge that lands mid-bezier pixel-exact on an S-curve instead of linearised.
+  static bezierVAt(ta, va, tb, vb, curve, t) {
+    if (tb === ta) return va;
+    if (t <= ta) return va;
+    if (t >= tb) return vb;
+    const c = Math.min(1, Math.max(0, curve ?? 0.5));
+    const ctrlT = ta + (tb - ta) * c;
+    const tickAt = (u) => {
+      const mu = 1 - u;
+      return mu * mu * mu * ta + 3 * u * mu * ctrlT + u * u * u * tb;
+    };
+    // Bisect for the parameter u that yields tick t (Tick monotone increasing).
+    let lo = 0, hi = 1;
+    for (let it = 0; it < 48; it++) {
+      const mid = (lo + hi) * 0.5;
+      if (tickAt(mid) < t) lo = mid; else hi = mid;
+    }
+    const u = (lo + hi) * 0.5, mu = 1 - u;
+    return va * mu * mu * (1 + 2 * u) + vb * u * u * (3 - 2 * u);
+  }
+
   // Value of a laser section at absolute tick `t` (clamped to the section span).
-  // Approximates bezier segments linearly at the boundary — exact at anchors and
-  // for linear/step/slam segments, which is what matters for clean cut edges.
+  // Exact at anchors and for linear/step/slam segments; bezier segments are
+  // evaluated against the actual cubic (see bezierVAt) so cut/slice/nudge edges
+  // are pixel-exact on curves rather than linearised.
   static laserVAt(sec, t) {
     const pts = sec.points;
     if (!pts || !pts.length) return 0;
@@ -747,6 +777,8 @@ export class ChartData {
         if (pb.slam) return pa.v;                       // slam jumps at tb; holds pa.v before it
         if ((pa.interp ?? 'linear') === 'step') return pa.v;
         if (tb === ta) return pa.v;
+        if ((pa.interp ?? 'linear') === 'bezier')
+          return ChartData.bezierVAt(ta, pa.v, tb, pb.v, pa.curve ?? 0.5, t);
         return pa.v + (pb.v - pa.v) * (t - ta) / (tb - ta);
       }
     }

@@ -60,8 +60,16 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.49';
+const APP_VERSION = '0.0.50';
 const CHANGELOG = [
+  {
+    version: '0.0.50',
+    title: 'Curve-accurate laser cut edges',
+    entries: [
+      ['fix', '<strong>Cutting, copying, splitting or nudging a selection across a bezier (smooth-curve) laser now keeps the cut edge exactly on the curve.</strong> Previously the boundary anchor was placed using a straight-line approximation of the segment, so the surviving laser could visibly jump off an S-curve at the cut point. The slicing engine now evaluates the real cubic the renderer draws, so the edge is pixel-exact on curves (linear / step / slam edges are unchanged).'],
+      ['fix', 'Core logic is <code>ChartData.bezierVAt()</code> in <code>chart.js</code> — a DOM-free single source of truth that inverts the exact bezier from the renderer (verified by a forward/inverse consistency test), used by <code>laserVAt</code> → <code>_sliceLaserSection</code> so every range edit (Cut / Copy / Delete / Nudge / Split) inherits the fix.'],
+    ],
+  },
   {
     version: '0.0.49',
     title: 'Nudge a selection in time — laser-aware Move',
