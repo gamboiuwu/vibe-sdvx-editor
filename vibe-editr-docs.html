@@ -439,6 +439,23 @@
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
 
 <div class="update-entry">
+  <h4><span class="ver-tag">v0.0.50</span>Pattern Anomaly Scan &mdash; Flag Unnatural Chart Segments</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Anomaly Scan</strong> in <strong>Tools Hub &rarr; Validate</strong>. A read-only consistency pass that surfaces the subtle smells a chartist usually wants a second look at &mdash; complementary to the <em>Chart Validator</em> (which checks format / integrity) rather than overlapping it.</li>
+    <li><span class="tag add">add</span>Flags four independently-toggleable anomaly classes: <strong>off-grid notes</strong> (a BT/FX note on neither a 1/64 binary nor a 1/48 triplet grid &mdash; almost always a mis-snap), <strong>isolated / orphan notes</strong> (a note ringed by empty measures on both sides), <strong>density spikes</strong> (a measure far denser than the chart median), and <strong>laser micro-seams</strong> (two VOL sections that nearly meet at the same position but leave a tiny unintended gap).</li>
+    <li><span class="tag add">add</span>Every finding is <strong>click-to-seek</strong>, jumping the Edit &amp; Preview views to its exact tick; nothing is modified. Core detection is <code>scanChartAnomalies()</code> in <code>chart.js</code> &mdash; a unit-tested single source of truth driven end-to-end against the real tool.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.49</span>Nudge a Selection in Time &mdash; Laser-Aware Move</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Time-shift a whole selection</strong> &mdash; notes, VOL lasers, and scroll-speed / glitch events &mdash; with <kbd>Alt+&larr;</kbd> / <kbd>Alt+&rarr;</kbd> (one snap step) or <kbd>Alt+Shift+&larr;/&rarr;</kbd> (one measure), and from the right-click menu as <strong>Nudge in Time</strong>.</li>
+    <li><span class="tag add">add</span><strong>Laser-aware:</strong> when the selection covers only part of a VOL laser, just that portion slides in time with clean interpolated edges &mdash; instead of dragging the whole section &mdash; reusing the v0.0.48 slicing engine. Nudges clamp at tick 0, the selection follows the move, and the y=0 base events stay pinned. Single undoable step (<kbd>Ctrl+Z</kbd>); core logic is <code>ChartData.shiftRange()</code> in <code>chart.js</code>.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
   <h4><span class="ver-tag">v0.0.48</span>Selection Cut / Copy / Delete Splits Lasers Instead of Dropping Them</h4>
   <ul>
     <li><span class="tag fix">fix</span><strong>Cutting or deleting a selection over part of a laser no longer destroys the entire laser.</strong> A laser section used to be treated as atomic by its start tick, so a selection either removed the whole section (if it started inside the range) or did nothing (if the range fell in the middle of the laser). <strong>Delete</strong>, <strong>Cut</strong> (<kbd>Ctrl+X</kbd>) and <strong>Copy</strong> now trim the laser at the selection boundary &mdash; and split it into two when the cut lands in its middle &mdash; so the surrounding laser shape survives.</li>

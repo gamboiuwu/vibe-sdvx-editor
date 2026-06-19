@@ -1,9 +1,9 @@
 import { chart, renderer, gameView, render, saveUndo, updateSeekbar, addChartAnnotation, _seekTo, sel, playing, audioBuffer, flipHorizontalRange, flipTemporalRange, updateStopEventList } from './app.js';
-import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick } from './chart.js';
+import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick, scanChartAnomalies } from './chart.js';
 import { Renderer } from './renderer.js';
 import { updateRadar } from './radar.js';
 /* ═══════════════════════════════════════════════════════════════════════════
-   vibe-editr  ·  Tools Hub  ·  26 tools — floating MDI window
+   vibe-editr  ·  Tools Hub  ·  27 tools — floating MDI window
    ═══════════════════════════════════════════════════════════════════════════ */
 
 // ── Tool registry ────────────────────────────────────────────────────────────
@@ -40,6 +40,7 @@ const TOOL_REGISTRY = [
   // Validate
   { id: 'chart-validator', cat: 'Validate', label: 'Chart Validator', icon: '✓'  },
   { id: 'laser-fixer',     cat: 'Validate', label: 'Laser Fixer',     icon: '⤢'  },
+  { id: 'anomaly-scan',    cat: 'Validate', label: 'Anomaly Scan',    icon: '⚑'  },
 ];
 
 // ── Per-tool settings schema ──────────────────────────────────────────────────
@@ -553,6 +554,7 @@ function _renderTool(id, container) {
     case 'quantize':          return _toolQuantize(container);
     case 'groove':            return _toolGroove(container);
     case 'stop-tools':        return _toolStopTools(container);
+    case 'anomaly-scan':      return _toolAnomalyScan(container);
     default: container.textContent = 'Unknown tool: ' + id;
   }
 }
@@ -7238,6 +7240,121 @@ function _toolStopTools(c) {
   lenIn.addEventListener('input', refreshStatus);
   c.addEventListener('mouseenter', refreshStatus);
   refreshStatus();
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Pattern Anomaly Scan
+   Read-only consistency pass that surfaces "unnatural" segments — off-grid
+   notes, isolated orphans, density spikes, and laser micro-seams — each as a
+   click-to-seek result. Core detection lives in chart.js (scanChartAnomalies)
+   as the single source of truth; this is purely its UI.
+   ═══════════════════════════════════════════════════════════════════════════ */
+function _toolAnomalyScan(c) {
+  const sec = _section('Pattern Anomaly Scan');
+  c.appendChild(sec);
+
+  const desc = _h('p', '', 'Flags chart segments that look <em>unnatural</em> rather than illegal — complementary to the Chart Validator. Each result jumps the Edit &amp; Preview views to its location when clicked. Read-only: nothing is modified.');
+  desc.style.cssText = 'font-size:12px;color:#8899bb;margin:0 0 10px;line-height:1.5;';
+  sec.appendChild(desc);
+
+  // ── Heuristic toggles ────────────────────────────────────────────────────
+  const checks = [
+    { key: 'checkOffgrid', label: 'Off-grid notes (not on 1/64 or 1/48 triplet grid)', def: true },
+    { key: 'checkOrphan',  label: 'Isolated / orphan notes',                            def: true },
+    { key: 'checkSpike',   label: 'Density spikes (per-measure)',                        def: true },
+    { key: 'checkSeam',    label: 'Laser micro-seams (near-miss breaks)',               def: true },
+  ];
+  const toggles = {};
+  checks.forEach(ch => {
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.checked = ch.def;
+    toggles[ch.key] = cb;
+    const lab = _h('label', 'tool-check-row');
+    lab.style.cssText = 'display:flex;align-items:center;gap:7px;font-size:12px;color:#aab4cc;margin:3px 0;cursor:pointer;';
+    lab.appendChild(cb);
+    lab.appendChild(_h('span', '', ch.label));
+    sec.appendChild(lab);
+  });
+
+  // Spike sensitivity (median × factor, and an absolute floor).
+  const factorIn = document.createElement('input');
+  factorIn.type = 'number'; factorIn.min = '1.5'; factorIn.max = '8'; factorIn.step = '0.5'; factorIn.value = '3';
+  factorIn.style.cssText = 'width:60px;font-size:12px;';
+  factorIn.title = 'A measure is a density spike when its note count exceeds the chart median by this factor.';
+  sec.appendChild(_row('Spike factor (× median):', factorIn));
+
+  const scanBtn = _btn('⚑  Scan chart for anomalies');
+  scanBtn.style.cssText = 'width:100%;margin-top:8px;background:#241a14;border-color:#ffaa55;color:#ffcc88;';
+  sec.appendChild(scanBtn);
+
+  const results = _h('div', 'tool-result-box');
+  results.style.cssText = 'margin-top:10px;max-height:280px;overflow-y:auto;';
+  sec.appendChild(results);
+
+  const SEV = {
+    warn: { cls: 'tool-result-warn', icon: '⚠' },
+    info: { cls: 'tool-result-item', icon: 'ⓘ' },
+  };
+
+  scanBtn.addEventListener('click', () => {
+    results.innerHTML = '';
+    if (typeof chart === 'undefined' || !chart) {
+      results.innerHTML = '<div class="tool-result-item tool-result-err">No chart loaded</div>';
+      return;
+    }
+    const opts = {
+      checkOffgrid: toggles.checkOffgrid.checked,
+      checkOrphan:  toggles.checkOrphan.checked,
+      checkSpike:   toggles.checkSpike.checked,
+      checkSeam:    toggles.checkSeam.checked,
+      spikeFactor:  Math.max(1.5, parseFloat(factorIn.value) || 3),
+    };
+    const findings = scanChartAnomalies(chart, opts);
+
+    if (!findings.length) {
+      results.innerHTML = '<div class="tool-result-item tool-result-ok">✓ No anomalies found — chart looks consistent</div>';
+      return;
+    }
+
+    // Summary banner grouped by type.
+    const byType = {};
+    findings.forEach(f => { byType[f.type] = (byType[f.type] ?? 0) + 1; });
+    const labelOf = { offgrid: 'off-grid', orphan: 'orphan', spike: 'spike', seam: 'seam' };
+    const sumRow = _h('div', 'tool-result-item', '');
+    sumRow.style.cssText = 'background:#1a1408;border-color:#886622;color:#ffcc88;font-weight:700;margin-bottom:6px';
+    sumRow.textContent = `${findings.length} anomal${findings.length === 1 ? 'y' : 'ies'}: ` +
+      Object.entries(byType).map(([k, v]) => `${v} ${labelOf[k] || k}`).join(' · ');
+    results.appendChild(sumRow);
+
+    findings.forEach(f => {
+      const sv = SEV[f.severity] || SEV.info;
+      const row = _h('div', `tool-result-item ${sv.cls}`);
+      row.textContent = `${sv.icon} ${f.msg}`;
+      row.style.cursor = 'pointer';
+      const mDisp = (f.measure ?? 0) + 1;
+      row.title = `Click → M${mDisp} in Edit & Preview`;
+      const nav = document.createElement('span');
+      nav.style.cssText = 'float:right;opacity:0.45;font-size:10px;margin-left:6px';
+      nav.textContent = '→';
+      row.appendChild(nav);
+      row.addEventListener('click', () => {
+        const tk = Number.isFinite(f.tick) ? f.tick : (f.measure ?? 0) * TICKS_PER_MEASURE;
+        if (renderer && renderer.playTick !== undefined) {
+          renderer.playTick = Math.max(0, tk);
+          const colLen = (renderer.measPerCol ?? 1) * TICKS_PER_MEASURE;
+          const col = Math.floor(tk / colLen);
+          if (col < renderer.scrollCol || col >= renderer.scrollCol + (renderer.numCols ?? 1)) {
+            renderer.scrollCol = Math.max(0, col - Math.floor((renderer.numCols ?? 1) / 2));
+          }
+          if (gameView) { gameView.playTick = renderer.playTick; if (typeof gameView.draw === 'function') gameView.draw(); }
+          if (typeof updateSeekbar === 'function') updateSeekbar(renderer.playTick);
+          if (typeof updateRadar   === 'function') updateRadar();
+          if (typeof render        === 'function') render();
+        }
+      });
+      results.appendChild(row);
+    });
+  });
 }
 
 // ── Horizontal Flip: mirror BT A↔D, B↔C, FX-L↔R, VOL-L↔R (invert v) ────────

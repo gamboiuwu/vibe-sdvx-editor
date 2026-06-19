@@ -363,6 +363,108 @@ export function insertStopEvent(chart, tick, len, replace = true) {
   return true;
 }
 
+// ── Pattern Anomaly Detection ────────────────────────────────────────────────
+// Read-only consistency scan that flags chart segments which look "unnatural"
+// rather than illegal — the source of truth for the Anomaly Scan tool. Distinct
+// from Chart Validator (format/integrity) and Collision (overlaps): this hunts
+// the subtler smells a chartist usually wants a second pass on.
+//
+// Heuristics (each independently toggleable):
+//   • off-grid   — a BT/FX note that lands on neither a binary (1/64 = multiple
+//                  of 3 ticks) NOR a triplet (1/48 = multiple of 4 ticks) grid,
+//                  i.e. (t%3) && (t%4): almost always a mis-snapped placement.
+//   • orphan     — a note isolated by more than `isolationTicks` of empty space
+//                  on BOTH sides (interior only; chart lead-in/out never flagged).
+//   • spike      — a measure whose note count exceeds the chart's median measure
+//                  density by `spikeFactor`× AND clears an absolute `spikeFloor`.
+//   • seam       — two consecutive laser sections on a side that nearly meet
+//                  (0 < gap ≤ `seamTicks`) at nearly the same position
+//                  (|Δv| ≤ `seamVEps`): a likely-unintended break in one path.
+//
+// Returns findings sorted by tick: { tick, measure, type, severity, msg }.
+export function scanChartAnomalies(chart, opts = {}) {
+  if (!chart) return [];
+  const o = {
+    isolationTicks: opts.isolationTicks ?? TICKS_PER_MEASURE,
+    spikeFactor:    opts.spikeFactor    ?? 3,
+    spikeFloor:     opts.spikeFloor     ?? 8,
+    seamTicks:      opts.seamTicks      ?? LASER_SLAM_TICKS,
+    seamVEps:       opts.seamVEps       ?? 0.02,
+    checkOffgrid:   opts.checkOffgrid   !== false,
+    checkOrphan:    opts.checkOrphan    !== false,
+    checkSpike:     opts.checkSpike     !== false,
+    checkSeam:      opts.checkSeam      !== false,
+  };
+  const findings = [];
+  const measOf = t => Math.floor(t / TICKS_PER_MEASURE);
+
+  // Collect every BT/FX note as { y, lane } (sorted by tick).
+  const notes = [];
+  (chart.bt ?? []).forEach((lane, li) => { for (const n of lane) notes.push({ y: n.y, lane: 'BT-' + 'ABCD'[li] }); });
+  (chart.fx ?? []).forEach((lane, li) => { for (const n of lane) notes.push({ y: n.y, lane: 'FX-' + 'LR'[li] }); });
+  notes.sort((a, b) => a.y - b.y);
+
+  // — off-grid notes —
+  if (o.checkOffgrid) {
+    for (const n of notes) {
+      if (!Number.isFinite(n.y)) continue;
+      if ((n.y % 3 !== 0) && (n.y % 4 !== 0)) {
+        findings.push({ tick: n.y, measure: measOf(n.y), type: 'offgrid', severity: 'warn',
+          msg: `Off-grid ${n.lane} note at tick ${n.y} — not on a 1/64 or 1/48 (triplet) grid` });
+      }
+    }
+  }
+
+  // — orphan notes (isolated interior notes) —
+  if (o.checkOrphan && notes.length >= 3) {
+    // Distinct tick positions (a stack on the same tick is not an orphan).
+    const ticks = [...new Set(notes.map(n => n.y))].sort((a, b) => a - b);
+    for (let i = 1; i < ticks.length - 1; i++) {
+      const left = ticks[i] - ticks[i - 1];
+      const right = ticks[i + 1] - ticks[i];
+      if (left > o.isolationTicks && right > o.isolationTicks) {
+        findings.push({ tick: ticks[i], measure: measOf(ticks[i]), type: 'orphan', severity: 'info',
+          msg: `Isolated note at tick ${ticks[i]} — ${Math.round(Math.min(left, right) / TICKS_PER_MEASURE * 10) / 10}+ empty measures on both sides` });
+      }
+    }
+  }
+
+  // — density spikes (per-measure) —
+  if (o.checkSpike && notes.length) {
+    const perMeasure = new Map();
+    for (const n of notes) perMeasure.set(measOf(n.y), (perMeasure.get(measOf(n.y)) ?? 0) + 1);
+    const counts = [...perMeasure.values()].sort((a, b) => a - b);
+    const median = counts.length ? counts[Math.floor(counts.length / 2)] : 0;
+    for (const [m, c] of perMeasure) {
+      if (c > o.spikeFloor && c > median * o.spikeFactor) {
+        findings.push({ tick: m * TICKS_PER_MEASURE, measure: m, type: 'spike', severity: 'warn',
+          msg: `Density spike in measure ${m + 1} — ${c} notes (chart median ${median}/measure)` });
+      }
+    }
+  }
+
+  // — laser micro-seams (near-miss breaks between sections) —
+  if (o.checkSeam) {
+    for (let s = 0; s < 2; s++) {
+      const arr = (chart.lasers?.[s] ?? []).filter(sec => sec.points && sec.points.length)
+        .slice().sort((a, b) => a.y - b.y);
+      for (let i = 0; i < arr.length - 1; i++) {
+        const a = arr[i], b = arr[i + 1];
+        const aLast = a.points[a.points.length - 1], bFirst = b.points[0];
+        const aLastTick = a.y + aLast.ry, bFirstTick = b.y + bFirst.ry;
+        const gap = bFirstTick - aLastTick;
+        if (gap > 0 && gap <= o.seamTicks && Math.abs(bFirst.v - aLast.v) <= o.seamVEps) {
+          findings.push({ tick: aLastTick, measure: measOf(aLastTick), type: 'seam', severity: 'info',
+            msg: `VOL-${'LR'[s]} laser seam near tick ${aLastTick} — ${gap}-tick gap between two near-aligned sections` });
+        }
+      }
+    }
+  }
+
+  findings.sort((a, b) => (a.tick - b.tick) || (a.type < b.type ? -1 : a.type > b.type ? 1 : 0));
+  return findings;
+}
+
 // Add stops at a regular tick interval across [lo, hi). Each lasts `len` ticks.
 // lo/hi may be -Infinity/Infinity to mean the whole chart (walked from 0 to the
 // last object tick). Stops are aligned to multiples of `intervalTicks` so e.g. a
