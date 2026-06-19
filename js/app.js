@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.49';
+const APP_VERSION = '0.0.50';
 const CHANGELOG = [
+  {
+    version: '0.0.50',
+    title: 'Pattern Anomaly Scan — flag unnatural chart segments',
+    entries: [
+      ['add', '<strong>Anomaly Scan</strong> in <strong>Tools Hub → Validate</strong>. A read-only consistency pass that surfaces the subtle smells a chartist usually wants a second look at — complementary to the Chart Validator (which checks format / integrity) rather than overlapping it.'],
+      ['add', 'Flags four classes of anomaly, each independently toggleable: <strong>off-grid notes</strong> (a BT/FX note that lands on neither a 1/64 binary nor a 1/48 triplet grid — almost always a mis-snap), <strong>isolated / orphan notes</strong> (a note ringed by empty measures on both sides), <strong>density spikes</strong> (a measure far denser than the chart median), and <strong>laser micro-seams</strong> (two VOL sections that nearly meet at the same position but leave a tiny unintended gap).'],
+      ['add', 'Every finding is <strong>click-to-seek</strong> — jumping the Edit &amp; Preview views to its exact tick — and nothing is modified. Core detection is <code>scanChartAnomalies()</code> in <code>chart.js</code>, a unit-tested single source of truth (driven end-to-end against the real tool).'],
+    ],
+  },
   {
     version: '0.0.49',
     title: 'Nudge a selection in time — laser-aware Move',
