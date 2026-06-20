@@ -1,5 +1,5 @@
 import { chart, renderer, gameView, render, saveUndo, updateSeekbar, addChartAnnotation, _seekTo, sel, playing, audioBuffer, flipHorizontalRange, flipTemporalRange, updateStopEventList } from './app.js';
-import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick } from './chart.js';
+import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick, STOP_PRESETS, buildStopPattern, applyStopPattern } from './chart.js';
 import { Renderer } from './renderer.js';
 import { updateRadar } from './radar.js';
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -7199,7 +7199,173 @@ function _toolStopTools(c) {
   });
   sec.appendChild(fillBtn);
 
-  // ── C. Clear stops ────────────────────────────────────────────────────────
+  // Save the current Fill settings (interval + length) as a reusable preset.
+  const saveRow = document.createElement('div');
+  saveRow.style.cssText = 'display:flex;gap:6px;margin-top:6px;';
+  const saveName = document.createElement('input');
+  saveName.type = 'text'; saveName.placeholder = 'Name this fill…';
+  saveName.style.cssText = 'flex:1;font-size:12px;';
+  const saveBtn = _btn('★ Save');
+  saveBtn.style.cssText = 'background:#141a24;border-color:#66aaff;color:#88bbff;white-space:nowrap;';
+  saveRow.appendChild(saveName); saveRow.appendChild(saveBtn);
+  sec.appendChild(saveRow);
+
+  // ── C. Apply a build-up preset ───────────────────────────────────────────
+  const pTitle = _h('div', '', 'Build-up presets');
+  pTitle.style.cssText = 'font-size:12px;color:#8899bb;margin:16px 0 4px;font-weight:bold;';
+  sec.appendChild(pTitle);
+
+  const presetSel = document.createElement('select');
+  sec.appendChild(_row('Preset:', presetSel));
+
+  const presetDesc = _h('div', '', '');
+  presetDesc.style.cssText = 'font-size:11px;color:#778;margin:2px 0 6px;line-height:1.4;min-height:14px;';
+  sec.appendChild(presetDesc);
+
+  const pRegionSel = document.createElement('select');
+  [['sel', 'Current selection'], ['all', 'Entire chart']].forEach(([v, l]) => {
+    const o = document.createElement('option'); o.value = v; o.textContent = l; pRegionSel.appendChild(o);
+  });
+  sec.appendChild(_row('Region:', pRegionSel));
+
+  const presetCount = _h('div', '', '');
+  presetCount.style.cssText = 'font-size:11px;color:#88aacc;margin:4px 0;min-height:14px;';
+  sec.appendChild(presetCount);
+
+  // ── User-preset persistence (localStorage, defensive) ────────────────────
+  const STOP_PRESET_KEY = 'vibe_stop_presets';
+  function loadUserPresets() {
+    try {
+      const raw = (typeof localStorage !== 'undefined') ? localStorage.getItem(STOP_PRESET_KEY) : null;
+      const arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter(p => p && typeof p.name === 'string' && p.interval > 0 && p.len > 0) : [];
+    } catch { return []; }
+  }
+  function saveUserPresets(list) {
+    try { if (typeof localStorage !== 'undefined') localStorage.setItem(STOP_PRESET_KEY, JSON.stringify(list)); } catch {}
+  }
+
+  function rebuildPresetOptions() {
+    presetSel.innerHTML = '';
+    const gB = document.createElement('optgroup'); gB.label = 'Built-in';
+    STOP_PRESETS.forEach(p => { const o = document.createElement('option'); o.value = 'builtin:' + p.id; o.textContent = p.label; gB.appendChild(o); });
+    presetSel.appendChild(gB);
+    const users = loadUserPresets();
+    if (users.length) {
+      const gU = document.createElement('optgroup'); gU.label = 'Saved fills';
+      users.forEach((p, i) => { const o = document.createElement('option'); o.value = 'user:' + i; o.textContent = '★ ' + p.name; gU.appendChild(o); });
+      presetSel.appendChild(gU);
+    }
+  }
+  rebuildPresetOptions();
+
+  function presetRange() {
+    const s = typeof sel !== 'undefined' ? sel : null;
+    if (pRegionSel.value === 'sel' && s && s.active) {
+      return { lo: Math.min(s.startTick, s.endTick), hi: Math.max(s.startTick, s.endTick) };
+    }
+    return { lo: -Infinity, hi: Infinity };
+  }
+  // Parse the selected option into a concrete action: a built-in id or a saved fill.
+  function currentPreset() {
+    const v = presetSel.value || '';
+    if (v.startsWith('builtin:')) {
+      const id = v.slice(8);
+      return { kind: 'builtin', id, meta: STOP_PRESETS.find(p => p.id === id) };
+    }
+    if (v.startsWith('user:')) {
+      const list = loadUserPresets(); const p = list[+v.slice(5)];
+      return p ? { kind: 'user', preset: p } : null;
+    }
+    return null;
+  }
+  // How many stops a preset would lay down over the active region (for preview).
+  function presetTicks(ch) {
+    const cp = currentPreset(); if (!cp || !ch) return [];
+    const { lo, hi } = presetRange();
+    const lastTick = chartLastTick(ch);
+    if (cp.kind === 'builtin') {
+      return buildStopPattern(cp.id, lo, hi, { beatTicks: TICKS_PER_BEAT, measureTicks: TICKS_PER_MEASURE, len: lenTicks(), lastTick });
+    }
+    // user fill → enumerate the interval positions (matches addStopsAtInterval)
+    const from = isFinite(lo) ? Math.max(0, lo) : 0;
+    const to   = isFinite(hi) ? hi : (lastTick + 1);
+    const iv = cp.preset.interval; const out = [];
+    if (to > from && iv > 0) for (let t = Math.ceil(from / iv) * iv; t < to; t += iv) out.push({ y: t, len: cp.preset.len });
+    return out;
+  }
+
+  function refreshPreset() {
+    const cp = currentPreset();
+    presetDesc.textContent = cp ? (cp.kind === 'builtin' ? (cp.meta?.desc || '')
+                                 : `Saved fill — a stop every ${(cp.preset.interval / TICKS_PER_BEAT).toFixed(2)} beat(s), ${cp.preset.len}t long.`) : '';
+    const ch = typeof chart !== 'undefined' ? chart : null;
+    if (pRegionSel.value === 'sel') {
+      const s = typeof sel !== 'undefined' ? sel : null;
+      if (!(s && s.active)) { presetCount.innerHTML = '<span style="color:#556677;">No active selection — drag a range or switch Region to “Entire chart”.</span>'; return; }
+    }
+    const t = presetTicks(ch);
+    presetCount.innerHTML = `Would place <strong>${t.length}</strong> stop${t.length !== 1 ? 's' : ''} in this region. <span style="color:#667;">Existing stops at the same ticks are updated, not duplicated.</span>`;
+  }
+
+  const presetBtn = _btn('⏸  Apply preset to region');
+  presetBtn.style.cssText = 'width:100%;margin-top:2px;background:#1a1424;border-color:#cc88ff;color:#cc88ff;';
+  presetBtn.addEventListener('click', () => {
+    if (typeof chart === 'undefined' || !chart) return;
+    const cp = currentPreset(); if (!cp) return;
+    if (pRegionSel.value === 'sel') {
+      const s = typeof sel !== 'undefined' ? sel : null;
+      if (!(s && s.active)) { resultDiv.innerHTML = '<span style="color:#ff6655;">No active selection. Drag a region or choose “Entire chart”.</span>'; return; }
+    }
+    const { lo, hi } = presetRange();
+    saveUndo && saveUndo('Apply stop preset');
+    let n;
+    if (cp.kind === 'builtin') {
+      n = applyStopPattern(chart, cp.id, lo, hi, { beatTicks: TICKS_PER_BEAT, measureTicks: TICKS_PER_MEASURE, len: lenTicks(), lastTick: chartLastTick(chart) });
+    } else {
+      n = addStopsAtInterval(chart, lo, hi, cp.preset.interval, cp.preset.len);
+    }
+    refreshAfter();
+    refreshPreset();
+    const name = cp.kind === 'builtin' ? cp.meta?.label : cp.preset.name;
+    resultDiv.innerHTML = n > 0
+      ? `<span style="color:#44ff88;">✓ “${name}” placed ${n} stop${n !== 1 ? 's' : ''}. <kbd>Ctrl+Z</kbd> to undo.</span>`
+      : `<span style="color:#ffbb55;">No new stops added (all positions already had a matching stop).</span>`;
+  });
+  sec.appendChild(presetBtn);
+
+  const delPresetBtn = _btn('🗑  Delete saved fill');
+  delPresetBtn.style.cssText = 'width:100%;margin-top:6px;background:#221314;border-color:#aa5566;color:#cc7788;font-size:12px;';
+  delPresetBtn.addEventListener('click', () => {
+    const v = presetSel.value || '';
+    if (!v.startsWith('user:')) { resultDiv.innerHTML = '<span style="color:#ffbb55;">Select a ★ saved fill to delete (built-in presets can’t be removed).</span>'; return; }
+    const list = loadUserPresets(); const idx = +v.slice(5);
+    const removed = list.splice(idx, 1)[0];
+    saveUserPresets(list);
+    rebuildPresetOptions(); refreshPreset();
+    resultDiv.innerHTML = removed ? `<span style="color:#44ff88;">✓ Deleted saved fill “${removed.name}”.</span>` : '';
+  });
+  sec.appendChild(delPresetBtn);
+
+  // Wire the Save button now that loaders/rebuild exist.
+  saveBtn.addEventListener('click', () => {
+    const name = (saveName.value || '').trim();
+    if (!name) { resultDiv.innerHTML = '<span style="color:#ff6655;">Enter a name for the fill preset first.</span>'; return; }
+    const list = loadUserPresets();
+    const interval = INTERVALS[+intervalSel.value].ticks;
+    const entry = { name, interval, len: lenTicks() };
+    const ex = list.findIndex(p => p.name === name);
+    if (ex >= 0) list[ex] = entry; else list.push(entry);
+    saveUserPresets(list);
+    saveName.value = '';
+    rebuildPresetOptions(); refreshPreset();
+    resultDiv.innerHTML = `<span style="color:#44ff88;">✓ Saved fill preset “${name}” (every ${(interval / TICKS_PER_BEAT).toFixed(2)} beat(s), ${entry.len}t). Pick it under <em>Build-up presets</em>.</span>`;
+  });
+
+  presetSel.addEventListener('change', refreshPreset);
+  pRegionSel.addEventListener('change', refreshPreset);
+
+  // ── D. Clear stops ────────────────────────────────────────────────────────
   const cTitle = _h('div', '', 'Clear stops');
   cTitle.style.cssText = 'font-size:12px;color:#8899bb;margin:14px 0 4px;font-weight:bold;';
   sec.appendChild(cTitle);
@@ -7235,9 +7401,10 @@ function _toolStopTools(c) {
 
   regionSel.addEventListener('change', refreshStatus);
   intervalSel.addEventListener('change', refreshStatus);
-  lenIn.addEventListener('input', refreshStatus);
-  c.addEventListener('mouseenter', refreshStatus);
+  lenIn.addEventListener('input', () => { refreshStatus(); refreshPreset(); });
+  c.addEventListener('mouseenter', () => { refreshStatus(); refreshPreset(); });
   refreshStatus();
+  refreshPreset();
 }
 
 // ── Horizontal Flip: mirror BT A↔D, B↔C, FX-L↔R, VOL-L↔R (invert v) ────────
