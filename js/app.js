@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.49';
+const APP_VERSION = '0.0.50';
 const CHANGELOG = [
+  {
+    version: '0.0.50',
+    title: 'Stop-Event Authoring Presets — build-up rhythms & saved fills',
+    entries: [
+      ['add', '<strong>Build-up presets</strong> in <strong>Tools Hub → Edit → Stop Quick Tools</strong>. Pick a ready-made SDVX stop rhythm and apply it to a selection or the whole chart in one click: <em>Every beat</em>, <em>Every downbeat</em>, <em>Accelerating build-up</em> (stops pack tighter toward the drop — the classic pre-drop stutter), <em>Ritardando</em> (stops spread apart), and <em>Last-measure freeze</em> (a stop on every beat of the final measure before the region end).'],
+      ['add', '<strong>Save your own fills.</strong> Name the current Fill interval + stop length and it persists as a reusable ★ preset (stored locally) alongside the built-ins, with a one-click delete. A live readout previews how many stops a preset would place.'],
+      ['add', 'Presets reuse the existing stop engine, so placed stops <strong>dedupe</strong> against existing ones and <strong>round-trip losslessly</strong> through KSH and KSON. Core math lives in <code>chart.js</code> (<code>STOP_PRESETS / buildStopPattern / applyStopPattern</code>) as a single unit-tested source of truth.'],
+    ],
+  },
   {
     version: '0.0.49',
     title: 'Nudge a selection in time — laser-aware Move',

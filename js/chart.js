@@ -394,6 +394,87 @@ export function clearStopEvents(chart, lo = -Infinity, hi = Infinity) {
   return before - chart.stopEvents.length;
 }
 
+// ── Stop-Event Authoring Presets ─────────────────────────────────────────────
+// Built-in SDVX-style stop "build-up" rhythms. Each preset is a pure, DOM-free
+// generator over a bounded tick range [lo, hi): given the region plus a context
+// (beat / measure resolution and the stop length) it returns an ASCENDING list
+// of { y, len } stop descriptors WITHOUT touching the chart. applyStopPattern()
+// then inserts them through insertStopEvent() so they inherit the same dedupe
+// and KSH/KSON round-trip as every other stop. This is the single source of
+// truth for stop presets; the Stop Quick Tools panel only drives it.
+export const STOP_PRESETS = [
+  { id: 'every-beat',          label: 'Every beat',            desc: 'A stop on every beat across the region.' },
+  { id: 'every-downbeat',      label: 'Every downbeat',        desc: 'A stop on each measure downbeat.' },
+  { id: 'accel-build',         label: 'Accelerating build-up', desc: 'Stops that pack tighter toward the end — the classic pre-drop stutter.' },
+  { id: 'ritard',              label: 'Ritardando',            desc: 'Stops that spread further apart toward the end.' },
+  { id: 'last-measure-freeze', label: 'Last-measure freeze',   desc: 'A stop on every beat of the final measure before the region end.' },
+];
+
+// Returns true iff `id` names a known built-in preset.
+export function isStopPreset(id) { return STOP_PRESETS.some(p => p.id === id); }
+
+// Generate (but do not insert) the stop ticks for a preset over [lo, hi).
+//   opts.beatTicks    — ticks per beat    (default TICKS_PER_BEAT)
+//   opts.measureTicks — ticks per measure (default TICKS_PER_MEASURE)
+//   opts.len          — each stop's length in ticks (default = one beat)
+//   opts.lastTick     — used as the upper bound when hi is non-finite
+// Geometric presets (accel-build / ritard) require a bounded region; an
+// unbounded chart-wide call falls back to opts.lastTick. Positions are aligned
+// to a 1/16-note grid and de-duplicated. Returns [] for an empty/invalid range.
+export function buildStopPattern(presetId, lo, hi, opts = {}) {
+  const beat    = (opts.beatTicks    > 0) ? opts.beatTicks    : TICKS_PER_BEAT;
+  const measure = (opts.measureTicks > 0) ? opts.measureTicks : TICKS_PER_MEASURE;
+  const len     = (opts.len          > 0) ? Math.round(opts.len) : beat;
+  let from = isFinite(lo) ? Math.max(0, Math.round(lo)) : 0;
+  let to   = isFinite(hi) ? Math.round(hi)
+                          : (isFinite(opts.lastTick) ? Math.round(opts.lastTick) + 1 : from);
+  if (!(to > from)) return [];
+
+  const snap = Math.max(1, beat / 4);                 // align to a 1/16-note grid
+  const grid = t => Math.round(t / snap) * snap;
+  const raw  = [];
+
+  if (presetId === 'every-beat' || presetId === 'every-downbeat') {
+    const step = (presetId === 'every-beat') ? beat : measure;
+    for (let t = Math.ceil(from / step) * step; t < to; t += step) raw.push(t);
+  } else if (presetId === 'accel-build') {
+    // Walk backward from the drop (`to`): gaps grow as we move away from it, so
+    // stops pack tightest right before the end.
+    let d = beat / 2, gap = beat / 2;
+    while (to - d >= from) { raw.push(grid(to - d)); gap = Math.min(gap * 2, measure * 2); d += gap; }
+  } else if (presetId === 'ritard') {
+    // Walk forward from the start: gaps grow toward the end, so stops thin out.
+    let p = from, gap = beat / 2;
+    raw.push(grid(p));
+    while (true) { p += gap; if (p >= to) break; raw.push(grid(p)); gap = Math.min(gap * 2, measure * 2); }
+  } else if (presetId === 'last-measure-freeze') {
+    let mStart = to - measure; if (mStart < from) mStart = from;
+    for (let t = Math.ceil(mStart / beat) * beat; t < to; t += beat) raw.push(t);
+  } else {
+    return [];
+  }
+
+  // Clamp to range, de-duplicate, sort ascending, attach length.
+  const seen = new Set(); const ticks = [];
+  for (const t of raw) {
+    const y = Math.round(t);
+    if (y >= from && y < to && !seen.has(y)) { seen.add(y); ticks.push(y); }
+  }
+  ticks.sort((a, b) => a - b);
+  return ticks.map(y => ({ y, len }));
+}
+
+// Build a preset over [lo, hi) and insert every stop into the chart, reusing
+// insertStopEvent() so existing stops at the same tick are updated (replace) or
+// skipped. Returns the number of stops actually added/changed.
+export function applyStopPattern(chart, presetId, lo, hi, opts = {}, replace = true) {
+  if (!chart) return 0;
+  const pat = buildStopPattern(presetId, lo, hi, opts);
+  let added = 0;
+  for (const s of pat) { if (insertStopEvent(chart, s.y, s.len, replace)) added++; }
+  return added;
+}
+
 export class ChartData {
   constructor() {
     this.meta = {

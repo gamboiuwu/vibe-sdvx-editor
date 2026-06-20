@@ -439,6 +439,23 @@
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
 
 <div class="update-entry">
+  <h4><span class="ver-tag">v0.0.50</span>Stop-Event Authoring Presets &mdash; Build-Up Rhythms &amp; Saved Fills</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Build-up presets</strong> in <strong>Tools Hub &rarr; Edit &rarr; Stop Quick Tools</strong>. Pick a ready-made SDVX stop rhythm and apply it to a selection or the whole chart in one click: <em>Every beat</em>, <em>Every downbeat</em>, <em>Accelerating build-up</em> (stops pack tighter toward the drop &mdash; the classic pre-drop stutter), <em>Ritardando</em> (stops spread apart toward the end), and <em>Last-measure freeze</em> (a stop on every beat of the final measure before the region end).</li>
+    <li><span class="tag add">add</span><strong>Save your own fills.</strong> Name the current Fill interval + stop length and it persists as a reusable &#9733; preset (stored locally) alongside the built-ins, with a one-click delete. A live readout previews how many stops a preset would place over the active region.</li>
+    <li><span class="tag add">add</span>Presets reuse the existing stop engine, so placed stops <strong>dedupe</strong> against existing ones and <strong>round-trip losslessly</strong> through KSH and KSON. Core math lives in <code>chart.js</code> (<code>STOP_PRESETS / buildStopPattern / applyStopPattern</code>) as a single unit-tested source of truth.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.49</span>Nudge a Selection in Time &mdash; Laser-Aware Move</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Time-shift a whole selection</strong> &mdash; notes, VOL lasers, and scroll-speed / glitch events &mdash; with <kbd>Alt+&larr;</kbd> / <kbd>Alt+&rarr;</kbd> (one snap step) or <kbd>Alt+Shift+&larr;/&rarr;</kbd> (one measure). Also available under the right-click menu as <strong>Nudge in Time</strong>.</li>
+    <li><span class="tag add">add</span><strong>Laser-aware:</strong> when the selection covers only part of a VOL laser, just that portion slides in time &mdash; with clean interpolated edges &mdash; reusing the v0.0.48 slicing engine instead of dragging the whole section. Nudges clamp at tick 0, the selection follows the move, and the y=0 scroll-speed / glitch base stays pinned. Single undoable step (<kbd>Ctrl+Z</kbd>); core logic is <code>ChartData.shiftRange()</code> in <code>chart.js</code>.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
   <h4><span class="ver-tag">v0.0.48</span>Selection Cut / Copy / Delete Splits Lasers Instead of Dropping Them</h4>
   <ul>
     <li><span class="tag fix">fix</span><strong>Cutting or deleting a selection over part of a laser no longer destroys the entire laser.</strong> A laser section used to be treated as atomic by its start tick, so a selection either removed the whole section (if it started inside the range) or did nothing (if the range fell in the middle of the laser). <strong>Delete</strong>, <strong>Cut</strong> (<kbd>Ctrl+X</kbd>) and <strong>Copy</strong> now trim the laser at the selection boundary &mdash; and split it into two when the cut lands in its middle &mdash; so the surrounding laser shape survives.</li>
