@@ -848,6 +848,7 @@ export class ChartData {
     const w = {
       bt: what.bt !== false, fx: what.fx !== false, vol: what.vol !== false,
       vel: what.vel !== false, glitch: what.glitch !== false,
+      reconnect: what.reconnect !== false,
     };
     lo = Math.min(lo, hi); hi = Math.max(lo, hi);
     if (!Number.isFinite(delta) || delta === 0) return 0;
@@ -891,6 +892,12 @@ export class ChartData {
           this.lasers[s].push({ ...p, y: lo + delta + p.y, points: p.points.map(pt => ({ ...pt })) });
         }
         this.lasers[s].sort((a, b) => a.y - b.y);
+        // v0.0.50: a time-shift can slide a laser piece so its edge now coincides
+        // exactly with an adjacent section. Merge touching same-position sections
+        // so the path stays one continuous laser instead of leaving an invisible
+        // seam (Point 28b). autoConnectLasers only merges genuinely-touching
+        // same-v junctions, so this never fuses unrelated lasers.
+        if (w.reconnect) this.autoConnectLasers(s);
       }
     }
 
