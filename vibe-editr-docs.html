@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.43 · 2026</span>
+  <span class="version">v0.0.50 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,23 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.50</span>Drag a Selection to Move It in Time &mdash; Laser-Aware</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Drag-to-move a selection.</strong> With the <strong>Select</strong> tool, press <em>inside</em> an active selection band and drag left/right to slide the whole selection &mdash; BT/FX notes, partial VOL lasers, and scroll-speed / glitch events &mdash; through time, the same way notes already drag. A grab cursor appears when you hover a movable selection.</li>
+    <li><span class="tag add">add</span><strong>Laser-aware:</strong> a selection covering only part of a VOL laser slides just that portion with clean interpolated edges, reusing the v0.0.48 slicing engine through <code>ChartData.shiftRange()</code> &mdash; the same single source of truth the keyboard Nudge uses. The drag snaps to the grid, clamps at tick 0, and is one undo step (<kbd>Ctrl+Z</kbd>).</li>
+    <li><span class="tag add">add</span><strong>Automatic laser reconnect.</strong> When a time-shift slides a laser piece so its edge lands exactly on an adjacent section, the two now merge into one continuous laser instead of leaving an invisible seam &mdash; for both the new drag and the v0.0.49 keyboard Nudge. <code>autoConnectLasers()</code> only fuses genuinely-touching same-position junctions, so unrelated lasers are never joined.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.49</span>Nudge a Selection in Time &mdash; Laser-Aware Move</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Time-shift a whole selection</strong> &mdash; notes, VOL lasers, and scroll-speed / glitch events &mdash; with <kbd>Alt+&larr;</kbd> / <kbd>Alt+&rarr;</kbd> (one snap step) or <kbd>Alt+Shift+&larr;/&rarr;</kbd> (one measure), or via the right-click <strong>Nudge in Time</strong> menu.</li>
+    <li><span class="tag add">add</span><strong>Laser-aware:</strong> when the selection covers only part of a VOL laser, just that portion slides in time with clean interpolated edges. Nudges clamp at tick 0 and the selection range follows the move so repeated nudges keep working on the same content. Core logic is <code>ChartData.shiftRange()</code> in <code>chart.js</code> &mdash; a unit-tested single source of truth.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.48</span>Selection Cut / Copy / Delete Splits Lasers Instead of Dropping Them</h4>

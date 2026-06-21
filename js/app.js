@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.49';
+const APP_VERSION = '0.0.50';
 const CHANGELOG = [
+  {
+    version: '0.0.50',
+    title: 'Drag a selection to move it in time — laser-aware',
+    entries: [
+      ['add', '<strong>Drag-to-move a selection.</strong> With the <strong>Select</strong> tool, press <em>inside</em> an active selection band and drag left/right to slide the whole selection — BT/FX notes, partial VOL lasers, and scroll-speed / glitch events — through time, the same way notes already drag. A grab cursor appears when you hover a movable selection.'],
+      ['add', '<strong>Laser-aware:</strong> a selection covering only part of a VOL laser slides just that portion (with clean interpolated edges), reusing the v0.0.48 slicing engine via <code>ChartData.shiftRange()</code> — the same single source of truth the keyboard Nudge uses. The drag snaps to the grid, clamps at tick 0, and is one undo step (<kbd>Ctrl+Z</kbd>).'],
+      ['add', '<strong>Automatic laser reconnect (Point 28b).</strong> When a time-shift slides a laser piece so its edge lands exactly on an adjacent section, the two now merge into one continuous laser instead of leaving an invisible seam. Applies to both the new drag and the v0.0.49 keyboard Nudge. <code>autoConnectLasers()</code> only fuses genuinely-touching same-position junctions, so unrelated lasers are never joined.'],
+    ],
+  },
   {
     version: '0.0.49',
     title: 'Nudge a selection in time — laser-aware Move',
@@ -5149,6 +5158,14 @@ let _laserPress = null;
 // Bezier handle drag state — set when user grabs a diamond handle
 let _curveDrag = null; // { sec, ptIndex, t0, t1, colIdx, colLen }
 
+// v0.0.50: Selection content drag-move (time-shift) state. Set when the user
+// presses inside an active selection band with the Select tool and drags it
+// horizontally in time. { startTick (snapped), downTick (raw), applied }.
+// The drag reuses the v0.0.49 ChartData.shiftRange engine so notes AND partial
+// VOL lasers slide together; `applied` tracks the clamped total so the gesture
+// stays consistent against tick-0 clamping. (Point 28a)
+let selContentDrag = null;
+
 // Resolve which point's outgoing `.interp` should be edited when the user opens
 // the interpolation menu on anchor `ptIndex`.
 //
@@ -5709,6 +5726,21 @@ function onMouseDown(e) {
 
   // Click to set cursor position in select mode
   if (tool === 'select') {
+    // v0.0.50: pressing INSIDE an active selection band grabs it for a
+    // drag-move (time-shift). The whole selection — BT/FX notes, partial VOL
+    // lasers, scroll-speed & glitch events — slides in time via the v0.0.49
+    // shiftRange engine. The unconditional saveUndo() above already captured the
+    // pre-drag state, so the entire gesture is one undo step. A press that
+    // doesn't actually drag falls back to a plain playhead-set on mouse-up.
+    if (sel.active) {
+      const [lo, hi] = selTickRange();
+      if (tick >= lo && tick <= hi) {
+        selContentDrag = { startTick: snapTick(tick), downTick: tick, applied: 0 };
+        const canvas = document.getElementById('chart-canvas');
+        if (canvas) canvas.style.cursor = 'grabbing';
+        return;
+      }
+    }
     renderer.playTick = tick;
     updateSeekbar(tick);
     render();
@@ -5737,6 +5769,36 @@ function onMouseMove(e) {
     render();
     return;
   }
+
+  // ── Selection content drag (time-shift) ───────────────────────────────────
+  // Slide the whole selection in time as the cursor moves. We apply only the
+  // INCREMENTAL step since the last frame (desired total − already applied),
+  // mirroring repeated nudges; the selection band follows the clamped delta so
+  // the same content keeps moving. shiftRange auto-reconnects laser pieces.
+  if (selContentDrag) {
+    const h       = getHit(e);
+    const desired = snapTick(h.tick) - selContentDrag.startTick;
+    const step    = desired - selContentDrag.applied;
+    if (step !== 0) {
+      const [lo, hi] = selTickRange();
+      const applied = chart.shiftRange(lo, hi, step, {
+        bt: true, fx: true, vol: true, vel: true, glitch: true,
+      });
+      if (applied) {
+        sel.startTick += applied;
+        sel.endTick   += applied;
+        selContentDrag.applied += applied;
+        updateScrollSpeedEventList?.();
+        updateGlitchEventList?.();
+        updateSelStatus?.();
+      }
+    }
+    const canvas = document.getElementById('chart-canvas');
+    if (canvas) canvas.style.cursor = 'grabbing';
+    render();
+    return;
+  }
+
   if (sel.dragging) {
     const h = getHit(e);
     sel.endTick = snapTick(h.tick);
@@ -5844,6 +5906,15 @@ function onMouseMove(e) {
       if (prevFxHold !== renderer._hoveredFxHold) render();
     }
 
+    // v0.0.50: grab cursor when hovering inside a movable selection band so the
+    // drag-to-move affordance is discoverable (Select tool, active selection).
+    if (tool === 'select' && sel.active && renderer) {
+      const h = getHit(e);
+      const [lo, hi] = selTickRange();
+      const canvas = document.getElementById('chart-canvas');
+      if (canvas && h.laneIdx >= 0 && h.tick >= lo && h.tick <= hi) canvas.style.cursor = 'grab';
+    }
+
     // Predictive chart assist ghost note
     if (renderer && window.prefs?.predictAssist) {
       const h = getHit(e);
@@ -5871,6 +5942,23 @@ function onMouseMove(e) {
 }
 
 function onMouseUp(e) {
+  // ── End selection content drag-move (time-shift) ──────────────────────────
+  if (selContentDrag) {
+    const cd = selContentDrag;
+    selContentDrag = null;
+    const canvas = document.getElementById('chart-canvas');
+    if (canvas) canvas.style.cursor = '';
+    if (cd.applied === 0) {
+      // Pressed inside the selection but never dragged — treat as a plain click
+      // and set the playhead, matching normal Select-tool click behaviour.
+      renderer.playTick = cd.downTick;
+      updateSeekbar(cd.downTick);
+    }
+    updateSelStatus?.();
+    render();
+    return;
+  }
+
   // End bezier handle drag — save undo snapshot
   if (_curveDrag) {
     _curveDrag = null;
