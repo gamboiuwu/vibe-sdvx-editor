@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.50';
+const APP_VERSION = '0.0.51';
 const CHANGELOG = [
+  {
+    version: '0.0.51',
+    title: 'Insert Time — open a blank gap and ripple everything later',
+    entries: [
+      ['add', '<strong>Insert Time (ripple insert).</strong> The complement of <strong>Delete &amp; Shift</strong>: <em>Edit → Insert Time…</em> (or <kbd>Shift+Insert</kbd>) opens a blank gap at the playhead or selection start and pushes everything from that point onward later in time — BT/FX notes &amp; holds, VOL lasers, plus BPM, time-signature, camera, stop, scroll-speed and glitch events all ripple together. Great for adding an intro, extending a break, or making room mid-chart without re-placing notes by hand.'],
+      ['add', '<strong>Boundary-aware.</strong> A hold or laser that <em>crosses</em> the insert point stretches across the new gap rather than being torn (lasers hold their value flat across the inserted span), exactly mirroring how Delete &amp; Shift truncates them. Amount is set in measures or beats, the insert point snaps to the grid, and the whole operation is a single undoable step (<kbd>Ctrl+Z</kbd>).'],
+      ['add', 'Core logic is <code>ChartData.insertTime()</code> in <code>chart.js</code> — a DOM-free, unit-tested single source of truth (23 assertions), matching the project pattern set by <code>shiftRange</code> / <code>quantizeRange</code> / <code>grooveQuantizeRange</code>.'],
+    ],
+  },
   {
     version: '0.0.50',
     title: 'Drag a selection to move it in time — laser-aware',
@@ -2857,6 +2866,11 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-sran-fx')?.addEventListener('click',  () => applySRan('fx'));
   document.getElementById('btn-sran-vol')?.addEventListener('click', () => applySRan('vol'));
   document.getElementById('btn-ripple-delete')?.addEventListener('click', selRippleDelete);
+  document.getElementById('btn-insert-time')?.addEventListener('click', openInsertTimeModal);
+  document.getElementById('insert-time-ok')?.addEventListener('click', applyInsertTimeModal);
+  document.getElementById('insert-time-cancel')?.addEventListener('click', () => {
+    const m = document.getElementById('modal-insert-time'); if (m) m.style.display = 'none';
+  });
 
   _initPhase = 'first-render';
   _loadingShow('Building renderer…', 60);
@@ -4721,6 +4735,55 @@ function selRippleDelete() {
   updateCameraEventList?.();
   updateStopEventList?.();
   render();
+}
+
+// ── Insert Time (ripple insert) ─────────────────────────────────────────────
+// Complement of Ripple Delete: open a blank gap of `spanTicks` at `atTick`,
+// pushing all downstream content (notes, holds, lasers, BPM/time-sig/camera/
+// stop/scroll-speed/glitch events) later in time. Delegates to the DOM-free
+// ChartData.insertTime() single source of truth, then refreshes the UI.
+function selInsertTime(atTick, spanTicks) {
+  if (!chart) return;
+  atTick   = Math.max(0, Math.round(atTick));
+  spanTicks = Math.round(spanTicks);
+  if (!Number.isFinite(spanTicks) || spanTicks <= 0) return;
+  saveUndo('Insert Time');
+  const applied = chart.insertTime(atTick, spanTicks);
+  if (!applied) { undoStack.pop(); return; }
+  // Keep any active selection consistent: shift it if it sits at/after the gap.
+  if (sel.active) {
+    if (sel.startTick >= atTick) sel.startTick += applied;
+    if (sel.endTick   >= atTick) sel.endTick   += applied;
+  }
+  updateBpmList?.();
+  updateCameraEventList?.();
+  updateStopEventList?.();
+  render();
+}
+
+// Open the Insert Time modal, defaulting "Insert at" to Selection when a
+// selection is active, otherwise Playhead.
+function openInsertTimeModal() {
+  if (!chart || !renderer) return;
+  const atSel = document.getElementById('insert-time-at');
+  if (atSel) atSel.value = sel.active ? 'selection' : 'playhead';
+  const m = document.getElementById('modal-insert-time');
+  if (m) m.style.display = 'flex';
+}
+
+// Read the modal fields, resolve the insert point + span, and apply.
+function applyInsertTimeModal() {
+  const amount = parseFloat(document.getElementById('insert-time-amount')?.value);
+  const unit   = document.getElementById('insert-time-unit')?.value || 'measures';
+  const atMode = document.getElementById('insert-time-at')?.value || 'playhead';
+  if (!Number.isFinite(amount) || amount <= 0) return;
+  const perUnit = unit === 'beats' ? TICKS_PER_BEAT : TICKS_PER_MEASURE;
+  const span = Math.round(amount * perUnit);
+  let at = (atMode === 'selection' && sel.active) ? selTickRange()[0] : (renderer.playTick | 0);
+  at = snapTick(at);
+  const m = document.getElementById('modal-insert-time');
+  if (m) m.style.display = 'none';
+  selInsertTime(at, span);
 }
 
 // ── Random ────────────────────────────────────────────────────────────────────
@@ -6834,6 +6897,11 @@ function onKeyDown(e) {
       // untouched.
       if (e.shiftKey) selRippleDelete();
       else            selDeleteContents();
+      break;
+
+    case 'Insert':
+      // Shift+Insert opens the Insert Time (ripple insert) dialog.
+      if (e.shiftKey) { e.preventDefault(); openInsertTimeModal(); }
       break;
 
     case 'G':
