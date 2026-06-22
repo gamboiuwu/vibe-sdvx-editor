@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.50 · 2026</span>
+  <span class="version">v0.0.51 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.51</span>Insert Time &mdash; Open a Blank Gap and Ripple Everything Later</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Insert Time (ripple insert).</strong> The complement of <strong>Delete &amp; Shift</strong>: <strong>Edit &rarr; Insert Time&hellip;</strong> (or <kbd>Shift+Insert</kbd>) opens a blank gap at the playhead or selection start and pushes everything from that point onward later in time &mdash; BT/FX notes &amp; holds, VOL lasers, plus BPM, time-signature, camera, stop, scroll-speed and glitch events all ripple together. Ideal for adding an intro, extending a break, or making room mid-chart without re-placing notes by hand.</li>
+    <li><span class="tag add">add</span><strong>Boundary-aware.</strong> A hold or laser that <em>crosses</em> the insert point stretches across the new gap rather than being torn (lasers hold their value flat across the inserted span), exactly mirroring how Delete &amp; Shift truncates them. Amount is set in measures or beats, the insert point snaps to the grid, and the whole operation is a single undoable step (<kbd>Ctrl+Z</kbd>).</li>
+    <li><span class="tag add">add</span>Core logic is <code>ChartData.insertTime()</code> in <code>chart.js</code> &mdash; a DOM-free, unit-tested single source of truth (23 assertions + a 6-assertion KSON round-trip), matching the pattern set by <code>shiftRange</code> / <code>quantizeRange</code> / <code>grooveQuantizeRange</code>.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.50</span>Drag a Selection to Move It in Time &mdash; Laser-Aware</h4>

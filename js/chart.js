@@ -915,6 +915,113 @@ export class ChartData {
     return delta;
   }
 
+  // ── Insert blank time (ripple insert) ─────────────────────────────────────
+  // Open a gap of `span` ticks at absolute tick `at`, pushing everything from
+  // `at` onward later in time. This is the complement of the app-level ripple
+  // delete (which closes a gap). DOM-free so it can be unit-tested as the single
+  // source of truth, mirroring quantizeRange / grooveQuantizeRange / shiftRange.
+  //
+  // Boundary handling (mirrors ripple delete's rules, inverted):
+  //   • Notes/holds that START at tick ≥ at        → shifted later by span
+  //   • Holds that STRADDLE at (start < at < end)  → lengthened by span so the
+  //                                                  hold stretches across the gap
+  //   • Laser sections at y ≥ at                    → shifted later by span
+  //   • Laser sections that straddle at             → a flat (held-value) segment
+  //                                                  is inserted across the gap
+  //   • BPM / time-sig / camera / stop / scroll-speed / glitch events at ≥ at
+  //                                                  → shifted later by span
+  // Returns the applied span (0 if nothing to do).
+  insertTime(at, span, opts = {}) {
+    at = Math.max(0, Math.round(at));
+    span = Math.round(span);
+    if (!Number.isFinite(at) || !Number.isFinite(span) || span <= 0) return 0;
+    const w = {
+      bt: opts.bt !== false, fx: opts.fx !== false, vol: opts.vol !== false,
+      bpm: opts.bpm !== false, timesig: opts.timesig !== false,
+      camera: opts.camera !== false, stop: opts.stop !== false,
+      vel: opts.vel !== false, glitch: opts.glitch !== false,
+    };
+
+    // BT / FX notes & holds.
+    const shiftLane = (arr) => {
+      const out = arr.map(n => {
+        const len = n.len ?? 0;
+        const end = n.y + len;
+        if (n.y >= at)   return { ...n, y: n.y + span };   // entirely after — shift
+        if (end > at)    return { ...n, len: len + span }; // straddles — lengthen across gap
+        return n;                                          // entirely before — untouched
+      });
+      out.sort((a, b) => a.y - b.y);
+      return out;
+    };
+    if (w.bt) for (let li = 0; li < this.bt.length; li++) this.bt[li] = shiftLane(this.bt[li]);
+    if (w.fx) for (let li = 0; li < this.fx.length; li++) this.fx[li] = shiftLane(this.fx[li]);
+
+    // VOL laser sections.
+    if (w.vol) for (let s = 0; s < 2; s++) {
+      this.lasers[s] = this.lasers[s].map(sec => {
+        const lastPt = sec.points[sec.points.length - 1];
+        const secEnd = sec.y + (lastPt?.ry ?? 0);
+        if (sec.y >= at)  return { ...sec, y: sec.y + span };  // entirely after — shift
+        if (secEnd <= at) return sec;                          // entirely before — keep
+        // Straddles the insert point: insert a flat segment holding the value at
+        // the cut across the gap. Points after the cut shift their ry by span.
+        const cutRy = at - sec.y;
+        const vCut  = ChartData.laserVAt(sec, at);
+        const pts = [];
+        for (const p of sec.points) {
+          if (p.ry < cutRy)  pts.push({ ...p });
+          else               pts.push({ ...p, ry: p.ry + span });
+        }
+        // Anchor the held value at both ends of the gap so the laser reads flat
+        // across the inserted span. Skip an anchor that already coincides exactly
+        // (e.g. an original point sitting on the cut keeps its own v/slam).
+        const hasAt = (ry) => pts.some(p => p.ry === ry);
+        if (!hasAt(cutRy))        pts.push({ ry: cutRy,        v: vCut });
+        if (!hasAt(cutRy + span)) pts.push({ ry: cutRy + span, v: vCut });
+        pts.sort((a, b) => a.ry - b.ry);
+        return { ...sec, points: pts };
+      });
+      this.lasers[s].sort((a, b) => a.y - b.y);
+    }
+
+    // BPM events.
+    if (w.bpm && Array.isArray(this.bpmEvents)) {
+      this.bpmEvents = this.bpmEvents.map(ev => ev.y >= at ? { ...ev, y: ev.y + span } : ev);
+      this.bpmEvents.sort((a, b) => a.y - b.y);
+    }
+    // Time-sig events use measure indices; shift by whole measures only.
+    if (w.timesig && Array.isArray(this.timeSigEvents) && this.timeSigEvents.length) {
+      const measures = Math.round(span / TICKS_PER_MEASURE);
+      this.timeSigEvents = this.timeSigEvents.map(ev =>
+        ev.measure * TICKS_PER_MEASURE >= at ? { ...ev, measure: ev.measure + measures } : ev);
+      this.timeSigEvents.sort((a, b) => a.measure - b.measure);
+    }
+    // Camera events.
+    if (w.camera && Array.isArray(this.cameraEvents) && this.cameraEvents.length) {
+      this.cameraEvents = this.cameraEvents.map(ev => ev.y >= at ? { ...ev, y: ev.y + span } : ev);
+      this.cameraEvents.sort((a, b) => a.y - b.y);
+    }
+    // Stop events.
+    if (w.stop && Array.isArray(this.stopEvents) && this.stopEvents.length) {
+      this.stopEvents = this.stopEvents.map(ev => ev.y >= at ? { ...ev, y: ev.y + span } : ev);
+      this.stopEvents.sort((a, b) => a.y - b.y);
+    }
+    // Scroll-speed events (never move the y=0 base).
+    if (w.vel && Array.isArray(this.scrollSpeedEvents) && this.scrollSpeedEvents.length) {
+      this.scrollSpeedEvents = this.scrollSpeedEvents.map(ev =>
+        ev.y > 0 && ev.y >= at ? { ...ev, y: ev.y + span } : ev);
+      this.scrollSpeedEvents.sort((a, b) => a.y - b.y);
+    }
+    // Glitch events (never move the y=0 base).
+    if (w.glitch && Array.isArray(this.glitchEvents) && this.glitchEvents.length) {
+      this.glitchEvents = this.glitchEvents.map(ev =>
+        ev.y > 0 && ev.y >= at ? { ...ev, y: ev.y + span } : ev);
+      this.glitchEvents.sort((a, b) => a.y - b.y);
+    }
+    return span;
+  }
+
   // ── Slam query interface ─────────────────────────────────────────────────
   // Returns all slam events for one laser side as first-class structured objects:
   //   { y, endY, startV, endV, side }
