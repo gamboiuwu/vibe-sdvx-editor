@@ -195,6 +195,10 @@
           <input type="range" id="vol-tick" min="0" max="1" step="0.01" value="0.5">
           <span id="vol-tick-label" style="min-width:32px">50%</span>
         </label>
+        <label class="menu-item menu-label"><span data-i18n="audio.metro">Metronome:</span>
+          <input type="range" id="vol-metro" min="0" max="1" step="0.01" value="0.45">
+          <span id="vol-metro-label" style="min-width:32px">45%</span>
+        </label>
         <div class="menu-sep"></div>
         <button class="menu-item" id="btn-preferences" data-i18n="menu.preferences">System Preferences…</button>
         <!-- Legacy hidden checkbox kept for backwards compatibility -->
@@ -558,6 +562,17 @@
         <button id="pvc-loop-toggle" class="pvc-loop-btn toggle" title="Enable / disable the A&#8211;B practice loop">&#8635; Off</button>
         <button id="pvc-loop-clear"  class="pvc-loop-btn clear"  title="Clear the loop points">&#10005;</button>
         <span id="pvc-loop-label" class="pvc-val">&#8211;&#8211;</span>
+      </div>
+      <div class="pvc-section" id="pvc-metro-section">
+        <span class="pvc-label" data-i18n="preview.metronome" title="Audible click on every beat during playback, synced to BPM &amp; time signature. Accented downbeat (metro A) vs weak beat (metro B).">Metronome</span>
+        <button id="pvc-metro-toggle" class="pvc-loop-btn toggle" title="Enable / disable the preview metronome click-track">&#9833; Off</button>
+        <button id="pvc-metro-accent" class="pvc-loop-btn toggle" title="Accent the measure downbeat (beat 1) with a louder click">&gt;1 On</button>
+        <select id="pvc-metro-div" title="Click subdivision: per beat, eighths, triplets, or sixteenths" style="background:#181828;color:#aab;border:1px solid #3a3a5a;border-radius:4px;font-size:10px;padding:2px 4px">
+          <option value="1">&frac14;</option>
+          <option value="2">&frac18;</option>
+          <option value="3">&#8531;</option>
+          <option value="4">1/16</option>
+        </select>
       </div>
       <div class="pvc-section">
         <span class="pvc-label" data-i18n="preview.btWidth">BT Width</span>

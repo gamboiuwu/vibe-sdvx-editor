@@ -1,4 +1,4 @@
-import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats } from './chart.js';
+import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, beatGridCrossings } from './chart.js';
 import { Renderer, C, laserColors, laserOpacity, laserWideMode, LASER_PRESETS, applyLaserPreset, setLaserColorCustom, buildLaneHeader, setLaserOpacity, setLaserWideMode } from './renderer.js';
 import { GameView } from './game.js';
 import { exportKsh, importKsh, downloadText } from './ksh.js';
@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.50';
+const APP_VERSION = '0.0.51';
 const CHANGELOG = [
+  {
+    version: '0.0.51',
+    title: 'Game-Preview Metronome / Click Track',
+    entries: [
+      ['add', '<strong>Metronome / click-track in the Game Preview.</strong> A new <strong>Metronome</strong> row in the preview side panel (<em>⚙ More</em> group) plays an audible click on every beat during playback, synced to the chart\'s BPM map <em>and</em> time-signature changes. Perfect for verifying timing while charting.'],
+      ['add', 'The measure <strong>downbeat is accented</strong> (metro A) versus a weaker click on the other beats (metro B); the accent can be toggled off for a flat click. A subdivision selector clicks on every <strong>¼ / ⅛ / triplet / 1/16</strong>.'],
+      ['add', 'Independent <strong>Metronome volume</strong> slider (Audio menu), separate from the BT/FX tick sound, so the click works even with the tick sound off. Settings persist via <strong>Save Config</strong>. Core beat-grid math is a DOM-free, unit-tested single source of truth — <code>beatGridCrossings()</code> in <code>chart.js</code>.'],
+    ],
+  },
   {
     version: '0.0.50',
     title: 'Drag a selection to move it in time — laser-aware',
@@ -648,6 +657,9 @@ let tickBuffer       = null;
 let slamGainNode     = null;
 let tickGainNode     = null;
 let musicGainNode    = null;
+let metroABuffer     = null;   // accented downbeat click
+let metroBBuffer     = null;   // weak beat / sub-beat click
+let metroGainNode    = null;
 
 // ── FX Effect Audio Nodes ────────────────────────────────────────────────────
 // Wet/dry routing:  laserFilterNode → fxDryGain ─────────────────────────┐
@@ -711,6 +723,8 @@ function ensureAudioCtx() {
     slamGainNode.connect(masterGainNode);
     tickGainNode = audioCtx.createGain();
     tickGainNode.connect(masterGainNode);
+    metroGainNode = audioCtx.createGain();
+    metroGainNode.connect(masterGainNode);
 
     // ── Apply saved volume prefs immediately on first audio init ─────────────
     // prefs is already loaded from localStorage by this point, so we can use
@@ -720,6 +734,7 @@ function ensureAudioCtx() {
     musicGainNode.gain.value  = prefs.volMusic  ?? 0.80;
     slamGainNode.gain.value   = prefs.volSlam   ?? 0.28;
     tickGainNode.gain.value   = prefs.volTick   ?? 0.22;
+    metroGainNode.gain.value  = prefs.volMetro  ?? 0.45;
 
     navigator.mediaDevices?.addEventListener('devicechange', async () => {
       if (audioCtx?.state === 'suspended') await audioCtx.resume();
@@ -730,6 +745,9 @@ function ensureAudioCtx() {
     fetch('sounds/tick.wav').then(r => r.arrayBuffer()).then(b => audioCtx.decodeAudioData(b)).then(buf => { clapBuffer = buf; }).catch(() => {});
     // Load tick sound for BT/FX hits
     fetch('sounds/tick.ogg').then(r => r.arrayBuffer()).then(b => audioCtx.decodeAudioData(b)).then(buf => { tickBuffer = buf; }).catch(() => {});
+    // Load metronome clicks (accented downbeat / weak beat) for the preview click-track
+    fetch('sounds/metro_A.mp3').then(r => r.arrayBuffer()).then(b => audioCtx.decodeAudioData(b)).then(buf => { metroABuffer = buf; }).catch(() => {});
+    fetch('sounds/metro_B.mp3').then(r => r.arrayBuffer()).then(b => audioCtx.decodeAudioData(b)).then(buf => { metroBBuffer = buf; }).catch(() => {});
   }
   if (audioCtx.state === 'suspended') audioCtx.resume();
 }
@@ -757,6 +775,14 @@ let prevPlayTick   = 0;
 let viewMode = 'split'; // start with 3D lane visible by default
 export let gameView = null;
 const settings = { tickSound: false };
+
+// ── Game-Preview Metronome / Click Track ─────────────────────────────────────
+// An audible click on every beat during playback, synced to the chart's BPM map
+// and time signatures (engine: chart.js beatGridCrossings). Accented downbeat
+// (metro_A) vs weak beat (metro_B). Independent of the BT/FX tick sound.
+let metronomeEnabled = false;
+let metronomeAccent  = true;   // accent the measure downbeat with metro_A
+let metronomeDiv     = 1;      // clicks per beat: 1=¼, 2=⅛, 3=triplet, 4=1/16
 
 // Apply a new beats-per-lane value and update all related UI.
 function applyBeatsPerLane(beats) {
@@ -1275,6 +1301,7 @@ function playFrame(now) {
   })();
   detectBtHits(prevPlayTick, renderer.playTick, _activePan);
   detectMultiBtHits(prevPlayTick, renderer.playTick);
+  detectMetronome(prevPlayTick, renderer.playTick);
   prevPlayTick = renderer.playTick;
 
   // Laser filter + FX audio effects
@@ -1924,6 +1951,22 @@ function _updateLoopHud() {
 function resetPracticeLoop() {
   loopEnabled = false; loopA = null; loopB = null;
   _updateLoopHud();
+}
+
+// Refresh the metronome control buttons in the preview side panel.
+function _updateMetroHud() {
+  const tBtn  = document.getElementById('pvc-metro-toggle');
+  const acBtn = document.getElementById('pvc-metro-accent');
+  const divEl = document.getElementById('pvc-metro-div');
+  if (tBtn) {
+    tBtn.classList.toggle('active', metronomeEnabled);
+    tBtn.innerHTML = (metronomeEnabled ? '♩ On' : '♩ Off');
+  }
+  if (acBtn) {
+    acBtn.classList.toggle('active', metronomeAccent);
+    acBtn.innerHTML = (metronomeAccent ? '&gt;1 On' : '&gt;1 Off');
+  }
+  if (divEl) divEl.value = String(metronomeDiv);
 }
 
 function _seekbarTickFromEvent(e) {
@@ -3621,6 +3664,7 @@ window.addEventListener('DOMContentLoaded', () => {
     { id: 'vol-music',  lbl: 'vol-music-label',  prefKey: 'volMusic',  fn: v => { if (musicGainNode)  musicGainNode.gain.value  = v; } },
     { id: 'vol-slam',   lbl: 'vol-slam-label',   prefKey: 'volSlam',   fn: v => { if (slamGainNode)   slamGainNode.gain.value   = v; } },
     { id: 'vol-tick',   lbl: 'vol-tick-label',   prefKey: 'volTick',   fn: v => { if (tickGainNode)   tickGainNode.gain.value   = v; } },
+    { id: 'vol-metro',  lbl: 'vol-metro-label',  prefKey: 'volMetro',  fn: v => { if (metroGainNode)  metroGainNode.gain.value  = v; } },
   ];
   volSliders.forEach(({ id, lbl, prefKey, fn }) => {
     const el = document.getElementById(id);
@@ -5355,6 +5399,26 @@ function detectBtHits(prevTick, curTick, pan = 0) {
         src.start();
       }
     }
+  }
+}
+
+// Fire metronome clicks for every beat-grid boundary crossed in (prevTick, curTick].
+// Uses the DOM-free chart.js beatGridCrossings engine so it respects BPM-independent
+// tick spacing AND time-signature changes. metro_A on the accented downbeat, metro_B
+// otherwise (and on every sub-beat). Routed through metroGainNode so its volume is
+// independent of the BT/FX tick sound. Gated by metronomeEnabled, so it works in any
+// view mode while previewing without enabling the tick sound.
+function detectMetronome(prevTick, curTick) {
+  if (!metronomeEnabled || !audioCtx || !metroABuffer || !metroBBuffer) return;
+  const beats = beatGridCrossings(chart, prevTick, curTick, metronomeDiv);
+  for (const b of beats) {
+    const accent = metronomeAccent && b.isDownbeat;
+    const buf = accent ? metroABuffer : metroBBuffer;
+    if (!buf) continue;
+    const src = audioCtx.createBufferSource();
+    src.buffer = buf;
+    src.connect(metroGainNode || audioCtx.destination);
+    src.start();
   }
 }
 
@@ -9102,6 +9166,27 @@ function _initProjectionControls() {
     _updateLoopHud();
   }
 
+  // ── Metronome / click-track controls ────────────────────────────────────────
+  const metroTBtn  = document.getElementById('pvc-metro-toggle');
+  const metroAcBtn = document.getElementById('pvc-metro-accent');
+  const metroDivEl = document.getElementById('pvc-metro-div');
+  if (metroTBtn && !metroTBtn._wired) {
+    metroTBtn._wired = true;
+    metroTBtn.addEventListener('click', () => {
+      metronomeEnabled = !metronomeEnabled;
+      if (metronomeEnabled) ensureAudioCtx();   // make sure the click buffers load
+      _updateMetroHud();
+    });
+    metroAcBtn?.addEventListener('click', () => {
+      metronomeAccent = !metronomeAccent;
+      _updateMetroHud();
+    });
+    metroDivEl?.addEventListener('change', () => {
+      metronomeDiv = Math.max(1, parseInt(metroDivEl.value, 10) || 1);
+    });
+    _updateMetroHud();
+  }
+
   // Judge Y slider
   const jySl  = document.getElementById('pvc-judge-y');
   const jyLbl = document.getElementById('pvc-judge-y-label');
@@ -9223,6 +9308,10 @@ function _initProjectionControls() {
     // Playback Rate
     const rateEl = document.getElementById('pvc-rate');
     if (rateEl) prefs.playbackRate = +rateEl.value;
+    // Metronome / click-track
+    prefs.metronomeEnabled = metronomeEnabled;
+    prefs.metronomeAccent  = metronomeAccent;
+    prefs.metronomeDiv     = metronomeDiv;
     // Persist
     try { localStorage.setItem('vibe-editr-prefs', JSON.stringify(prefs)); } catch(_) {}
     // Show "Saved!" flash
@@ -9284,6 +9373,12 @@ function _initProjectionControls() {
       lb.style.color = Math.abs(prefs.playbackRate - 1.0) > 0.001 ? '#ffcc44' : '';
     }
   }
+
+  // Restore saved metronome / click-track settings
+  if (prefs.metronomeEnabled != null) metronomeEnabled = !!prefs.metronomeEnabled;
+  if (prefs.metronomeAccent  != null) metronomeAccent  = !!prefs.metronomeAccent;
+  if (prefs.metronomeDiv     != null) metronomeDiv     = Math.max(1, prefs.metronomeDiv | 0);
+  _updateMetroHud();
 
   // Set default projection to SDVX on load (only if no saved proj mode)
   if (!prefs.projMode) document.querySelector('.pvc-proj-btn[data-proj="sdvx"]')?.click();

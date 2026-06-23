@@ -394,6 +394,55 @@ export function clearStopEvents(chart, lo = -Infinity, hi = Infinity) {
   return before - chart.stopEvents.length;
 }
 
+// ── Metronome / click-track beat grid ───────────────────────────────────────
+// Return every beat-grid boundary whose tick falls in the half-open range
+// (fromTick, toTick] — exactly the boundaries CROSSED while the playhead
+// advances from fromTick to toTick during one playback frame. Each entry is
+// { tick, isDownbeat, beatInMeasure, sub } where sub>0 marks a sub-beat click
+// (never a downbeat). The grid respects the chart's time-signature changes
+// (chart.timeSigEvents = [{measure,num,den}, ...], keyed by measure index):
+// a measure in num/den has `num` beats, each TICKS_PER_MEASURE/den ticks long,
+// and beat 0 of each measure is the accented downbeat.
+//   div = clicks PER beat (1 = on each beat, 2 = eighths, 3 = triplets, 4 = 16ths).
+// DOM-free + pure so it can be unit-tested as the single source of truth for
+// the Game-Preview metronome.
+export function beatGridCrossings(chart, fromTick, toTick, div = 1) {
+  const out = [];
+  if (!chart) return out;
+  if (!(toTick > fromTick)) return out;            // no forward motion → no clicks
+  div = Math.max(1, Math.round(div) || 1);
+  const sigs = (chart.timeSigEvents && chart.timeSigEvents.length
+    ? chart.timeSigEvents.slice()
+    : [{ measure: 0, num: 4, den: 4 }]).sort((a, b) => a.measure - b.measure);
+
+  let measureStart = 0;     // tick at the start of the current measure
+  let measureIdx   = 0;     // 0-based measure index
+  let sigPtr       = 0;
+  let guard        = 0;
+  const GUARD_MAX  = 5_000_000;
+  while (measureStart <= toTick && guard++ < GUARD_MAX) {
+    while (sigPtr + 1 < sigs.length && sigs[sigPtr + 1].measure <= measureIdx) sigPtr++;
+    const sig = sigs[sigPtr];
+    const num = Math.max(1, sig.num | 0);
+    const den = Math.max(1, sig.den | 0);
+    const beatLen   = TICKS_PER_MEASURE * 4 / den / 4;   // ticks per (1/den) beat
+    const subLen    = beatLen / div;
+    const measureLen = beatLen * num;
+    for (let b = 0; b < num; b++) {
+      for (let s = 0; s < div; s++) {
+        const tick = measureStart + b * beatLen + s * subLen;
+        if (tick > fromTick && tick <= toTick) {
+          out.push({ tick, isDownbeat: b === 0 && s === 0, beatInMeasure: b, sub: s });
+        }
+      }
+    }
+    measureStart += measureLen;
+    measureIdx++;
+    if (measureLen <= 0) break;   // pathological sig — avoid an infinite loop
+  }
+  return out;
+}
+
 export class ChartData {
   constructor() {
     this.meta = {
