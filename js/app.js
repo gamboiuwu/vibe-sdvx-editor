@@ -1,4 +1,4 @@
-import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, beatGridCrossings } from './chart.js';
+import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, beatGridCrossings, countInBeats } from './chart.js';
 import { Renderer, C, laserColors, laserOpacity, laserWideMode, LASER_PRESETS, applyLaserPreset, setLaserColorCustom, buildLaneHeader, setLaserOpacity, setLaserWideMode } from './renderer.js';
 import { GameView } from './game.js';
 import { exportKsh, importKsh, downloadText } from './ksh.js';
@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.51';
+const APP_VERSION = '0.0.52';
 const CHANGELOG = [
+  {
+    version: '0.0.52',
+    title: 'Metronome Count-In + Loop-Only Click',
+    entries: [
+      ['add', '<strong>Metronome count-in.</strong> A new selector in the preview <strong>Metronome</strong> row plays a <strong>1- or 2-measure click-only lead-in</strong> before playback starts, so you lock onto the tempo before the first note — the standard DAW count-in. The lead-in honors the chart\'s BPM, the time signature at the start point, and the chosen click subdivision; the audio and lane scroll begin exactly when the count finishes.'],
+      ['add', '<strong>Loop-only click.</strong> A new <em>Loop-only</em> toggle sounds the metronome only while the <strong>Practice A–B Loop</strong> is engaged and the playhead is inside the loop, so the click guides a drilled section without playing over the whole song.'],
+      ['add', 'Both build on the v0.0.51 metronome and share its DOM-free engine — the count-in schedule comes from a new unit-tested <code>countInBeats()</code> in <code>chart.js</code> (single source of truth, 24 assertions), and the gates are verified by an end-to-end test driving the real <code>detectMetronome()</code>. Stopping during the count-in cancels the pending clicks. Both settings persist via <strong>Save Config</strong>.'],
+    ],
+  },
   {
     version: '0.0.51',
     title: 'Game-Preview Metronome / Click Track',
@@ -783,6 +792,10 @@ const settings = { tickSound: false };
 let metronomeEnabled = false;
 let metronomeAccent  = true;   // accent the measure downbeat with metro_A
 let metronomeDiv     = 1;      // clicks per beat: 1=¼, 2=⅛, 3=triplet, 4=1/16
+let metronomeCountIn = 0;      // count-in lead-in length in MEASURES (0 = off, 1, 2)
+let metronomeLoopOnly = false; // sound the click only while the Practice AB Loop is engaged
+let _countInUntilPerf = 0;     // performance.now() time when the count-in pre-roll ends (0 = none)
+let _countInSrcs = [];         // scheduled count-in click buffer sources, for cancel-on-stop
 
 // Apply a new beats-per-lane value and update all related UI.
 function applyBeatsPerLane(beats) {
@@ -1175,7 +1188,32 @@ function startPlay(stopAtTick = -1) {
   ensureAudioCtx();
   playing           = true;
   renderer.playing  = true;
-  playStartPerf     = performance.now();
+
+  // ── Metronome count-in (pre-roll) ───────────────────────────────────────────
+  // When armed, schedule an N-measure click-only lead-in BEFORE audio + lane scroll
+  // begin, so the chartist locks onto the tempo. The audio start and the playback
+  // time reference are pushed forward by the lead-in duration; playFrame holds the
+  // playhead at the start tick until the count-in finishes (see _countInUntilPerf).
+  let ciLead = 0;
+  for (const s of _countInSrcs) { try { s.stop(); } catch(_) {} }
+  _countInSrcs = [];
+  if (metronomeEnabled && metronomeCountIn > 0 && audioCtx && metroABuffer && metroBBuffer) {
+    const ci = countInBeats(chart, renderer.playTick, metronomeCountIn, metronomeDiv);
+    ciLead = ci.duration;
+    const t0 = audioCtx.currentTime;
+    for (const b of ci.beats) {
+      const accent = metronomeAccent && b.isDownbeat;
+      const src = audioCtx.createBufferSource();
+      src.buffer = accent ? metroABuffer : metroBBuffer;
+      src.connect(metroGainNode || audioCtx.destination);
+      try { src.start(t0 + b.t); _countInSrcs.push(src); } catch(_) {}
+    }
+    _countInUntilPerf = ciLead > 0 ? performance.now() + ciLead * 1000 : 0;
+  } else {
+    _countInUntilPerf = 0;
+  }
+
+  playStartPerf     = performance.now() + ciLead * 1000;
   playStartTickV    = renderer.playTick;
   prevPlayTick      = renderer.playTick;
 
@@ -1198,16 +1236,17 @@ function startPlay(stopAtTick = -1) {
     const rawSeek        = chartSecBpm + offset + userDelay;
     // Guard: NaN / ±Infinity from bad BPM/offset data must not reach the AudioNode
     const audioSeek      = isFinite(rawSeek) ? rawSeek : 0;
-    audioStartAcTime     = audioCtx.currentTime;
+    // Push the audio start (and its timing reference) forward by the count-in lead-in.
+    audioStartAcTime     = audioCtx.currentTime + ciLead;
     // Store stop-aware chart time so computeVisualTickWithStops() works correctly
     // when starting playback from a position that follows stop events.
     audioStartChartSec   = isFinite(chartSecAware) ? chartSecAware : 0;
 
     if (audioSeek >= 0) {
-      audioSource.start(audioCtx.currentTime, audioSeek);
+      audioSource.start(audioCtx.currentTime + ciLead, audioSeek);
     } else {
       const delay = -audioSeek;
-      audioSource.start(audioCtx.currentTime + delay);
+      audioSource.start(audioCtx.currentTime + ciLead + delay);
       audioStartAcTime += delay;
     }
     audioSource.onended = () => { if (playing) stopPlay(); };
@@ -1224,6 +1263,10 @@ function startPlay(stopAtTick = -1) {
 function stopPlay() {
   playing = false;
   renderer.playing = false;
+  // Cancel any pending count-in pre-roll clicks so a stop during the lead-in is silent.
+  _countInUntilPerf = 0;
+  for (const s of _countInSrcs) { try { s.stop(); } catch(_) {} }
+  _countInSrcs = [];
   if (audioSource) { try { audioSource.stop(); } catch(e) {} audioSource = null; }
   // Reset live camera so the view snaps back to static chart.camera
   if (gameView) gameView._liveCamera = null;
@@ -1245,6 +1288,26 @@ let _pendingAutosaveAfterPlay = false;
 
 function playFrame(now) {
   if (!playing) return;
+
+  // ── Metronome count-in pre-roll ─────────────────────────────────────────────
+  // Hold the playhead at the start tick and fire no hit sounds until the lead-in
+  // clicks (scheduled in startPlay) finish. The scheduled clicks play on their own
+  // through metroGainNode; here we just keep the view parked and rendering.
+  if (_countInUntilPerf && now < _countInUntilPerf) {
+    renderer.playTick = Math.max(0, playStartTickV);
+    if (gameView) {
+      gameView.playTick = renderer.playTick;
+      gameView.chain    = gameView.countChain(chart, renderer.playTick);
+    }
+    prevPlayTick = renderer.playTick;
+    updatePlayStatus();
+    render();
+    if (gameView && viewMode !== 'edit') gameView.draw();
+    _drawMinimap();
+    requestAnimationFrame(playFrame);
+    return;
+  }
+  if (_countInUntilPerf) { _countInUntilPerf = 0; prevPlayTick = playStartTickV; }
 
   let currentTick;
   // Video delay: shift the *visual* tick by N ms relative to audio (positive = visuals appear later)
@@ -1958,6 +2021,8 @@ function _updateMetroHud() {
   const tBtn  = document.getElementById('pvc-metro-toggle');
   const acBtn = document.getElementById('pvc-metro-accent');
   const divEl = document.getElementById('pvc-metro-div');
+  const ciEl  = document.getElementById('pvc-metro-countin');
+  const loBtn = document.getElementById('pvc-metro-looponly');
   if (tBtn) {
     tBtn.classList.toggle('active', metronomeEnabled);
     tBtn.innerHTML = (metronomeEnabled ? '♩ On' : '♩ Off');
@@ -1967,6 +2032,11 @@ function _updateMetroHud() {
     acBtn.innerHTML = (metronomeAccent ? '&gt;1 On' : '&gt;1 Off');
   }
   if (divEl) divEl.value = String(metronomeDiv);
+  if (ciEl)  ciEl.value  = String(metronomeCountIn);
+  if (loBtn) {
+    loBtn.classList.toggle('active', metronomeLoopOnly);
+    loBtn.innerHTML = (metronomeLoopOnly ? 'Loop-only On' : 'Loop-only Off');
+  }
 }
 
 function _seekbarTickFromEvent(e) {
@@ -5410,6 +5480,11 @@ function detectBtHits(prevTick, curTick, pan = 0) {
 // view mode while previewing without enabling the tick sound.
 function detectMetronome(prevTick, curTick) {
   if (!metronomeEnabled || !audioCtx || !metroABuffer || !metroBBuffer) return;
+  // Loop-only: when armed, click only while the Practice AB Loop is engaged and
+  // the playhead is inside [A, B], so the click guides a drilled section without
+  // playing over the whole song.
+  if (metronomeLoopOnly && !(loopEnabled && loopA != null && loopB != null &&
+      loopB > loopA && curTick >= loopA && curTick <= loopB)) return;
   const beats = beatGridCrossings(chart, prevTick, curTick, metronomeDiv);
   for (const b of beats) {
     const accent = metronomeAccent && b.isDownbeat;
@@ -9184,6 +9259,16 @@ function _initProjectionControls() {
     metroDivEl?.addEventListener('change', () => {
       metronomeDiv = Math.max(1, parseInt(metroDivEl.value, 10) || 1);
     });
+    const metroCiEl = document.getElementById('pvc-metro-countin');
+    metroCiEl?.addEventListener('change', () => {
+      metronomeCountIn = Math.max(0, parseInt(metroCiEl.value, 10) || 0);
+    });
+    const metroLoBtn = document.getElementById('pvc-metro-looponly');
+    metroLoBtn?.addEventListener('click', () => {
+      metronomeLoopOnly = !metronomeLoopOnly;
+      if (metronomeLoopOnly && metronomeEnabled) ensureAudioCtx();
+      _updateMetroHud();
+    });
     _updateMetroHud();
   }
 
@@ -9312,6 +9397,8 @@ function _initProjectionControls() {
     prefs.metronomeEnabled = metronomeEnabled;
     prefs.metronomeAccent  = metronomeAccent;
     prefs.metronomeDiv     = metronomeDiv;
+    prefs.metronomeCountIn = metronomeCountIn;
+    prefs.metronomeLoopOnly = metronomeLoopOnly;
     // Persist
     try { localStorage.setItem('vibe-editr-prefs', JSON.stringify(prefs)); } catch(_) {}
     // Show "Saved!" flash
@@ -9378,6 +9465,8 @@ function _initProjectionControls() {
   if (prefs.metronomeEnabled != null) metronomeEnabled = !!prefs.metronomeEnabled;
   if (prefs.metronomeAccent  != null) metronomeAccent  = !!prefs.metronomeAccent;
   if (prefs.metronomeDiv     != null) metronomeDiv     = Math.max(1, prefs.metronomeDiv | 0);
+  if (prefs.metronomeCountIn != null) metronomeCountIn = Math.max(0, prefs.metronomeCountIn | 0);
+  if (prefs.metronomeLoopOnly!= null) metronomeLoopOnly= !!prefs.metronomeLoopOnly;
   _updateMetroHud();
 
   // Set default projection to SDVX on load (only if no saved proj mode)

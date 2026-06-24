@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.51 · 2026</span>
+  <span class="version">v0.0.52 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.52</span>Metronome Count-In + Loop-Only Click</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Metronome count-in.</strong> A selector in the preview <strong>Metronome</strong> row plays a <strong>1- or 2-measure click-only lead-in</strong> before playback starts, so you lock onto the tempo before the first note &mdash; the standard DAW count-in. The lead-in honors the chart&rsquo;s BPM, the time signature at the start point, and the chosen click subdivision; audio and lane scroll begin exactly when the count finishes.</li>
+    <li><span class="tag add">add</span><strong>Loop-only click.</strong> A <em>Loop-only</em> toggle sounds the metronome only while the <strong>Practice A&ndash;B Loop</strong> is engaged and the playhead is inside the loop, so the click guides a drilled section without playing over the whole song.</li>
+    <li><span class="tag add">add</span>Both build on the v0.0.51 metronome and share its DOM-free engine: the count-in schedule comes from a new unit-tested <code>countInBeats()</code> in <code>chart.js</code> (single source of truth, 24 assertions), and the gates are verified end-to-end against the real <code>detectMetronome()</code>. Stopping mid count-in cancels the pending clicks. Both settings persist via <strong>Save Config</strong>.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.51</span>Game-Preview Metronome / Click Track</h4>

@@ -443,6 +443,68 @@ export function beatGridCrossings(chart, fromTick, toTick, div = 1) {
   return out;
 }
 
+// ── Metronome count-in (pre-roll) ───────────────────────────────────────────
+// Build the click schedule for an N-measure metronome lead-in that ends exactly
+// at `startTick` (the tick playback will begin from), so the chartist can lock
+// onto the tempo before the first note — the standard DAW count-in. Returns
+//   { beats: [{ t, isDownbeat }, ...], duration }
+// where each `t` is SECONDS from the start of the count-in (>= 0) and `duration`
+// is the total lead-in length in seconds (audio + lane scroll should begin then).
+// Honors the chart's BPM and the time signature active at `startTick`, plus the
+// same `div` subdivision the live metronome uses (1=¼, 2=⅛, 3=triplet, 4=1/16),
+// so the lead-in feels identical to the click that follows it. The first click is
+// at t=0 and the beat AT startTick is intentionally NOT included — it is the first
+// real metronome click, so the two never double-fire. DOM-free + pure for unit
+// testing as the single source of truth for the count-in, paired with
+// beatGridCrossings above.
+export function countInBeats(chart, startTick, measures = 1, div = 1) {
+  const out = { beats: [], duration: 0 };
+  if (!chart) return out;
+  measures = Math.max(0, Math.round(measures) || 0);
+  if (measures <= 0) return out;
+  div = Math.max(1, Math.round(div) || 1);
+  startTick = Math.max(0, +startTick || 0);
+
+  // Resolve the time signature active at startTick by walking measures (variable
+  // measure lengths under time-sig changes), mirroring beatGridCrossings.
+  const sigs = (chart.timeSigEvents && chart.timeSigEvents.length
+    ? chart.timeSigEvents.slice()
+    : [{ measure: 0, num: 4, den: 4 }]).sort((a, b) => a.measure - b.measure);
+  let mStart = 0, mIdx = 0, sigPtr = 0, sig = sigs[0], guard = 0;
+  while (guard++ < 5_000_000) {
+    while (sigPtr + 1 < sigs.length && sigs[sigPtr + 1].measure <= mIdx) sigPtr++;
+    sig = sigs[sigPtr];
+    const n = Math.max(1, sig.num | 0);
+    const d = Math.max(1, sig.den | 0);
+    const mLen = (TICKS_PER_MEASURE * 4 / d / 4) * n;
+    if (mLen <= 0) break;
+    if (mStart + mLen > startTick) break;   // startTick falls inside this measure
+    mStart += mLen; mIdx++;
+  }
+  const num = Math.max(1, sig.num | 0);
+  const den = Math.max(1, sig.den | 0);
+
+  // BPM at the play point → seconds per (1/den) beat.
+  let bpm;
+  if (typeof chart.getBpmAt === 'function') {
+    bpm = chart.getBpmAt(startTick);
+  } else {
+    bpm = chart.bpmEvents?.[0]?.bpm ?? chart.bpm ?? 120;
+    for (const ev of (chart.bpmEvents || [])) { if (ev.y <= startTick) bpm = ev.bpm; else break; }
+  }
+  if (!(bpm > 0)) bpm = 120;
+  const beatTicks  = TICKS_PER_MEASURE * 4 / den / 4;      // ticks per (1/den) beat
+  const secPerBeat = (beatTicks / TICKS_PER_BEAT) * (60 / bpm);
+  const secPerSub  = secPerBeat / div;
+
+  const totalClicks = measures * num * div;
+  for (let i = 0; i < totalClicks; i++) {
+    out.beats.push({ t: i * secPerSub, isDownbeat: (i % (num * div)) === 0 });
+  }
+  out.duration = measures * num * secPerBeat;
+  return out;
+}
+
 export class ChartData {
   constructor() {
     this.meta = {
