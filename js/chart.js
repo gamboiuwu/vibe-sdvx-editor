@@ -443,6 +443,57 @@ export function beatGridCrossings(chart, fromTick, toTick, div = 1) {
   return out;
 }
 
+// ── Metronome count-in lead-in grid ─────────────────────────────────────────
+// Compute the click-only lead-in that precedes playback when Count-In is on.
+// Returns { durationSec, beatsPerMeasure, beatLen, clicks: [...] } where each
+// click is { offsetSec, isDownbeat, isBeat, beatNo, totalBeats } and offsetSec is
+// measured from the START of the lead-in (0..durationSec). The tempo + time
+// signature used are the ones ACTIVE at startTick, so the count matches the music
+// the chartist is about to hear. `measures` bars of `div` clicks-per-beat are
+// produced (div=1 → one click per beat). Pure + DOM-free so it is the single,
+// unit-testable source of truth for the Game-Preview count-in (mirrors
+// beatGridCrossings, which drives the in-playback click).
+export function countInGrid(chart, startTick, measures, div = 1) {
+  const empty = { durationSec: 0, beatsPerMeasure: 4, beatLen: TICKS_PER_BEAT, clicks: [] };
+  if (!chart || !(measures > 0)) return empty;
+  measures = Math.max(1, Math.round(measures) || 0);
+  div = Math.max(1, Math.round(div) || 1);
+  // Resolve the time signature active at startTick by walking measures forward.
+  const sigs = (chart.timeSigEvents && chart.timeSigEvents.length
+    ? chart.timeSigEvents.slice()
+    : [{ measure: 0, num: 4, den: 4 }]).sort((a, b) => a.measure - b.measure);
+  const tgt = Math.max(0, startTick || 0);
+  let measureStart = 0, measureIdx = 0, sigPtr = 0, guard = 0;
+  let num = 4, den = 4, beatLen = TICKS_PER_BEAT;
+  while (guard++ < 5_000_000) {
+    while (sigPtr + 1 < sigs.length && sigs[sigPtr + 1].measure <= measureIdx) sigPtr++;
+    num = Math.max(1, sigs[sigPtr].num | 0);
+    den = Math.max(1, sigs[sigPtr].den | 0);
+    beatLen = TICKS_PER_MEASURE * 4 / den / 4;       // ticks per (1/den) beat
+    const measureLen = beatLen * num;
+    if (measureLen <= 0) break;
+    if (tgt < measureStart + measureLen) break;       // startTick lives in this measure
+    measureStart += measureLen; measureIdx++;
+  }
+  const bpm = ((typeof chart.getBpmAt === 'function' ? chart.getBpmAt(startTick) : null)
+    || chart.meta?.bpm || 120) || 120;
+  const secPerTick = (60 / bpm) / TICKS_PER_BEAT;
+  const subLen     = beatLen / div;
+  const totalBeats = measures * num;
+  const totalClicks = totalBeats * div;
+  const clicks = [];
+  for (let k = 0; k < totalClicks; k++) {
+    clicks.push({
+      offsetSec : k * subLen * secPerTick,
+      isBeat    : (k % div) === 0,
+      isDownbeat: (k % (num * div)) === 0,
+      beatNo    : Math.floor(k / div) + 1,
+      totalBeats,
+    });
+  }
+  return { durationSec: totalBeats * beatLen * secPerTick, beatsPerMeasure: num, beatLen, clicks };
+}
+
 export class ChartData {
   constructor() {
     this.meta = {
