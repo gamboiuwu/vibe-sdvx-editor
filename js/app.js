@@ -1,4 +1,4 @@
-import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, beatGridCrossings } from './chart.js';
+import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, beatGridCrossings, countInGrid } from './chart.js';
 import { Renderer, C, laserColors, laserOpacity, laserWideMode, LASER_PRESETS, applyLaserPreset, setLaserColorCustom, buildLaneHeader, setLaserOpacity, setLaserWideMode } from './renderer.js';
 import { GameView } from './game.js';
 import { exportKsh, importKsh, downloadText } from './ksh.js';
@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.51';
+const APP_VERSION = '0.0.52';
 const CHANGELOG = [
+  {
+    version: '0.0.52',
+    title: 'Metronome Count-In — DAW-style click lead-in',
+    entries: [
+      ['add', '<strong>Metronome Count-In.</strong> A new <strong>Count</strong> selector in the preview Metronome row plays <strong>1 or 2 bars</strong> of click-only lead-in before playback starts, so you can lock onto the tempo before the first note — exactly like a DAW count-in. The playhead waits during the count, then the song begins precisely on the downbeat.'],
+      ['add', 'A big <strong>on-screen countdown</strong> (beats remaining, e.g. 4·3·2·1) pulses over the Game Preview during the lead-in. The count matches the <strong>BPM and time signature at the start position</strong> and follows the <strong>Practice playback rate</strong>, so a slowed-down drill gets a slowed-down count-in. Requires the metronome to be enabled; persists via <strong>Save Config</strong>.'],
+      ['add', 'Core lead-in math is a DOM-free, unit-tested single source of truth — <code>countInGrid()</code> in <code>chart.js</code> — the count-in companion to v0.0.51\'s <code>beatGridCrossings()</code>.'],
+    ],
+  },
   {
     version: '0.0.51',
     title: 'Game-Preview Metronome / Click Track',
@@ -784,6 +793,17 @@ let metronomeEnabled = false;
 let metronomeAccent  = true;   // accent the measure downbeat with metro_A
 let metronomeDiv     = 1;      // clicks per beat: 1=¼, 2=⅛, 3=triplet, 4=1/16
 
+// ── Metronome Count-In ──────────────────────────────────────────────────────
+// When > 0, starting playback first plays N bars of click-only lead-in (at the
+// tempo/time-sig of the start position) so the chartist locks onto the beat
+// before the first note — a standard DAW practice aid built on countInGrid().
+let metroCountIn       = 0;     // bars of count-in: 0 = off, 1, 2
+let _countInActive     = false; // true while the lead-in is playing (playhead pinned)
+let _countInStartAc    = 0;     // audioCtx time the lead-in began
+let _countInEndAc      = 0;     // audioCtx time the lead-in ends → real playback starts
+let _countInGrid       = null;  // the countInGrid() result currently being counted
+let _countInOverlayEl  = null;  // big on-screen countdown element (lazy-created)
+
 // Apply a new beats-per-lane value and update all related UI.
 function applyBeatsPerLane(beats) {
   if (!renderer) return;
@@ -1185,6 +1205,12 @@ function startPlay(stopAtTick = -1) {
   const chartSecAware = tickToAudioSec(renderer.playTick);
   const offset   = (+(chart.meta.offset) || 0) / 1000; // guard NaN from bad metadata
 
+  // Metronome Count-In: schedule the click-only lead-in (if enabled) and hold the
+  // audio + chart back by its duration so the song begins exactly on the downbeat
+  // after the count. Returns 0 when count-in is off, so normal start is unchanged.
+  _cancelCountIn();
+  const countInSec = scheduleCountIn(renderer.playTick);
+
   if (audioBuffer) {
     if (audioSource) { try { audioSource.stop(); } catch(e) {} }
     audioSource = audioCtx.createBufferSource();
@@ -1198,16 +1224,17 @@ function startPlay(stopAtTick = -1) {
     const rawSeek        = chartSecBpm + offset + userDelay;
     // Guard: NaN / ±Infinity from bad BPM/offset data must not reach the AudioNode
     const audioSeek      = isFinite(rawSeek) ? rawSeek : 0;
-    audioStartAcTime     = audioCtx.currentTime;
+    // Base start time is pushed forward by the count-in lead-in (0 when off).
+    audioStartAcTime     = audioCtx.currentTime + countInSec;
     // Store stop-aware chart time so computeVisualTickWithStops() works correctly
     // when starting playback from a position that follows stop events.
     audioStartChartSec   = isFinite(chartSecAware) ? chartSecAware : 0;
 
     if (audioSeek >= 0) {
-      audioSource.start(audioCtx.currentTime, audioSeek);
+      audioSource.start(audioStartAcTime, audioSeek);
     } else {
       const delay = -audioSeek;
-      audioSource.start(audioCtx.currentTime + delay);
+      audioSource.start(audioStartAcTime + delay);
       audioStartAcTime += delay;
     }
     audioSource.onended = () => { if (playing) stopPlay(); };
@@ -1224,6 +1251,8 @@ function startPlay(stopAtTick = -1) {
 function stopPlay() {
   playing = false;
   renderer.playing = false;
+  // Clear any in-progress count-in (hide the overlay; scheduled clicks are harmless).
+  _cancelCountIn();
   if (audioSource) { try { audioSource.stop(); } catch(e) {} audioSource = null; }
   // Reset live camera so the view snaps back to static chart.camera
   if (gameView) gameView._liveCamera = null;
@@ -1245,6 +1274,28 @@ let _pendingAutosaveAfterPlay = false;
 
 function playFrame(now) {
   if (!playing) return;
+
+  // ── Metronome Count-In hold ──────────────────────────────────────────────
+  // While the click-only lead-in plays, keep the playhead pinned at the start
+  // position (no scrolling, no note/slam/tick detection) and just refresh the
+  // on-screen countdown. When the lead-in ends, fall through to real playback —
+  // the audio source was already scheduled to begin at exactly _countInEndAc.
+  if (_countInActive) {
+    if (audioCtx && audioCtx.currentTime < _countInEndAc) {
+      renderer.playTick = playStartTickV;
+      prevPlayTick      = playStartTickV;
+      _updateCountInOverlay();
+      updatePlayStatus();
+      render();
+      if (gameView && viewMode !== 'edit') gameView.draw();
+      requestAnimationFrame(playFrame);
+      return;
+    }
+    // Lead-in finished → begin real playback now.
+    _cancelCountIn();
+    playStartPerf = performance.now();   // realign the no-audio clock to t=0 at the start tick
+    prevPlayTick  = playStartTickV;
+  }
 
   let currentTick;
   // Video delay: shift the *visual* tick by N ms relative to audio (positive = visuals appear later)
@@ -1967,6 +2018,8 @@ function _updateMetroHud() {
     acBtn.innerHTML = (metronomeAccent ? '&gt;1 On' : '&gt;1 Off');
   }
   if (divEl) divEl.value = String(metronomeDiv);
+  const ciEl = document.getElementById('pvc-metro-countin');
+  if (ciEl) ciEl.value = String(metroCountIn);
 }
 
 function _seekbarTickFromEvent(e) {
@@ -5419,6 +5472,92 @@ function detectMetronome(prevTick, curTick) {
     src.buffer = buf;
     src.connect(metroGainNode || audioCtx.destination);
     src.start();
+  }
+}
+
+// ── Metronome Count-In ───────────────────────────────────────────────────────
+// Pre-schedule a click-only lead-in (countInGrid) before real playback starts and
+// arm the count-in runtime state. Returns the lead-in duration in seconds (0 when
+// count-in is off / unavailable) so startPlay can delay the audio + chart by that
+// much. Honours the Practice playback rate so the count matches the slowed/sped
+// tempo the music will play at.
+function scheduleCountIn(startTick) {
+  if (!(metroCountIn > 0) || !metronomeEnabled || !audioCtx) return 0;
+  // If the click buffers haven't finished loading, skip count-in this time rather
+  // than insert silent dead air — kick a load so it's ready next start.
+  if (!metroABuffer || !metroBBuffer) { ensureAudioCtx(); return 0; }
+  const grid = countInGrid(chart, startTick, metroCountIn, 1);
+  if (!grid || !(grid.durationSec > 0) || !grid.clicks.length) return 0;
+  const rate  = Math.max(0.05, playbackRate || 1);
+  const acNow = audioCtx.currentTime;
+  for (const c of grid.clicks) {
+    const when = acNow + c.offsetSec / rate;
+    const buf  = (metronomeAccent && c.isDownbeat) ? metroABuffer : metroBBuffer;
+    if (!buf) continue;
+    const src = audioCtx.createBufferSource();
+    src.buffer = buf;
+    src.connect(metroGainNode || audioCtx.destination);
+    src.start(when);
+  }
+  const dur = grid.durationSec / rate;
+  _countInActive  = true;
+  _countInStartAc = acNow;
+  _countInEndAc   = acNow + dur;
+  _countInGrid    = grid;
+  _showCountInOverlay(true);
+  _updateCountInOverlay();
+  return dur;
+}
+
+function _cancelCountIn() {
+  _countInActive = false;
+  _countInGrid   = null;
+  _showCountInOverlay(false);
+}
+
+function _countInOverlay() {
+  if (!_countInOverlayEl) {
+    const d = document.createElement('div');
+    d.id = 'countin-overlay';
+    d.style.cssText = 'position:fixed;left:50%;top:42%;transform:translate(-50%,-50%);' +
+      'z-index:99990;font:700 110px/1 system-ui,Segoe UI,sans-serif;color:#7fe0ff;' +
+      'text-shadow:0 0 28px rgba(80,200,255,.75),0 3px 10px #000;pointer-events:none;' +
+      'display:none;letter-spacing:2px;will-change:transform,opacity';
+    document.body.appendChild(d);
+    _countInOverlayEl = d;
+  }
+  return _countInOverlayEl;
+}
+
+function _showCountInOverlay(on) {
+  const el = _countInOverlay();
+  el.style.display = on ? 'block' : 'none';
+  if (!on) el.textContent = '';
+}
+
+// Refresh the big on-screen count-in number (beats remaining) with a small pop on
+// each new beat. Driven from playFrame while _countInActive.
+function _updateCountInOverlay() {
+  if (!_countInActive || !_countInGrid || !audioCtx) return;
+  const grid = _countInGrid;
+  const total = grid.clicks.length;                       // div=1 → one click per beat
+  if (!total) return;
+  const rate = Math.max(0.05, playbackRate || 1);
+  const elapsed = (audioCtx.currentTime - _countInStartAc) * rate;
+  const beatDur = grid.durationSec / total;
+  let idx = Math.floor(elapsed / beatDur);
+  if (idx < 0) idx = 0; if (idx >= total) idx = total - 1;
+  const remaining = String(total - idx);                  // count DOWN to 1, then go
+  const el = _countInOverlay();
+  if (remaining !== el.textContent) {
+    el.textContent = remaining;
+    el.style.transition = 'none';
+    el.style.opacity = '1';
+    el.style.transform = 'translate(-50%,-50%) scale(1.28)';
+    requestAnimationFrame(() => {
+      el.style.transition = 'transform .16s ease-out, opacity .16s';
+      el.style.transform = 'translate(-50%,-50%) scale(1.0)';
+    });
   }
 }
 
@@ -9170,6 +9309,7 @@ function _initProjectionControls() {
   const metroTBtn  = document.getElementById('pvc-metro-toggle');
   const metroAcBtn = document.getElementById('pvc-metro-accent');
   const metroDivEl = document.getElementById('pvc-metro-div');
+  const metroCiEl  = document.getElementById('pvc-metro-countin');
   if (metroTBtn && !metroTBtn._wired) {
     metroTBtn._wired = true;
     metroTBtn.addEventListener('click', () => {
@@ -9183,6 +9323,10 @@ function _initProjectionControls() {
     });
     metroDivEl?.addEventListener('change', () => {
       metronomeDiv = Math.max(1, parseInt(metroDivEl.value, 10) || 1);
+    });
+    metroCiEl?.addEventListener('change', () => {
+      metroCountIn = Math.max(0, parseInt(metroCiEl.value, 10) || 0);
+      if (metroCountIn > 0) ensureAudioCtx();    // pre-load click buffers for the lead-in
     });
     _updateMetroHud();
   }
@@ -9312,6 +9456,7 @@ function _initProjectionControls() {
     prefs.metronomeEnabled = metronomeEnabled;
     prefs.metronomeAccent  = metronomeAccent;
     prefs.metronomeDiv     = metronomeDiv;
+    prefs.metroCountIn     = metroCountIn;
     // Persist
     try { localStorage.setItem('vibe-editr-prefs', JSON.stringify(prefs)); } catch(_) {}
     // Show "Saved!" flash
@@ -9378,6 +9523,7 @@ function _initProjectionControls() {
   if (prefs.metronomeEnabled != null) metronomeEnabled = !!prefs.metronomeEnabled;
   if (prefs.metronomeAccent  != null) metronomeAccent  = !!prefs.metronomeAccent;
   if (prefs.metronomeDiv     != null) metronomeDiv     = Math.max(1, prefs.metronomeDiv | 0);
+  if (prefs.metroCountIn     != null) metroCountIn     = Math.max(0, prefs.metroCountIn | 0);
   _updateMetroHud();
 
   // Set default projection to SDVX on load (only if no saved proj mode)
