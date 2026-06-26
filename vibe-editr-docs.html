@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.51 · 2026</span>
+  <span class="version">v0.0.53 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,24 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.53</span>Metronome Visual Beat-Flash &mdash; Read the Beat by Eye</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Visual Beat-Flash.</strong> A new <strong>&#9788; Flash</strong> toggle in the preview Metronome row pulses the <strong>judgment line</strong> with a brief cyan glow (plus bright runway-corner pips) on <strong>every beat</strong> during playback &mdash; a silent timing aid you can read by eye. The measure <strong>downbeat flashes brighter</strong> than the off-beats.</li>
+    <li><span class="tag add">add</span>Works <strong>even with the metronome sound off</strong>, so timing can be verified visually without the click. It rides the same <code>beatGridCrossings()</code> engine as the audible metronome, so it respects the BPM map and time-signature changes, and persists via <strong>Save Config</strong>.</li>
+    <li><span class="tag add">add</span>The flash envelope is a DOM-free, unit-tested single source of truth &mdash; <code>beatFlashIntensity()</code> in <code>chart.js</code> &mdash; joining <code>beatGridCrossings()</code> (v0.0.51) and <code>countInGrid()</code> (v0.0.52) to round out the metronome subsystem.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.52</span>Metronome Count-In &mdash; DAW-Style Click Lead-In</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Metronome Count-In.</strong> A new <strong>Count</strong> selector in the preview Metronome row plays <strong>1 or 2 bars</strong> of click-only lead-in before playback starts, so you can lock onto the tempo before the first note &mdash; exactly like a DAW count-in. The playhead waits during the count, then the song begins precisely on the downbeat.</li>
+    <li><span class="tag add">add</span>A big <strong>on-screen countdown</strong> (beats remaining, e.g. 4&middot;3&middot;2&middot;1) pulses over the Game Preview during the lead-in. The count matches the <strong>BPM and time signature at the start position</strong> and follows the <strong>Practice playback rate</strong>, so a slowed-down drill gets a slowed-down count-in. Requires the metronome to be enabled; persists via <strong>Save Config</strong>.</li>
+    <li><span class="tag add">add</span>Core lead-in math is a DOM-free, unit-tested single source of truth &mdash; <code>countInGrid()</code> in <code>chart.js</code> &mdash; the count-in companion to v0.0.51&rsquo;s <code>beatGridCrossings()</code>.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.51</span>Game-Preview Metronome / Click Track</h4>
