@@ -494,6 +494,22 @@ export function countInGrid(chart, startTick, measures, div = 1) {
   return { durationSec: totalBeats * beatLen * secPerTick, beatsPerMeasure: num, beatLen, clicks };
 }
 
+// ── Metronome visual beat-flash decay ────────────────────────────────────────
+// Pure, DOM-free decay curve for the Game-Preview on-beat flash — the VISUAL
+// companion to the audible metronome (a click-track you can read by eye). Given
+// the time elapsed since a beat was crossed and a decay window (both seconds),
+// return a 0..1 intensity with an instant attack and a quadratic ease-out tail;
+// 0 outside the window. The renderer just multiplies a judgment-line glow by
+// this value, so this is the single unit-testable source of truth for the flash
+// envelope (mirrors beatGridCrossings / countInGrid).
+export function beatFlashIntensity(secondsSinceBeat, decaySec) {
+  if (!(secondsSinceBeat >= 0) || !(decaySec > 0)) return 0;
+  const t = secondsSinceBeat / decaySec;
+  if (t >= 1) return 0;
+  const u = 1 - t;
+  return u * u;            // ease-out (quadratic) tail
+}
+
 export class ChartData {
   constructor() {
     this.meta = {

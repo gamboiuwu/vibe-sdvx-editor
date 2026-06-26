@@ -1,4 +1,4 @@
-import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, beatGridCrossings, countInGrid } from './chart.js';
+import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, beatGridCrossings, countInGrid, beatFlashIntensity } from './chart.js';
 import { Renderer, C, laserColors, laserOpacity, laserWideMode, LASER_PRESETS, applyLaserPreset, setLaserColorCustom, buildLaneHeader, setLaserOpacity, setLaserWideMode } from './renderer.js';
 import { GameView } from './game.js';
 import { exportKsh, importKsh, downloadText } from './ksh.js';
@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.52';
+const APP_VERSION = '0.0.53';
 const CHANGELOG = [
+  {
+    version: '0.0.53',
+    title: 'Metronome Visual Beat-Flash — read the beat by eye',
+    entries: [
+      ['add', '<strong>Visual Beat-Flash.</strong> A new <strong>☼ Flash</strong> toggle in the preview Metronome row pulses the <strong>judgment line</strong> with a brief cyan glow (plus bright runway-corner pips) on <strong>every beat</strong> during playback — a silent timing aid you can read by eye. The <strong>measure downbeat flashes brighter</strong> than the off-beats.'],
+      ['add', 'Works <strong>even with the metronome sound off</strong>, so you can verify timing visually without the click. It rides the same <code>beatGridCrossings()</code> engine as the audible metronome, so it respects the chart\'s BPM map and time-signature changes, and persists via <strong>Save Config</strong>.'],
+      ['add', 'The flash envelope is a DOM-free, unit-tested single source of truth — <code>beatFlashIntensity()</code> in <code>chart.js</code> — joining v0.0.51\'s <code>beatGridCrossings()</code> and v0.0.52\'s <code>countInGrid()</code> to round out the metronome subsystem.'],
+    ],
+  },
   {
     version: '0.0.52',
     title: 'Metronome Count-In — DAW-style click lead-in',
@@ -793,6 +802,17 @@ let metronomeEnabled = false;
 let metronomeAccent  = true;   // accent the measure downbeat with metro_A
 let metronomeDiv     = 1;      // clicks per beat: 1=¼, 2=⅛, 3=triplet, 4=1/16
 
+// ── Metronome Visual Beat-Flash ──────────────────────────────────────────────
+// A brief judgment-line glow on every beat — a VISUAL click-track for charting
+// by eye, synced to the same beatGridCrossings engine as the audible click and
+// usable even with the metronome sound off. Decay envelope: beatFlashIntensity()
+// in chart.js. Accented downbeats flash full strength, off-beats dimmer.
+let metroFlash         = false;  // visual beat-flash enabled
+const BEAT_FLASH_DECAY = 0.17;   // seconds for one flash to fade to zero
+const BEAT_FLASH_WEAK  = 0.6;    // off-beat brightness vs the accented downbeat
+let _beatFlashAtMs     = -1e9;   // performance.now() of the last beat crossed
+let _beatFlashAccent   = false;  // was that crossing a measure downbeat?
+
 // ── Metronome Count-In ──────────────────────────────────────────────────────
 // When > 0, starting playback first plays N bars of click-only lead-in (at the
 // tempo/time-sig of the start position) so the chartist locks onto the beat
@@ -1255,7 +1275,8 @@ function stopPlay() {
   _cancelCountIn();
   if (audioSource) { try { audioSource.stop(); } catch(e) {} audioSource = null; }
   // Reset live camera so the view snaps back to static chart.camera
-  if (gameView) gameView._liveCamera = null;
+  if (gameView) { gameView._liveCamera = null; gameView.beatFlash = 0; }
+  _beatFlashAtMs = -1e9;
   _tiltMode = 'zero';
   // Tear down any active FX effect and restore dry signal
   _teardownFxEffect();
@@ -1353,6 +1374,7 @@ function playFrame(now) {
   detectBtHits(prevPlayTick, renderer.playTick, _activePan);
   detectMultiBtHits(prevPlayTick, renderer.playTick);
   detectMetronome(prevPlayTick, renderer.playTick);
+  detectBeatFlash(prevPlayTick, renderer.playTick, now);
   prevPlayTick = renderer.playTick;
 
   // Laser filter + FX audio effects
@@ -1369,6 +1391,12 @@ function playFrame(now) {
   updatePlayStatus();
   render();
   if (gameView && viewMode !== 'edit') {
+    // Feed the current visual beat-flash intensity (0..1, decaying) so the game
+    // view can glow the judgment line on the beat. Off-beats are dimmer.
+    gameView.beatFlash = metroFlash
+      ? beatFlashIntensity((now - _beatFlashAtMs) / 1000, BEAT_FLASH_DECAY)
+        * (_beatFlashAccent ? 1 : BEAT_FLASH_WEAK)
+      : 0;
     const minInterval = 1000 / (prefs.fpsCap || 60);
     if (!_lastGameFrameTime || now - _lastGameFrameTime >= minInterval) {
       gameView.draw();
@@ -2020,6 +2048,11 @@ function _updateMetroHud() {
   if (divEl) divEl.value = String(metronomeDiv);
   const ciEl = document.getElementById('pvc-metro-countin');
   if (ciEl) ciEl.value = String(metroCountIn);
+  const flBtn = document.getElementById('pvc-metro-flash');
+  if (flBtn) {
+    flBtn.classList.toggle('active', metroFlash);
+    flBtn.innerHTML = (metroFlash ? '&#9788; Flash On' : '&#9788; Flash Off');
+  }
 }
 
 function _seekbarTickFromEvent(e) {
@@ -5473,6 +5506,21 @@ function detectMetronome(prevTick, curTick) {
     src.connect(metroGainNode || audioCtx.destination);
     src.start();
   }
+}
+
+// Record a visual beat-flash whenever a beat-grid boundary is crossed this frame.
+// Uses the same DOM-free beatGridCrossings engine as detectMetronome (div=1 so it
+// flashes once per beat, not per sub-beat) and stores the performance.now() time +
+// downbeat flag; playFrame turns that into a fading judgment-line glow via
+// beatFlashIntensity(). Independent of the audible metronome gate so the flash
+// works as a silent timing aid. `now` is the RAF timestamp from playFrame.
+function detectBeatFlash(prevTick, curTick, now) {
+  if (!metroFlash) return;
+  const beats = beatGridCrossings(chart, prevTick, curTick, 1);
+  if (!beats.length) return;
+  const last = beats[beats.length - 1];   // newest beat crossed this frame
+  _beatFlashAtMs   = now;
+  _beatFlashAccent = !!last.isDownbeat;
 }
 
 // ── Metronome Count-In ───────────────────────────────────────────────────────
@@ -9328,6 +9376,11 @@ function _initProjectionControls() {
       metroCountIn = Math.max(0, parseInt(metroCiEl.value, 10) || 0);
       if (metroCountIn > 0) ensureAudioCtx();    // pre-load click buffers for the lead-in
     });
+    document.getElementById('pvc-metro-flash')?.addEventListener('click', () => {
+      metroFlash = !metroFlash;
+      if (!metroFlash && gameView) gameView.beatFlash = 0;   // clear any lingering glow
+      _updateMetroHud();
+    });
     _updateMetroHud();
   }
 
@@ -9457,6 +9510,7 @@ function _initProjectionControls() {
     prefs.metronomeAccent  = metronomeAccent;
     prefs.metronomeDiv     = metronomeDiv;
     prefs.metroCountIn     = metroCountIn;
+    prefs.metroFlash       = metroFlash;
     // Persist
     try { localStorage.setItem('vibe-editr-prefs', JSON.stringify(prefs)); } catch(_) {}
     // Show "Saved!" flash
@@ -9524,6 +9578,7 @@ function _initProjectionControls() {
   if (prefs.metronomeAccent  != null) metronomeAccent  = !!prefs.metronomeAccent;
   if (prefs.metronomeDiv     != null) metronomeDiv     = Math.max(1, prefs.metronomeDiv | 0);
   if (prefs.metroCountIn     != null) metroCountIn     = Math.max(0, prefs.metroCountIn | 0);
+  if (prefs.metroFlash       != null) metroFlash       = !!prefs.metroFlash;
   _updateMetroHud();
 
   // Set default projection to SDVX on load (only if no saved proj mode)

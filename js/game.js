@@ -61,6 +61,10 @@ export class GameView {
     // Each entry lives for ~200 ms then is pruned.
     this._slamFlashes = [];
 
+    // Metronome visual beat-flash intensity (0..1), set by the play loop each
+    // frame from beatFlashIntensity(); draw() glows the judgment line by it.
+    this.beatFlash = 0;
+
     // WebGL lane renderer — the only lane/notes/laser-ribbon renderer.
     // Attached via attachGL(). When _glRenderer.ok, the runway, notes and laser
     // ribbons are rendered on a separate GL canvas behind this 2D canvas, and
@@ -1034,6 +1038,35 @@ export class GameView {
     }
 
     // ── Judgment line ─────────────────────────────────────────────────────
+
+    // Metronome visual beat-flash (v0.0.53): a brief additive glow band across
+    // the judgment line, pulsing on every beat in sync with the audible click.
+    // Intensity is supplied by the play loop (this.beatFlash, 0..1) and already
+    // decays + dims off-beats; we just paint it. Drawn BEFORE the line so the
+    // crisp white line stays on top.
+    const bf = Math.max(0, Math.min(1, this.beatFlash || 0));
+    if (bf > 0.004) {
+      const fjlx = this._screenX(-GameView.LASER_LANE_OFFSET, p.judgeY, p);
+      const fjrx = this._screenX(1 + GameView.LASER_LANE_OFFSET, p.judgeY, p);
+      const fx0 = Math.min(fjlx, fjrx) - 10, fw = Math.abs(fjrx - fjlx) + 20;
+      const gh  = 12 + 40 * bf;                       // glow half-height grows with intensity
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const grad = ctx.createLinearGradient(0, p.judgeY - gh, 0, p.judgeY + gh);
+      const a = (0.55 * bf).toFixed(3);
+      grad.addColorStop(0,    'rgba(150,210,255,0)');
+      grad.addColorStop(0.5,  'rgba(150,210,255,' + a + ')');
+      grad.addColorStop(1,    'rgba(150,210,255,0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(fx0, p.judgeY - gh, fw, gh * 2);
+      // Bright runway-corner pips so the beat reads even at low glow alpha.
+      ctx.fillStyle = 'rgba(190,230,255,' + (0.85 * bf).toFixed(3) + ')';
+      const pr = 3 + 4 * bf;
+      for (const cxp of [fx0, fx0 + fw]) {
+        ctx.beginPath(); ctx.arc(cxp, p.judgeY, pr, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+    }
 
     // Judgment line spans the full track including VOL lanes
     ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2.5;
