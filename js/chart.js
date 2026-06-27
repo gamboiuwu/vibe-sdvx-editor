@@ -510,6 +510,80 @@ export function beatFlashIntensity(secondsSinceBeat, decaySec) {
   return u * u;            // ease-out (quadratic) tail
 }
 
+// ── Preview Gameplay Modifiers (non-destructive MODs) ─────────────────────────
+// Pure, DOM-free lane-remap descriptors for the Game-Preview MOD system — the
+// render-only equivalent of arcade SDVX play options (MIRROR / RANDOM / S-RANDOM).
+// The chart data is NEVER touched; the renderer reads notes through the map this
+// returns, so a chartist can audition how a pattern reads flipped or shuffled
+// without committing a destructive edit. Single unit-testable source of truth
+// (joins beatGridCrossings / countInGrid / beatFlashIntensity).
+//
+// Returns { bt:[4], fx:[2], laserSwap, laserInvert } where:
+//   bt[L] = the DISPLAY column that source BT lane L (0=A..3=D) is drawn in
+//   fx[L] = the DISPLAY column that source FX lane L (0=L,1=R) is drawn in
+//   laserSwap   = swap VOL-L / VOL-R sides
+//   laserInvert = mirror laser positions horizontally (v → 1−v)
+// All four output arrays/flags are guaranteed valid permutations/booleans.
+
+// Deterministic 32-bit PRNG (mulberry32) so RANDOM/S-RANDOM are reproducible
+// from a seed — same seed always yields the same shuffle (testable, savable).
+export function mulberry32(seed) {
+  let a = (seed >>> 0) || 1;
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Seeded Fisher–Yates permutation of [0..n-1].
+export function seededPermutation(n, seed) {
+  const rng = mulberry32(seed);
+  const a = Array.from({ length: n }, (_, i) => i);
+  for (let i = n - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    const t = a[i]; a[i] = a[j]; a[j] = t;
+  }
+  return a;
+}
+
+// Like seededPermutation but guarantees the result is NOT the identity (used by
+// S-RANDOM, where leaving a lane in place defeats the purpose). Re-rolls with a
+// derived seed until at least one lane moves; n<2 trivially returns identity.
+export function seededDerangedPermutation(n, seed) {
+  if (n < 2) return Array.from({ length: n }, (_, i) => i);
+  let s = (seed >>> 0) || 1;
+  for (let guard = 0; guard < 16; guard++) {
+    const p = seededPermutation(n, s);
+    if (p.some((v, i) => v !== i)) return p;
+    s = (s + 0x9E3779B9) >>> 0;
+  }
+  // Fallback: a guaranteed non-identity rotation by one.
+  return Array.from({ length: n }, (_, i) => (i + 1) % n);
+}
+
+export function previewModMaps(mod, seed = 1) {
+  const ID = { bt: [0, 1, 2, 3], fx: [0, 1], laserSwap: false, laserInvert: false };
+  switch (mod) {
+    case 'mirror':
+      // Left↔right reflection: BT A↔D / B↔C, FX L↔R, lasers swap + invert.
+      return { bt: [3, 2, 1, 0], fx: [1, 0], laserSwap: true, laserInvert: true };
+    case 'random':
+      // Seeded BT lane shuffle; FX/lasers untouched (matches arcade RANDOM).
+      return { bt: seededPermutation(4, seed), fx: [0, 1], laserSwap: false, laserInvert: false };
+    case 'sran': {
+      // Stronger shuffle: BT guaranteed to move, plus a seed-driven FX swap.
+      const bt = seededDerangedPermutation(4, seed);
+      const fxSwap = mulberry32((seed >>> 0) + 0x1234)() < 0.5;
+      return { bt, fx: fxSwap ? [1, 0] : [0, 1], laserSwap: false, laserInvert: false };
+    }
+    case 'off':
+    default:
+      return ID;
+  }
+}
+
 export class ChartData {
   constructor() {
     this.meta = {
