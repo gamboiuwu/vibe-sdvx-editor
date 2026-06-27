@@ -1,4 +1,4 @@
-import { ChartData, TICKS_PER_BEAT, TICKS_PER_MEASURE, BEATS_PER_MEASURE } from './chart.js';
+import { ChartData, TICKS_PER_BEAT, TICKS_PER_MEASURE, BEATS_PER_MEASURE, previewModMaps } from './chart.js';
 import { GLLaneRenderer } from './gl-lane.js';
 import { laserOpacity, laserColors } from './renderer.js';
 
@@ -64,6 +64,16 @@ export class GameView {
     // Metronome visual beat-flash intensity (0..1), set by the play loop each
     // frame from beatFlashIntensity(); draw() glows the judgment line by it.
     this.beatFlash = 0;
+
+    // Preview gameplay MOD (non-destructive). 'off' | 'mirror' | 'random' | 'sran'.
+    // Remaps the lanes/lasers the renderer READS each frame — chart data is never
+    // mutated. _previewModSeed drives the RANDOM/S-RANDOM shuffle (reroll = new seed).
+    this._previewMod     = 'off';
+    this._previewModSeed = 1;
+    // Per-frame chart the renderer actually draws from: this.chart when the MOD is
+    // 'off' (zero overhead), otherwise a prototype-backed remapped view. Read by
+    // _getLaserPosAt so the L/R indicators follow the active MOD.
+    this._frameChart = null;
 
     // WebGL lane renderer — the only lane/notes/laser-ribbon renderer.
     // Attached via attachGL(). When _glRenderer.ok, the runway, notes and laser
@@ -370,7 +380,9 @@ export class GameView {
   draw() {
     const { ctx } = this;
     const p     = this._params();
-    const chart = this.chart;
+    // Apply the active preview MOD (mirror / random / s-random) as a render-only
+    // view; chart data is never mutated. _frameChart is read by _getLaserPosAt.
+    const chart = this._frameChart = this._previewModChart(this.chart);
     const tick  = this.playTick;
     const VT    = this.VISIBLE_TICKS;
     // Reset the per-frame Chart Velocity playhead-distance cache.
@@ -1382,15 +1394,46 @@ export class GameView {
     ctx.restore();
   }
 
+  // ── Preview MOD view ──────────────────────────────────────────────────────
+  // Return a render-only view of `src` with BT/FX lanes and VOL lasers remapped
+  // per the active gameplay MOD (mirror / random / s-random). When the MOD is
+  // 'off' the original chart is returned unchanged (no allocation). Otherwise a
+  // prototype-backed shallow view is built: bt/fx are reordered references and
+  // lasers are transformed copies (v→1−v when inverted), while every untouched
+  // field/method (camera, getBpmAt, scrollDistanceTo, meta…) resolves through the
+  // prototype. The chart itself is never mutated — switching the MOD off restores
+  // the exact original render.
+  _previewModChart(src) {
+    const mod = this._previewMod || 'off';
+    if (!src || mod === 'off') return src;
+    const m = previewModMaps(mod, this._previewModSeed | 0);
+    const view = Object.create(src);
+    // bt/fx maps give source-lane → display-column; invert to column → source.
+    const invBt = [0, 0, 0, 0];
+    for (let L = 0; L < 4; L++) invBt[m.bt[L]] = L;
+    view.bt = [src.bt[invBt[0]], src.bt[invBt[1]], src.bt[invBt[2]], src.bt[invBt[3]]];
+    view.fx = m.fx[0] === 0 ? src.fx : [src.fx[1], src.fx[0]];
+    if (m.laserSwap || m.laserInvert) {
+      const tx = m.laserInvert
+        ? (sec) => ({ ...sec, points: sec.points.map(pt => ({ ...pt, v: 1 - pt.v })) })
+        : (sec) => sec;
+      const L = src.lasers[0].map(tx), R = src.lasers[1].map(tx);
+      view.lasers = m.laserSwap ? [R, L] : [L, R];
+    }
+    return view;
+  }
+
   // ── Per-chart laser position query ───────────────────────────────────────
-  // Uses this.chart so each GameView instance reads its own chart's lasers,
-  // rather than the global getLaserPosAt which always reads the active tab.
+  // Uses the active frame chart (MOD-remapped when a preview MOD is on, else
+  // this.chart) so each GameView instance reads its own chart's lasers, rather
+  // than the global getLaserPosAt which always reads the active tab.
   // Returns { v, wide } of the laser at `tick` for `side`, or null if no
   // section is active. `wide` flag is needed so callers can pass it to
   // _laserX() — wide sections use a different v→X mapping.
   _getLaserPosAt(side, tick) {
-    if (!this.chart) return null;
-    for (const sec of this.chart.lasers[side]) {
+    const c = this._frameChart || this.chart;
+    if (!c) return null;
+    for (const sec of c.lasers[side]) {
       if (tick < sec.y) continue;
       const pts = sec.points;
       for (let pi = 0; pi < pts.length - 1; pi++) {

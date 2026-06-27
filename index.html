@@ -580,6 +580,14 @@
         </select>
         <button id="pvc-metro-flash" class="pvc-loop-btn toggle" title="Visual beat-flash: pulse the judgment line on every beat (downbeat brighter) as a silent timing aid you can read by eye. Works with the metronome sound off.">&#9788; Flash Off</button>
       </div>
+      <div class="pvc-section" id="pvc-mod-section">
+        <span class="pvc-label" data-i18n="preview.mods" title="Preview-only gameplay MODs (like arcade play options). Remaps how the chart READS — Mirror flips lanes left/right, Random/S-Random shuffle BT lanes — without ever changing the saved chart. Audition readability, then turn it off to restore the original.">Mods</span>
+        <button id="pvc-mod-off"    class="pvc-loop-btn toggle active" title="No modifier — play the chart exactly as authored.">Off</button>
+        <button id="pvc-mod-mirror" class="pvc-loop-btn toggle" title="Mirror: reflect the whole chart left↔right (BT A↔D, FX L↔R, VOL lasers swapped &amp; inverted). Non-destructive.">&#8646; Mirror</button>
+        <button id="pvc-mod-random" class="pvc-loop-btn toggle" title="Random: shuffle the four BT lanes by a seed (lasers untouched), like arcade RANDOM. Non-destructive.">&#10227; Random</button>
+        <button id="pvc-mod-sran"   class="pvc-loop-btn toggle" title="S-Random: a stronger shuffle — BT lanes always move and FX may swap. Non-destructive.">&#10227; S-Ran</button>
+        <button id="pvc-mod-reroll" class="pvc-loop-btn" title="Reroll the Random / S-Random shuffle (new seed).">&#9860; Reroll</button>
+      </div>
       <div class="pvc-section">
         <span class="pvc-label" data-i18n="preview.btWidth">BT Width</span>
         <input type="range" id="pvc-bt-width" min="0.3" max="1.6" step="0.05" value="1" title="Visual BT note thickness">

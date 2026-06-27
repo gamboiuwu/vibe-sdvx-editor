@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.53';
+const APP_VERSION = '0.0.54';
 const CHANGELOG = [
+  {
+    version: '0.0.54',
+    title: 'Preview Gameplay MODs — Mirror / Random / S-Random',
+    entries: [
+      ['add', '<strong>Preview Gameplay MODs.</strong> A new <strong>Mods</strong> row in the preview side panel (<em>⚙ More</em> group) applies arcade-style play options to the Game Preview: <strong>Mirror</strong>, <strong>Random</strong>, and <strong>S-Random</strong>. They change how the chart <em>reads</em> so you can audition a pattern flipped or shuffled — without ever altering the saved chart.'],
+      ['add', '<strong>Mirror</strong> reflects the whole chart left↔right (BT&nbsp;A↔D, FX&nbsp;L↔R, and VOL lasers swapped &amp; inverted v→1−v). <strong>Random</strong> shuffles the four BT lanes by a seed (lasers untouched, like arcade RANDOM); <strong>S-Random</strong> is a stronger shuffle where BT lanes always move and FX may swap. A <strong>☠ Reroll</strong> button (and re-clicking an active seeded mod) draws a fresh shuffle.'],
+      ['add', '<strong>Completely non-destructive.</strong> The MOD is a render-only view — the renderer reads notes through a remapped lane map (<code>previewModMaps()</code> in <code>chart.js</code>, a DOM-free unit-tested source of truth); turning the MOD <strong>Off</strong> restores the exact original. Works in single <em>and</em> multi-chart preview, and persists via <strong>Save Config</strong>.'],
+    ],
+  },
   {
     version: '0.0.53',
     title: 'Metronome Visual Beat-Flash — read the beat by eye',
@@ -812,6 +821,18 @@ const BEAT_FLASH_DECAY = 0.17;   // seconds for one flash to fade to zero
 const BEAT_FLASH_WEAK  = 0.6;    // off-beat brightness vs the accented downbeat
 let _beatFlashAtMs     = -1e9;   // performance.now() of the last beat crossed
 let _beatFlashAccent   = false;  // was that crossing a measure downbeat?
+
+// ── Preview Gameplay MODs ────────────────────────────────────────────────────
+// Render-only play options for the Game Preview (mirror / random / s-random),
+// the editor-side equivalent of arcade SDVX play modifiers. The chart is never
+// touched — gameView reads its notes through a remapped view (game.js
+// _previewModChart, chart.js previewModMaps). Lets a chartist audition how a
+// pattern reads flipped or shuffled, then turn it off to restore the original.
+let previewMod     = 'off';      // 'off' | 'mirror' | 'random' | 'sran'
+let previewModSeed = 1;          // drives the RANDOM / S-RANDOM shuffle
+// Advance the shuffle seed for a reroll. Deterministic golden-ratio step so the
+// sequence is reproducible within a session (no reliance on Math.random).
+function _nextModSeed() { previewModSeed = ((previewModSeed >>> 0) + 0x9E3779B9) >>> 0 || 1; return previewModSeed; }
 
 // ── Metronome Count-In ──────────────────────────────────────────────────────
 // When > 0, starting playback first plays N bars of click-only lead-in (at the
@@ -2055,6 +2076,33 @@ function _updateMetroHud() {
   }
 }
 
+// Push the active preview MOD onto every live GameView (main + multi-views) and
+// redraw if paused. Chart data is never touched — this only changes what the
+// renderer reads. Reroll-only updates (seed change) keep the same mod string.
+function applyPreviewMod(mod, seed) {
+  if (mod  != null) previewMod     = mod;
+  if (seed != null) previewModSeed = seed | 0;
+  const push = (gv) => { if (gv) { gv._previewMod = previewMod; gv._previewModSeed = previewModSeed; } };
+  push(gameView);
+  if (typeof _multiViews !== 'undefined' && Array.isArray(_multiViews)) {
+    for (const mv of _multiViews) push(mv.gv);
+  }
+  _updateModHud();
+  if (gameView && !playing) gameView.draw();
+}
+
+// Refresh the four MOD buttons' active state in the preview side panel.
+function _updateModHud() {
+  const ids = { off: 'pvc-mod-off', mirror: 'pvc-mod-mirror', random: 'pvc-mod-random', sran: 'pvc-mod-sran' };
+  for (const [m, id] of Object.entries(ids)) {
+    const b = document.getElementById(id);
+    if (b) b.classList.toggle('active', previewMod === m);
+  }
+  // Reroll only matters for the seeded mods.
+  const rr = document.getElementById('pvc-mod-reroll');
+  if (rr) rr.style.opacity = (previewMod === 'random' || previewMod === 'sran') ? '1' : '0.4';
+}
+
 function _seekbarTickFromEvent(e) {
   const track = document.getElementById('game-seekbar-track');
   if (!track) return null;
@@ -2560,6 +2608,8 @@ function _multiRebuild() {
     gv.perspIntensity = gvRef ? gvRef.perspIntensity : 65;
     gv.judgeYFrac     = gvRef ? gvRef.judgeYFrac     : 0.73;
     gv.interpMode     = gvRef ? gvRef.interpMode     : 'standard';
+    gv._previewMod     = gvRef ? gvRef._previewMod     : previewMod;
+    gv._previewModSeed = gvRef ? gvRef._previewModSeed : previewModSeed;
     gv.playTick       = renderer.playTick;
 
     const mv = { wrap, canvasWrap, canvas, gv, tabIdx, mirrored: false, tickOffset: 0, hsSlider, hsVal };
@@ -2641,6 +2691,8 @@ function _multiSyncSettings() {
     mv.gv.perspIntensity = gameView.perspIntensity;
     mv.gv.judgeYFrac     = gameView.judgeYFrac;
     mv.gv.interpMode     = gameView.interpMode;
+    mv.gv._previewMod     = gameView._previewMod;
+    mv.gv._previewModSeed = gameView._previewModSeed;
   }
 }
 
@@ -9384,6 +9436,23 @@ function _initProjectionControls() {
     _updateMetroHud();
   }
 
+  // Preview Gameplay MODs (mirror / random / s-random) — render-only play options.
+  const modOffBtn = document.getElementById('pvc-mod-off');
+  if (modOffBtn && !modOffBtn._wired) {
+    modOffBtn._wired = true;
+    modOffBtn.addEventListener('click', () => applyPreviewMod('off'));
+    document.getElementById('pvc-mod-mirror')?.addEventListener('click', () => applyPreviewMod('mirror'));
+    // Re-clicking an active seeded mod rerolls it; first click derives a fresh seed.
+    document.getElementById('pvc-mod-random')?.addEventListener('click', () =>
+      applyPreviewMod('random', previewMod === 'random' ? _nextModSeed() : previewModSeed));
+    document.getElementById('pvc-mod-sran')?.addEventListener('click', () =>
+      applyPreviewMod('sran', previewMod === 'sran' ? _nextModSeed() : previewModSeed));
+    document.getElementById('pvc-mod-reroll')?.addEventListener('click', () => {
+      if (previewMod === 'random' || previewMod === 'sran') applyPreviewMod(null, _nextModSeed());
+    });
+    applyPreviewMod(previewMod, previewModSeed);   // sync buttons + gameView to current state
+  }
+
   // Judge Y slider
   const jySl  = document.getElementById('pvc-judge-y');
   const jyLbl = document.getElementById('pvc-judge-y-label');
@@ -9511,6 +9580,9 @@ function _initProjectionControls() {
     prefs.metronomeDiv     = metronomeDiv;
     prefs.metroCountIn     = metroCountIn;
     prefs.metroFlash       = metroFlash;
+    // Preview gameplay MODs (render-only)
+    prefs.previewMod       = previewMod;
+    prefs.previewModSeed   = previewModSeed;
     // Persist
     try { localStorage.setItem('vibe-editr-prefs', JSON.stringify(prefs)); } catch(_) {}
     // Show "Saved!" flash
@@ -9580,6 +9652,9 @@ function _initProjectionControls() {
   if (prefs.metroCountIn     != null) metroCountIn     = Math.max(0, prefs.metroCountIn | 0);
   if (prefs.metroFlash       != null) metroFlash       = !!prefs.metroFlash;
   _updateMetroHud();
+  // Restore preview gameplay MOD (render-only; never mutates chart data)
+  if (prefs.previewModSeed   != null) previewModSeed   = prefs.previewModSeed | 0;
+  if (prefs.previewMod       != null) applyPreviewMod(prefs.previewMod, previewModSeed);
 
   // Set default projection to SDVX on load (only if no saved proj mode)
   if (!prefs.projMode) document.querySelector('.pvc-proj-btn[data-proj="sdvx"]')?.click();

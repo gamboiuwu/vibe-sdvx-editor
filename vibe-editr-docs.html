@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.53 · 2026</span>
+  <span class="version">v0.0.54 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.54</span>Preview Gameplay MODs &mdash; Mirror / Random / S-Random</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Preview Gameplay MODs.</strong> A new <strong>Mods</strong> row in the preview side panel (<em>&#9881; More</em> group) applies arcade-style play options to the Game Preview: <strong>Mirror</strong>, <strong>Random</strong>, and <strong>S-Random</strong>. They change how the chart <em>reads</em> so a pattern can be auditioned flipped or shuffled &mdash; without ever altering the saved chart.</li>
+    <li><span class="tag add">add</span><strong>Mirror</strong> reflects the chart left&harr;right (BT&nbsp;A&harr;D, FX&nbsp;L&harr;R, VOL lasers swapped &amp; inverted v&rarr;1&minus;v). <strong>Random</strong> shuffles the four BT lanes by a seed (lasers untouched, like arcade RANDOM); <strong>S-Random</strong> is a stronger shuffle where BT lanes always move and FX may swap. A <strong>&#9760; Reroll</strong> button &mdash; or re-clicking an active seeded mod &mdash; draws a fresh shuffle.</li>
+    <li><span class="tag add">add</span><strong>Completely non-destructive.</strong> The MOD is a render-only view: the renderer reads notes through a remapped lane map (<code>previewModMaps()</code> in <code>chart.js</code>, a DOM-free unit-tested source of truth). Turning the MOD <strong>Off</strong> restores the exact original. Works in single <em>and</em> multi-chart preview, and persists via <strong>Save Config</strong>.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.53</span>Metronome Visual Beat-Flash &mdash; Read the Beat by Eye</h4>
