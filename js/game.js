@@ -13,6 +13,11 @@ export class GameView {
     this.chart    = null;
     this.playTick = 0;
     this.hispeed  = 1.0;   // visual speed multiplier
+    // Scroll mode: 'mmode' = BPM-relative (default; scroll speed tracks tempo)
+    //              'cmode' = constant scroll (notes move at a fixed real-time
+    //              velocity regardless of BPM changes / soflan — readability aid).
+    // Render-only; never touches chart data.
+    this.scrollMode = 'mmode';
 
     // Projection mode: 'ortho' | 'sdvx' | 'hybrid'
     this.projMode = 'sdvx';
@@ -100,6 +105,25 @@ export class GameView {
   // (y - playTick) so behaviour is identical to before.  Cached per draw().
   _effDt(y) {
     if (!this.chart || !this.chart.scrollDistanceTo) return y - this.playTick;
+    // ── C-Mode: constant real-time scroll ────────────────────────────────────
+    // Reinterpret every note's distance as if the whole chart played at one
+    // reference tempo (the chart's dominant BPM), so on-screen scroll velocity
+    // stays constant across BPM changes / soflan.  Because every note, hold,
+    // laser and annotation reaches the projection through THIS method and then
+    // divides by VISIBLE_TICKS, returning a reference-tick distance here makes
+    // both the 2D overlay AND the WebGL lane render in C-Mode with no other
+    // change.  Scroll-speed (velocity) events and stops are intentionally
+    // neutralised in this mode.  Chart data is never touched.
+    if (this.scrollMode === 'cmode' && typeof this.chart.tickToSeconds === 'function') {
+      if (this._playSec == null) this._playSec = this.chart.tickToSeconds(this.playTick);
+      if (this._cRefBpm == null) {
+        const b = (typeof this.chart.dominantBpm === 'function') ? this.chart.dominantBpm() : 0;
+        this._cRefBpm = Math.max(1, Number.isFinite(b) && b > 0 ? b : 120);
+      }
+      const secAhead = this.chart.tickToSeconds(y) - this._playSec;
+      // seconds → ticks at the constant reference BPM (TICKS_PER_BEAT ticks/beat)
+      return secAhead * TICKS_PER_BEAT * this._cRefBpm / 60;
+    }
     if (this._playDist == null) {
       this._playDist = this.chart.scrollDistanceTo(this.playTick);
     }
@@ -387,6 +411,9 @@ export class GameView {
     const VT    = this.VISIBLE_TICKS;
     // Reset the per-frame Chart Velocity playhead-distance cache.
     this._playDist = null;
+    // Reset the per-frame C-Mode caches (playhead seconds + reference BPM).
+    this._playSec  = null;
+    this._cRefBpm  = null;
     // High-quality flag: glow/shadow enabled when true (set via Preferences)
     const hq = (typeof highQualityRendering === 'undefined' || highQualityRendering)
                && p.projMode !== 'ortho';

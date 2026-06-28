@@ -131,6 +131,7 @@ export const I18N = {
     'preview.loop':       'Loop',
     'preview.metronome':  'Metronome',
     'preview.mods':       'Mods',
+    'preview.scroll':     'Scroll',
     'preview.sudden':     'Sudden+',
     'preview.hidden':     'Hidden+',
     'preview.multiChart': 'Multi Chart',
@@ -407,6 +408,7 @@ export const I18N = {
     'preview.loop':       'Bucle',
     'preview.metronome':  'Metrónomo',
     'preview.mods':       'Mods',
+    'preview.scroll':     'Scroll',
     'preview.sudden':     'Sudden+',
     'preview.hidden':     'Hidden+',
     'preview.multiChart': 'Multi-gráfico',
@@ -578,7 +580,7 @@ export const I18N = {
 
     'preview.projection': 'Projection', 'preview.perspective': 'Perspective',
     'preview.hispeed': 'Vitesse', 'preview.btWidth': 'Largeur BT',
-    'preview.rate': 'Cadence', 'preview.judgeY': 'Ligne Y', 'preview.loop': 'Boucle', 'preview.metronome': 'Métronome', 'preview.mods': 'Mods', 'preview.sudden': 'Sudden+', 'preview.hidden': 'Hidden+', 'preview.multiChart': 'Multi-graphique', 'preview.more': 'Plus',
+    'preview.rate': 'Cadence', 'preview.judgeY': 'Ligne Y', 'preview.loop': 'Boucle', 'preview.metronome': 'Métronome', 'preview.scroll': 'Défilement', 'preview.mods': 'Mods', 'preview.sudden': 'Sudden+', 'preview.hidden': 'Hidden+', 'preview.multiChart': 'Multi-graphique', 'preview.more': 'Plus',
     'preview.ortho': 'Ortho', 'preview.sdvx': 'SDVX', 'preview.hybrid': 'Hybride',
 
     'tool.desc.bpm-sync':       'Calcule les temps en ms et en ticks pour tout BPM et subdivision. Utile pour vérifier la synchro audio.',
@@ -741,7 +743,7 @@ export const I18N = {
 
     'preview.projection': '投影', 'preview.perspective': '遠近',
     'preview.hispeed': 'ハイスピード', 'preview.btWidth': 'BT 幅',
-    'preview.rate': '再生速度', 'preview.judgeY': '判定Y', 'preview.loop': 'ループ', 'preview.metronome': 'メトロノーム', 'preview.mods': 'モッド', 'preview.sudden': 'サドン+', 'preview.hidden': 'ヒドゥン+', 'preview.multiChart': 'マルチ譜面', 'preview.more': '詳細',
+    'preview.rate': '再生速度', 'preview.judgeY': '判定Y', 'preview.loop': 'ループ', 'preview.metronome': 'メトロノーム', 'preview.scroll': 'スクロール', 'preview.mods': 'モッド', 'preview.sudden': 'サドン+', 'preview.hidden': 'ヒドゥン+', 'preview.multiChart': 'マルチ譜面', 'preview.more': '詳細',
     'preview.ortho': '正射', 'preview.sdvx': 'SDVX', 'preview.hybrid': 'ハイブリッド',
 
     'tool.desc.bpm-sync':       '任意のBPMと細分でのノートタイミング（ms・tick）を計算します。オーディオ同期の確認や配置計画に便利。',
@@ -904,7 +906,7 @@ export const I18N = {
 
     'preview.projection': '投影', 'preview.perspective': '透视',
     'preview.hispeed': '速度', 'preview.btWidth': 'BT 宽度',
-    'preview.rate': '倍速', 'preview.judgeY': '判定线Y', 'preview.loop': '循环', 'preview.metronome': '节拍器', 'preview.mods': '修改器', 'preview.sudden': '顶部遮罩', 'preview.hidden': '底部遮罩', 'preview.multiChart': '多谱面', 'preview.more': '更多',
+    'preview.rate': '倍速', 'preview.judgeY': '判定线Y', 'preview.loop': '循环', 'preview.metronome': '节拍器', 'preview.scroll': '滚动', 'preview.mods': '修改器', 'preview.sudden': '顶部遮罩', 'preview.hidden': '底部遮罩', 'preview.multiChart': '多谱面', 'preview.more': '更多',
     'preview.ortho': '正交', 'preview.sdvx': 'SDVX', 'preview.hybrid': '混合',
 
     'tool.desc.bpm-sync':       '计算任意 BPM 和细分下的音符时值（ms 和 tick）。用于验证音频同步或规划精确放置。',
