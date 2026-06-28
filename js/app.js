@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.54';
+const APP_VERSION = '0.0.55';
 const CHANGELOG = [
+  {
+    version: '0.0.55',
+    title: 'C-Mode — constant scroll speed (read soflan by eye)',
+    entries: [
+      ['add', '<strong>Scroll mode (M / C).</strong> A new <strong>Scroll</strong> toggle next to <em>HiSpeed</em> in the preview panel. <strong>M-mode</strong> (default) is the arcade behaviour — scroll speed follows the BPM, so faster sections move faster. <strong>C-mode</strong> moves notes at a <strong>constant real-time speed regardless of BPM changes / soflan</strong>, locked to the chart\'s dominant tempo (shown as <code>@bpm</code>) — a readability aid for tempo-gimmick charts.'],
+      ['add', '<strong>Both render paths, zero data changes.</strong> C-mode is applied at a single chokepoint (<code>GameView._effDt</code>), so the <strong>2D overlay and the WebGL lane</strong> both pick it up, and it works in single <em>and</em> multi-chart preview. The chart is never mutated — it\'s purely how the preview reads. Persists via <strong>Save Config</strong>.'],
+      ['add', 'Backed by a DOM-free, unit-tested source of truth in <code>chart.js</code> — <code>tickToSeconds()</code> (BPM-integrated real time) and <code>dominantBpm()</code> (the longest-playing tempo, used as the C-mode reference).'],
+    ],
+  },
   {
     version: '0.0.54',
     title: 'Preview Gameplay MODs — Mirror / Random / S-Random',
@@ -2103,6 +2112,41 @@ function _updateModHud() {
   if (rr) rr.style.opacity = (previewMod === 'random' || previewMod === 'sran') ? '1' : '0.4';
 }
 
+// ── Preview Scroll Mode (M-mode / C-mode) ──────────────────────────────────────
+// Render-only: 'mmode' = BPM-relative scroll (default), 'cmode' = constant
+// real-time scroll locked to the chart's dominant BPM. Never mutates chart data.
+let previewScrollMode = 'mmode';
+
+// Push the active scroll mode onto every live GameView (main + multi-views),
+// refresh the M/C button HUD + the C-mode reference-BPM label, and redraw paused.
+function applyScrollMode(mode) {
+  if (mode === 'mmode' || mode === 'cmode') previewScrollMode = mode;
+  const push = (gv) => { if (gv) gv.scrollMode = previewScrollMode; };
+  push(gameView);
+  if (typeof _multiViews !== 'undefined' && Array.isArray(_multiViews)) {
+    for (const mv of _multiViews) push(mv.gv);
+  }
+  _updateScrollHud();
+  if (gameView && !playing) gameView.draw();
+}
+
+function _updateScrollHud() {
+  const mBtn = document.getElementById('pvc-scroll-m');
+  const cBtn = document.getElementById('pvc-scroll-c');
+  if (mBtn) mBtn.classList.toggle('active', previewScrollMode === 'mmode');
+  if (cBtn) cBtn.classList.toggle('active', previewScrollMode === 'cmode');
+  const lbl = document.getElementById('pvc-scroll-label');
+  if (lbl) {
+    if (previewScrollMode === 'cmode' && chart && typeof chart.dominantBpm === 'function') {
+      lbl.textContent = '@' + Math.round(chart.dominantBpm());
+      lbl.style.color = '#ffcc44';
+    } else {
+      lbl.textContent = '';
+      lbl.style.color = '';
+    }
+  }
+}
+
 function _seekbarTickFromEvent(e) {
   const track = document.getElementById('game-seekbar-track');
   if (!track) return null;
@@ -2610,6 +2654,7 @@ function _multiRebuild() {
     gv.interpMode     = gvRef ? gvRef.interpMode     : 'standard';
     gv._previewMod     = gvRef ? gvRef._previewMod     : previewMod;
     gv._previewModSeed = gvRef ? gvRef._previewModSeed : previewModSeed;
+    gv.scrollMode      = gvRef ? gvRef.scrollMode      : previewScrollMode;
     gv.playTick       = renderer.playTick;
 
     const mv = { wrap, canvasWrap, canvas, gv, tabIdx, mirrored: false, tickOffset: 0, hsSlider, hsVal };
@@ -2693,6 +2738,7 @@ function _multiSyncSettings() {
     mv.gv.interpMode     = gameView.interpMode;
     mv.gv._previewMod     = gameView._previewMod;
     mv.gv._previewModSeed = gameView._previewModSeed;
+    mv.gv.scrollMode      = gameView.scrollMode;
   }
 }
 
@@ -9453,6 +9499,15 @@ function _initProjectionControls() {
     applyPreviewMod(previewMod, previewModSeed);   // sync buttons + gameView to current state
   }
 
+  // Preview Scroll Mode (M-mode / C-mode) — render-only constant-scroll readability aid.
+  const scrollMBtn = document.getElementById('pvc-scroll-m');
+  if (scrollMBtn && !scrollMBtn._wired) {
+    scrollMBtn._wired = true;
+    scrollMBtn.addEventListener('click', () => applyScrollMode('mmode'));
+    document.getElementById('pvc-scroll-c')?.addEventListener('click', () => applyScrollMode('cmode'));
+    applyScrollMode(previewScrollMode);   // sync buttons + gameView to current state
+  }
+
   // Judge Y slider
   const jySl  = document.getElementById('pvc-judge-y');
   const jyLbl = document.getElementById('pvc-judge-y-label');
@@ -9583,6 +9638,8 @@ function _initProjectionControls() {
     // Preview gameplay MODs (render-only)
     prefs.previewMod       = previewMod;
     prefs.previewModSeed   = previewModSeed;
+    // Preview scroll mode (render-only constant-scroll readability aid)
+    prefs.previewScrollMode = previewScrollMode;
     // Persist
     try { localStorage.setItem('vibe-editr-prefs', JSON.stringify(prefs)); } catch(_) {}
     // Show "Saved!" flash
@@ -9655,6 +9712,8 @@ function _initProjectionControls() {
   // Restore preview gameplay MOD (render-only; never mutates chart data)
   if (prefs.previewModSeed   != null) previewModSeed   = prefs.previewModSeed | 0;
   if (prefs.previewMod       != null) applyPreviewMod(prefs.previewMod, previewModSeed);
+  // Restore preview scroll mode (render-only constant-scroll readability aid)
+  if (prefs.previewScrollMode != null) applyScrollMode(prefs.previewScrollMode);
 
   // Set default projection to SDVX on load (only if no saved proj mode)
   if (!prefs.projMode) document.querySelector('.pvc-proj-btn[data-proj="sdvx"]')?.click();

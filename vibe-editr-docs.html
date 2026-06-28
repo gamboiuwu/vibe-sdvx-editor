@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.54 · 2026</span>
+  <span class="version">v0.0.55 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.55</span>C-Mode &mdash; Constant Scroll Speed</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Scroll mode (M / C).</strong> A new <strong>Scroll</strong> toggle next to <em>HiSpeed</em> in the preview panel. <strong>M-mode</strong> (default) is the arcade behaviour &mdash; scroll speed follows the BPM, so faster sections move faster. <strong>C-mode</strong> moves notes at a <strong>constant real-time speed regardless of BPM changes / soflan</strong>, locked to the chart's dominant tempo (shown as <code>@bpm</code>) &mdash; a readability aid for tempo-gimmick charts.</li>
+    <li><span class="tag add">add</span><strong>Both render paths, zero data changes.</strong> C-mode is applied at a single chokepoint (<code>GameView._effDt</code>), so the <strong>2D overlay and the WebGL lane</strong> both pick it up, and it works in single <em>and</em> multi-chart preview. The chart is never mutated &mdash; it is purely how the preview reads. Persists via <strong>Save Config</strong>.</li>
+    <li><span class="tag add">add</span>Backed by a DOM-free, unit-tested source of truth in <code>chart.js</code> &mdash; <code>tickToSeconds()</code> (BPM-integrated real time) and <code>dominantBpm()</code> (the longest-playing tempo, used as the C-mode reference).</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.54</span>Preview Gameplay MODs &mdash; Mirror / Random / S-Random</h4>

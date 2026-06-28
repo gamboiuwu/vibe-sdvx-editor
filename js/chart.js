@@ -770,6 +770,55 @@ export class ChartData {
     return bpm;
   }
 
+  // ── Tick → real-time (seconds) ─────────────────────────────────────────────
+  // Integrates bpmEvents to return the elapsed musical time, in seconds, from
+  // tick 0 to `tick` (BPM-only — stops and scroll-speed events are NOT applied,
+  // matching the constant-scroll C-Mode use below). DOM-free single source of
+  // truth used by the Game-Preview C-Mode (constant scroll). Mirrors the audio
+  // path's tickToSeconds() in app.js but is bound to this chart so it can be
+  // unit-tested and reused without the global `chart`.
+  tickToSeconds(tick) {
+    const evs = (Array.isArray(this.bpmEvents) && this.bpmEvents.length)
+              ? this.bpmEvents : [{ y: 0, bpm: 120 }];
+    let seconds  = 0;
+    let prevTick = 0;
+    let prevBpm  = Math.max(1, evs[0]?.bpm || 120);
+    for (const ev of evs) {
+      if (ev.y >= tick) break;
+      seconds  += (ev.y - prevTick) / TICKS_PER_BEAT * (60 / prevBpm);
+      prevTick  = ev.y;
+      prevBpm   = Math.max(1, ev.bpm || 120);
+    }
+    seconds += (tick - prevTick) / TICKS_PER_BEAT * (60 / prevBpm);
+    return seconds;
+  }
+
+  // Signed real-time delta (seconds) between two ticks (b - a).
+  secondsBetween(a, b) { return this.tickToSeconds(b) - this.tickToSeconds(a); }
+
+  // ── Dominant BPM ───────────────────────────────────────────────────────────
+  // Returns the tempo (BPM) that plays for the greatest total time across the
+  // whole chart — the natural reference for C-Mode so the bulk of a soflan
+  // chart scrolls at its "main" speed. With a single BPM this is just that BPM.
+  dominantBpm() {
+    const evs = (Array.isArray(this.bpmEvents) && this.bpmEvents.length)
+              ? [...this.bpmEvents].sort((p, q) => p.y - q.y) : [{ y: 0, bpm: 120 }];
+    const end = Math.max(this.totalTicks?.() || 0, evs[evs.length - 1].y + TICKS_PER_BEAT);
+    const dur = new Map();   // bpm → total ticks at that bpm
+    for (let i = 0; i < evs.length; i++) {
+      const a = evs[i].y;
+      const b = (i + 1 < evs.length) ? evs[i + 1].y : end;
+      const span = Math.max(0, b - a);
+      const bpm  = Math.max(1, evs[i].bpm || 120);
+      dur.set(bpm, (dur.get(bpm) || 0) + span);
+    }
+    let best = evs[0].bpm || 120, bestDur = -1;
+    for (const [bpm, d] of dur) {
+      if (d > bestDur) { bestDur = d; best = bpm; }
+    }
+    return Math.max(1, best);
+  }
+
   addBtNote(laneIdx, y, len = 0) {
     const arr = this.bt[laneIdx];
     this._removeOverlap(arr, y, len);
