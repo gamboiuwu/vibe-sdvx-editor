@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.55 · 2026</span>
+  <span class="version">v0.0.56 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.56</span>Reading Window &mdash; the &ldquo;green number&rdquo; reaction readout</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>React readout.</strong> A new <strong>React</strong> value next to <em>Scroll</em> in the preview panel shows the on-screen <strong>reading window in milliseconds</strong> &mdash; the rhythm-game &ldquo;green number&rdquo;: how long a note is visible from spawn to the judgment line for the current <em>HiSpeed + BPM + scroll mode</em>. Lower = faster / harder to read.</li>
+    <li><span class="tag add">add</span><strong>Live, and colour-coded.</strong> In <strong>M-mode</strong> it updates in real time and tracks soflan exactly as the on-screen speed changes; in <strong>C-mode</strong> it stays constant (locked to the reference tempo). It turns <span style="color:#66dd88">green</span> for a comfortable window, <span style="color:#ffcc44">amber</span> when fast (&lt;550&nbsp;ms), and <span style="color:#ff6666">red</span> when very fast (&lt;300&nbsp;ms).</li>
+    <li><span class="tag add">add</span>Backed by a DOM-free, unit-tested source of truth in <code>chart.js</code> &mdash; <code>readingWindowMs()</code> &mdash; reusing the v0.0.55 <code>dominantBpm()</code> and the existing <code>getBpmAt()</code>. Render-only; never touches chart data.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.55</span>C-Mode &mdash; Constant Scroll Speed</h4>
