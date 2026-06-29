@@ -819,6 +819,32 @@ export class ChartData {
     return Math.max(1, best);
   }
 
+  // ── Reading window ("green number") ────────────────────────────────────────
+  // Returns the on-screen reading time, in MILLISECONDS, for a note crossing the
+  // full visible field — the rhythm-game "green number" (IIDX) / reaction window.
+  // `visibleTicks` is the lane height in ticks (GameView.VISIBLE_TICKS, already
+  // folded in HiSpeed). A note spawns at the top of the lane (effective distance
+  // = visibleTicks) and is judged at distance 0, so the reading window is exactly
+  // the real time the playhead takes to advance that many ticks:
+  //   beats-on-screen × ms-per-beat = (visibleTicks / TICKS_PER_BEAT) × 60000/bpm.
+  // In C-Mode the bpm is the constant reference tempo, so the window is fixed
+  // regardless of soflan; in M-Mode it is the local BPM at the playhead, so the
+  // readout tracks the on-screen speed exactly as it changes through tempo
+  // gimmicks. DOM-free single source of truth, unit-tested, never mutates data.
+  // (Velocity / scroll-speed events distort M-Mode on-screen speed; the green
+  //  number is BPM-based by convention, matching the no-velocity common case.)
+  readingWindowMs(visibleTicks, playTick = 0, scrollMode = 'mmode', refBpm = null) {
+    const vt = Math.max(1, Number(visibleTicks) || 0);
+    let bpm;
+    if (scrollMode === 'cmode') {
+      bpm = (Number.isFinite(refBpm) && refBpm > 0) ? refBpm : this.dominantBpm();
+    } else {
+      bpm = this.getBpmAt(Math.floor(Number(playTick) || 0));
+    }
+    bpm = Math.max(1, Number(bpm) || 120);
+    return (vt / TICKS_PER_BEAT) * (60000 / bpm);
+  }
+
   addBtNote(laneIdx, y, len = 0) {
     const arr = this.bt[laneIdx];
     this._removeOverlap(arr, y, len);

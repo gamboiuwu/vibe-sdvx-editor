@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.55';
+const APP_VERSION = '0.0.56';
 const CHANGELOG = [
+  {
+    version: '0.0.56',
+    title: 'Reading Window — the "green number" reaction readout',
+    entries: [
+      ['add', '<strong>React readout.</strong> A new <strong>React</strong> value next to <em>Scroll</em> in the preview panel shows the on-screen <strong>reading window in milliseconds</strong> — the rhythm-game "green number": how long a note is visible from spawn to the judgment line for the current <em>HiSpeed + BPM + scroll mode</em>. Lower = faster / harder to read.'],
+      ['add', '<strong>Live, and colour-coded.</strong> In <strong>M-mode</strong> it updates in real time and tracks soflan exactly as the on-screen speed changes; in <strong>C-mode</strong> it stays constant (locked to the reference tempo). It turns <span style="color:#66dd88">green</span> for a comfortable window, <span style="color:#ffcc44">amber</span> when fast (&lt;550&nbsp;ms), and <span style="color:#ff6666">red</span> when very fast (&lt;300&nbsp;ms).'],
+      ['add', 'Backed by a DOM-free, unit-tested source of truth in <code>chart.js</code> — <code>readingWindowMs()</code> — reusing the v0.0.55 <code>dominantBpm()</code> and the existing <code>getBpmAt()</code>. Render-only; never touches chart data.'],
+    ],
+  },
   {
     version: '0.0.55',
     title: 'C-Mode — constant scroll speed (read soflan by eye)',
@@ -2005,6 +2014,7 @@ export function updateSeekbar(tick) {
   label.textContent = `${_fmtTime(curSec)} / ${_fmtTime(totSec)}`;
 
   _updateLoopMarkers();
+  if (typeof _updateReactHud === 'function') _updateReactHud();
 }
 
 // Position the A/B markers + shaded region on the game seekbar to match loopA/B.
@@ -2127,7 +2137,30 @@ function applyScrollMode(mode) {
     for (const mv of _multiViews) push(mv.gv);
   }
   _updateScrollHud();
+  _updateReactHud();
   if (gameView && !playing) gameView.draw();
+}
+
+// ── Reading window ("green number") readout ────────────────────────────────────
+// Surfaces the on-screen reading time in milliseconds for the active view's
+// HiSpeed + scroll mode + the BPM at the playhead. Updated live from the play
+// loop (via updateSeekbar) so it tracks soflan in M-mode and stays fixed in
+// C-mode. Render-only; reads chart.readingWindowMs as the single source of truth.
+function _updateReactHud() {
+  const lbl = document.getElementById('pvc-react-label');
+  if (!lbl) return;
+  if (!chart || typeof chart.readingWindowMs !== 'function' || !gameView) {
+    lbl.textContent = '–';
+    lbl.style.color = '';
+    return;
+  }
+  const vt   = gameView.VISIBLE_TICKS;
+  const tick = (renderer ? renderer.playTick : 0) || 0;
+  const ms   = chart.readingWindowMs(vt, tick, gameView.scrollMode || 'mmode');
+  if (!Number.isFinite(ms) || ms <= 0) { lbl.textContent = '–'; return; }
+  lbl.textContent = Math.round(ms) + 'ms';
+  // Colour cue: green = comfortable reading window, amber = fast, red = very fast.
+  lbl.style.color = ms < 300 ? '#ff6666' : (ms < 550 ? '#ffcc44' : '#66dd88');
 }
 
 function _updateScrollHud() {
@@ -3036,6 +3069,7 @@ window.addEventListener('DOMContentLoaded', () => {
       if (pvSl)  pvSl.value = hs;
       if (pvLbl) pvLbl.textContent = hs.toFixed(1) + '×';
       if (gameView) { gameView.hispeed = hs; if (!playing) gameView.draw(); }
+      _updateReactHud();
     });
   }
   if (gameView) gameView.hispeed = chartSpeed;
@@ -9381,6 +9415,7 @@ function _initProjectionControls() {
     if (topLbl) topLbl.textContent = hs.toFixed(2) + '×';
     // Apply exclusively to the game view's visual rendering pipeline
     if (gameView) { gameView.hispeed = hs; gameView.draw(); }
+    _updateReactHud();
   });
 
   // BT Width slider (wired here so it's near the other preview controls)
