@@ -1,10 +1,21 @@
-import { ChartData, TICKS_PER_BEAT, TICKS_PER_MEASURE, BEATS_PER_MEASURE, previewModMaps } from './chart.js';
+import { ChartData, TICKS_PER_BEAT, TICKS_PER_MEASURE, BEATS_PER_MEASURE, previewModMaps, reactionWindowMs } from './chart.js';
 import { GLLaneRenderer } from './gl-lane.js';
 import { laserOpacity, laserColors } from './renderer.js';
 
 // ── SDVX Game Preview ──────────────────────────────────────────────────────────
 // Tick interval for hold scoring samples
 export const HOLD_SAMPLE = TICKS_PER_BEAT / 8;
+
+// Comfort colour for the reaction-window ("green number") readout: green when
+// the reading window is roomy, amber when tight, red when very fast. The bands
+// (~roughly the IIDX "good green number" range) are render-only cosmetics.
+export function reactionColor(ms) {
+  if (!(ms > 0)) return '#8899cc';
+  if (ms >= 500) return '#55dd66';   // roomy
+  if (ms >= 350) return '#bfe24a';   // comfortable
+  if (ms >= 250) return '#ffcc44';   // tight
+  return '#ff6655';                  // very fast
+}
 
 export class GameView {
   constructor(canvas) {
@@ -69,6 +80,14 @@ export class GameView {
     // Metronome visual beat-flash intensity (0..1), set by the play loop each
     // frame from beatFlashIntensity(); draw() glows the judgment line by it.
     this.beatFlash = 0;
+
+    // Reaction-window ("green number") HUD readout. When showReaction is on,
+    // _drawHUD paints the real-time reading window (ms) for the current HiSpeed,
+    // BPM and scroll mode in the top-left corner, colour-coded by comfort.
+    // previewRate mirrors app.js's Practice playback rate so a slowed drill's
+    // longer on-screen time is reflected. Render-only; no chart data involved.
+    this.showReaction = false;
+    this.previewRate  = 1.0;
 
     // Preview gameplay MOD (non-destructive). 'off' | 'mirror' | 'random' | 'sran'.
     // Remaps the lanes/lasers the renderer READS each frame — chart data is never
@@ -1613,6 +1632,40 @@ export class GameView {
       ctx.font      = 'bold 11px monospace';
       ctx.fillText(`${diff.toUpperCase()} Lv.${level}`, 14, 54);
     }
+
+    // ── Reaction window / "green number" (top-left, below difficulty) ──────
+    // The real-time reading window for the current HiSpeed + BPM + scroll mode,
+    // colour-coded by comfort (green = roomy, amber = tight, red = very fast).
+    if (this.showReaction) {
+      const ms  = this.reactionMs();
+      const rc  = reactionColor(ms);
+      const y0  = diff ? 72 : 54;
+      ctx.textAlign = 'left';
+      ctx.font      = 'bold 12px monospace';
+      ctx.fillStyle = rc;
+      ctx.shadowColor = rc + '66'; ctx.shadowBlur = 6;
+      ctx.fillText(`◷ ${Math.round(ms)} ms`, 14, y0);
+      ctx.shadowBlur = 0;
+    }
+  }
+
+  // Reference BPM the lane currently scrolls at: the constant dominant tempo in
+  // C-Mode, the local BPM at the playhead in M-Mode. Drives the green number.
+  _reactionRefBpm() {
+    if (!this.chart) return 120;
+    if (this.scrollMode === 'cmode' && typeof this.chart.dominantBpm === 'function') {
+      return Math.max(1, this.chart.dominantBpm());
+    }
+    if (typeof this.chart.getBpmAt === 'function') {
+      return Math.max(1, this.chart.getBpmAt(Math.floor(this.playTick)));
+    }
+    return 120;
+  }
+
+  // Real-time reading window (ms) for the current preview state — the value the
+  // HUD and the side-panel readout both display. Pure given the GameView state.
+  reactionMs() {
+    return reactionWindowMs(this.VISIBLE_TICKS, this._reactionRefBpm(), this.previewRate);
   }
 
   /* ── Annotation overlay: warning bands for tool-flagged issues ─────────────

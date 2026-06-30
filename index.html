@@ -538,6 +538,11 @@
       <button id="pvc-scroll-c" class="pvc-loop-btn toggle" title="C-mode: constant scroll speed, locked to the chart's dominant BPM — neutralises soflan for readability. Render-only.">C</button>
       <span id="pvc-scroll-label" class="pvc-val" title="C-mode reference tempo (the chart's dominant BPM)"></span>
     </div>
+    <div class="pvc-section" id="pvc-reaction-section">
+      <span class="pvc-label" data-i18n="preview.reaction" title="Reaction window (the rhythm-game &quot;green number&quot;): the real-time reading time a note is visible before the judgment line, computed from HiSpeed, BPM, the active scroll mode and the Practice rate. Higher = more reaction time. Colour-coded green (roomy) → amber (tight) → red (very fast). The toggle also shows it on the Game-Preview HUD. Render-only — never changes the chart.">Reaction</span>
+      <button id="pvc-reaction-toggle" class="pvc-loop-btn toggle" title="Show the reaction-window (&quot;green number&quot;) readout on the Game-Preview HUD. The side-panel value updates live regardless.">&#9719; Reaction Off</button>
+      <span id="pvc-reaction-label" class="pvc-val" title="Current reading window in milliseconds for this HiSpeed + BPM + scroll mode + rate">&#8211;&#8211; ms</span>
+    </div>
     <div class="pvc-section">
       <button id="pvc-edit-mode" title="Toggle click-to-edit on the preview lane" style="background:#1e2a1e;color:#88dd88;border:1px solid #3a6a3a;border-radius:5px;padding:4px 8px;font-size:10px;cursor:pointer;letter-spacing:0.04em">&#9998; Edit Mode: Off</button>
     </div>

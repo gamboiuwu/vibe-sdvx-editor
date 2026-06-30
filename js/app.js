@@ -1,6 +1,6 @@
 import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, beatGridCrossings, countInGrid, beatFlashIntensity } from './chart.js';
 import { Renderer, C, laserColors, laserOpacity, laserWideMode, LASER_PRESETS, applyLaserPreset, setLaserColorCustom, buildLaneHeader, setLaserOpacity, setLaserWideMode } from './renderer.js';
-import { GameView } from './game.js';
+import { GameView, reactionColor } from './game.js';
 import { exportKsh, importKsh, downloadText } from './ksh.js';
 import { exportKson, importKson, exportKsonPack, importKsonPack } from './kson.js';
 import { EFFECT_DEFS, makeEffectInstance } from './effects.js';
@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.55';
+const APP_VERSION = '0.0.56';
 const CHANGELOG = [
+  {
+    version: '0.0.56',
+    title: 'Reaction Readout — the rhythm-game "green number"',
+    entries: [
+      ['add', '<strong>Reaction-window readout.</strong> A new <strong>Reaction</strong> row next to <em>Scroll</em> in the preview panel shows the <strong>real-time reading window</strong> — how long a note is visible before the judgment line — for your current <strong>HiSpeed, BPM, scroll mode and Practice rate</strong>, like a rhythm game\'s "green number". Higher = more reaction time; the value updates <strong>live</strong> as you scroll a soflan chart or change speed.'],
+      ['add', '<strong>Colour-coded &amp; on the HUD.</strong> The readout is tinted green (roomy) → amber (tight) → red (very fast) so you can judge readability at a glance. Toggle it on to also overlay the number on the <strong>Game-Preview HUD</strong> (top-left, under the difficulty). It honours <strong>C-Mode</strong> (locks to the constant dominant BPM) and <strong>M-Mode</strong> (tracks the live BPM), works in single <em>and</em> multi-chart preview, and persists via <strong>Save Config</strong>.'],
+      ['add', 'Backed by a DOM-free, unit-tested source of truth in <code>chart.js</code> — <code>reactionWindowMs()</code> — joining v0.0.55\'s <code>tickToSeconds()</code> / <code>dominantBpm()</code>. Render-only; the chart is never touched.'],
+    ],
+  },
   {
     version: '0.0.55',
     title: 'C-Mode — constant scroll speed (read soflan by eye)',
@@ -1427,6 +1436,9 @@ function playFrame(now) {
       ? beatFlashIntensity((now - _beatFlashAtMs) / 1000, BEAT_FLASH_DECAY)
         * (_beatFlashAccent ? 1 : BEAT_FLASH_WEAK)
       : 0;
+    // Keep the reaction-window HUD/readout in step with the live BPM (M-mode),
+    // playhead and Practice rate while the song plays.
+    if (previewReaction) { gameView.previewRate = playbackRate; _updateReactionHud(); }
     const minInterval = 1000 / (prefs.fpsCap || 60);
     if (!_lastGameFrameTime || now - _lastGameFrameTime >= minInterval) {
       gameView.draw();
@@ -2145,6 +2157,50 @@ function _updateScrollHud() {
       lbl.style.color = '';
     }
   }
+  // The reaction readout depends on the active scroll mode's reference BPM.
+  _updateReactionHud();
+}
+
+// ── Reaction-window / "green number" readout ───────────────────────────────────
+// Render-only readability aid: the real-time reading window (ms) for the current
+// HiSpeed + BPM + scroll mode + Practice rate, shown on the Game-Preview HUD and
+// in the side panel. Backed by reactionWindowMs() in chart.js. Never mutates data.
+let previewReaction = false;
+
+// Toggle the readout on/off across every live GameView (main + multi-views),
+// refresh the button HUD + the live side-panel label, and redraw paused.
+function applyReactionReadout(on) {
+  previewReaction = !!on;
+  const push = (gv) => { if (gv) { gv.showReaction = previewReaction; gv.previewRate = playbackRate; } };
+  push(gameView);
+  if (typeof _multiViews !== 'undefined' && Array.isArray(_multiViews)) {
+    for (const mv of _multiViews) push(mv.gv);
+  }
+  _updateReactionHud();
+  if (gameView && !playing) gameView.draw();
+}
+
+// Refresh the toggle button's active state and the live "NNN ms" side-panel
+// label (colour-coded by comfort) from the MAIN view's current reaction window.
+// Called every play frame so the value tracks BPM / playhead / rate changes.
+function _updateReactionHud() {
+  const btn = document.getElementById('pvc-reaction-toggle');
+  if (btn) {
+    btn.classList.toggle('active', previewReaction);
+    btn.textContent = previewReaction ? '◷ Reaction On' : '◷ Reaction Off';
+  }
+  const lbl = document.getElementById('pvc-reaction-label');
+  if (lbl) {
+    if (gameView && gameView.chart && typeof gameView.reactionMs === 'function') {
+      gameView.previewRate = playbackRate;
+      const ms = gameView.reactionMs();
+      lbl.textContent = Math.round(ms) + ' ms';
+      lbl.style.color = reactionColor(ms);
+    } else {
+      lbl.textContent = '–– ms';
+      lbl.style.color = '';
+    }
+  }
 }
 
 function _seekbarTickFromEvent(e) {
@@ -2655,6 +2711,8 @@ function _multiRebuild() {
     gv._previewMod     = gvRef ? gvRef._previewMod     : previewMod;
     gv._previewModSeed = gvRef ? gvRef._previewModSeed : previewModSeed;
     gv.scrollMode      = gvRef ? gvRef.scrollMode      : previewScrollMode;
+    gv.showReaction    = gvRef ? gvRef.showReaction    : previewReaction;
+    gv.previewRate     = playbackRate;
     gv.playTick       = renderer.playTick;
 
     const mv = { wrap, canvasWrap, canvas, gv, tabIdx, mirrored: false, tickOffset: 0, hsSlider, hsVal };
@@ -2739,6 +2797,8 @@ function _multiSyncSettings() {
     mv.gv._previewMod     = gameView._previewMod;
     mv.gv._previewModSeed = gameView._previewModSeed;
     mv.gv.scrollMode      = gameView.scrollMode;
+    mv.gv.showReaction    = gameView.showReaction;
+    mv.gv.previewRate     = playbackRate;
   }
 }
 
@@ -9381,6 +9441,7 @@ function _initProjectionControls() {
     if (topLbl) topLbl.textContent = hs.toFixed(2) + '×';
     // Apply exclusively to the game view's visual rendering pipeline
     if (gameView) { gameView.hispeed = hs; gameView.draw(); }
+    _updateReactionHud();   // reading window shrinks/grows with HiSpeed
   });
 
   // BT Width slider (wired here so it's near the other preview controls)
@@ -9411,6 +9472,8 @@ function _initProjectionControls() {
       rateLbl.textContent = newRate.toFixed(2) + '×';
       rateLbl.style.color = Math.abs(newRate - 1.0) > 0.001 ? '#ffcc44' : '';
     }
+    if (gameView) gameView.previewRate = newRate;
+    _updateReactionHud();   // a slower drill lengthens the on-screen reading window
     // Audio pitch/speed is intentionally NOT changed — only chart tick advancement is scaled
   });
 
@@ -9506,6 +9569,14 @@ function _initProjectionControls() {
     scrollMBtn.addEventListener('click', () => applyScrollMode('mmode'));
     document.getElementById('pvc-scroll-c')?.addEventListener('click', () => applyScrollMode('cmode'));
     applyScrollMode(previewScrollMode);   // sync buttons + gameView to current state
+  }
+
+  // Reaction-window ("green number") readout toggle — render-only readability aid.
+  const reactBtn = document.getElementById('pvc-reaction-toggle');
+  if (reactBtn && !reactBtn._wired) {
+    reactBtn._wired = true;
+    reactBtn.addEventListener('click', () => applyReactionReadout(!previewReaction));
+    applyReactionReadout(previewReaction);   // sync button + label + gameView
   }
 
   // Judge Y slider
@@ -9640,6 +9711,8 @@ function _initProjectionControls() {
     prefs.previewModSeed   = previewModSeed;
     // Preview scroll mode (render-only constant-scroll readability aid)
     prefs.previewScrollMode = previewScrollMode;
+    // Reaction-window / "green number" readout (render-only readability aid)
+    prefs.previewReaction  = previewReaction;
     // Persist
     try { localStorage.setItem('vibe-editr-prefs', JSON.stringify(prefs)); } catch(_) {}
     // Show "Saved!" flash
@@ -9714,6 +9787,8 @@ function _initProjectionControls() {
   if (prefs.previewMod       != null) applyPreviewMod(prefs.previewMod, previewModSeed);
   // Restore preview scroll mode (render-only constant-scroll readability aid)
   if (prefs.previewScrollMode != null) applyScrollMode(prefs.previewScrollMode);
+  // Restore reaction-window / "green number" readout (render-only readability aid)
+  if (prefs.previewReaction  != null) applyReactionReadout(prefs.previewReaction);
 
   // Set default projection to SDVX on load (only if no saved proj mode)
   if (!prefs.projMode) document.querySelector('.pvc-proj-btn[data-proj="sdvx"]')?.click();
