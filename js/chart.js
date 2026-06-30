@@ -510,6 +510,27 @@ export function beatFlashIntensity(secondsSinceBeat, decaySec) {
   return u * u;            // ease-out (quadratic) tail
 }
 
+// ── Reaction window (the "green number") ─────────────────────────────────────
+// Pure, DOM-free reading-window calculator for the Game Preview. Returns the
+// real-time duration, in MILLISECONDS, that a note is visible on the runway
+// before it reaches the judgment line — the rhythm-game "green number". A larger
+// value = slower visual scroll = more reaction time. Derived entirely from the
+// preview's existing state with no new chart data:
+//   • visibleTicks — GameView.VISIBLE_TICKS (the lane depth in ticks; this is
+//     TICKS_PER_MEASURE*4 / hispeed, so a higher HiSpeed shrinks it),
+//   • bpm          — the reference tempo the lane scrolls at (in C-Mode the
+//     constant dominant BPM, in M-Mode the BPM at the playhead),
+//   • rate         — the Practice playback rate (0.25–2.0); a slowed drill makes
+//     the note linger longer, so the effective window scales by 1/rate.
+// beats visible = visibleTicks / TICKS_PER_BEAT, seconds/beat = 60/bpm.
+// Single unit-testable source of truth, alongside tickToSeconds / dominantBpm.
+export function reactionWindowMs(visibleTicks, bpm, rate = 1) {
+  const vt = Math.max(0, Number(visibleTicks) || 0);
+  const b  = Math.max(1, Number(bpm)  || 120);
+  const r  = Math.max(0.01, Number(rate) || 1);
+  return (vt / TICKS_PER_BEAT) * (60 / b) / r * 1000;
+}
+
 // ── Preview Gameplay Modifiers (non-destructive MODs) ─────────────────────────
 // Pure, DOM-free lane-remap descriptors for the Game-Preview MOD system — the
 // render-only equivalent of arcade SDVX play options (MIRROR / RANDOM / S-RANDOM).
