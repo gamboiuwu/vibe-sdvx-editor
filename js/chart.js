@@ -819,6 +819,50 @@ export class ChartData {
     return Math.max(1, best);
   }
 
+  // ── Reaction time (green-number readout) ─────────────────────────────────────
+  // Real-time, in milliseconds, that a note spends crossing the visible reading
+  // window from the top of the lane down to the judgment line, for the current
+  // HiSpeed + scroll mode. This is the rhythm-game "green number": in M-mode it
+  // samples the LOCAL tempo/velocity at the playhead (so it changes across a
+  // soflan / BPM gimmick), while in C-mode it is locked to the constant
+  // reference BPM (so it stays flat regardless of BPM changes). DOM-free single
+  // source of truth so it can be unit-tested and reused by the Game-Preview HUD;
+  // reuses tickToSeconds/getBpmAt/getScrollSpeedAt/dominantBpm. Returns 0 for
+  // nonsensical input rather than NaN/Infinity.
+  //   visibleTicks    : GameView.VISIBLE_TICKS (scroll-distance span of the window)
+  //   opts.mode       : 'mmode' (default) | 'cmode'
+  //   opts.playTick   : current playhead tick (M-mode local-tempo sample point)
+  //   opts.refBpm     : C-mode reference BPM (defaults to dominantBpm())
+  //   opts.rate       : practice playback rate (>0; default 1) — slower = more ms
+  //   opts.windowFrac : fraction of the window actually visible (default 1);
+  //                     pass (1 − Sudden+ cover) so the readout reflects the cover
+  reactionTimeMs(visibleTicks, opts = {}) {
+    const VT = Number(visibleTicks);
+    if (!Number.isFinite(VT) || VT <= 0) return 0;
+    const rate = (Number.isFinite(opts.rate) && opts.rate > 0) ? opts.rate : 1;
+    let frac = Number.isFinite(opts.windowFrac) ? opts.windowFrac : 1;
+    frac = Math.max(0, Math.min(1, frac));
+    // seconds per chart tick at a given BPM (TICKS_PER_BEAT ticks per beat)
+    const secPerTick = (bpm) => 60 / (Math.max(1, bpm) * TICKS_PER_BEAT);
+    let sec;
+    if (opts.mode === 'cmode') {
+      const refBpm = (Number.isFinite(opts.refBpm) && opts.refBpm > 0)
+                   ? opts.refBpm : this.dominantBpm();
+      // C-mode maps the window to a constant reference-tick distance, so the
+      // real time is simply VT reference-ticks at refBpm — flat across soflan.
+      sec = VT * frac * secPerTick(refBpm);
+    } else {
+      const pt = Number.isFinite(opts.playTick) ? opts.playTick : 0;
+      // The window spans VT of *scroll distance*; locally that is VT/speed chart
+      // ticks at the playhead, whose real duration is measured at the local BPM.
+      const speed = Math.max(0.01,
+        (typeof this.getScrollSpeedAt === 'function') ? this.getScrollSpeedAt(pt) : 1);
+      const bpm = (typeof this.getBpmAt === 'function') ? this.getBpmAt(pt) : 120;
+      sec = (VT * frac / speed) * secPerTick(bpm);
+    }
+    return sec / rate * 1000;
+  }
+
   addBtNote(laneIdx, y, len = 0) {
     const arr = this.bt[laneIdx];
     this._removeOverlap(arr, y, len);
