@@ -584,6 +584,27 @@ export function previewModMaps(mod, seed = 1) {
   }
 }
 
+// ── Reaction-time window (IIDX-style "green number") ───────────────────────────
+// The real-time reading window, in milliseconds, that a note is visible while it
+// scrolls from spawn to the judgment line — i.e. how long the player has to react.
+// DOM-free single source of truth so it is unit-testable and shared by the
+// Game-Preview readout. Derived purely from the visible span (VISIBLE_TICKS), the
+// governing tempo, and the practice playback rate:
+//   • visibleTicks   the tick span shown ahead of the playhead (HiSpeed-scaled).
+//   • bpm            the tempo that governs scroll speed — the local BPM at the
+//                    playhead in M-Mode, or the chart's constant reference tempo
+//                    (dominantBpm) in C-Mode.
+//   • rate           practice playback rate (>1 speeds the lane up → shorter
+//                    window; <1 slows it down → longer window).
+// laneSeconds = (visibleTicks / TICKS_PER_BEAT beats) × (60 / bpm sec/beat); the
+// wall-clock window is that divided by the playback rate. Lower ms = faster read.
+export function reactionWindowMs(visibleTicks, bpm, rate = 1) {
+  const vt = Number(visibleTicks), b = Number(bpm), r = Number(rate);
+  if (!(vt > 0) || !(b > 0) || !(r > 0)) return 0;
+  const laneSeconds = (vt / TICKS_PER_BEAT) * (60 / b);
+  return (laneSeconds / r) * 1000;
+}
+
 export class ChartData {
   constructor() {
     this.meta = {

@@ -1,4 +1,4 @@
-import { ChartData, TICKS_PER_BEAT, TICKS_PER_MEASURE, BEATS_PER_MEASURE, previewModMaps } from './chart.js';
+import { ChartData, TICKS_PER_BEAT, TICKS_PER_MEASURE, BEATS_PER_MEASURE, previewModMaps, reactionWindowMs } from './chart.js';
 import { GLLaneRenderer } from './gl-lane.js';
 import { laserOpacity, laserColors } from './renderer.js';
 
@@ -128,6 +128,25 @@ export class GameView {
       this._playDist = this.chart.scrollDistanceTo(this.playTick);
     }
     return this.chart.scrollDistanceTo(y) - this._playDist;
+  }
+
+  // ── Reaction-time readout ("green number") ───────────────────────────────────
+  // The wall-clock reading window (ms) for the CURRENT view state: the visible
+  // tick span (VISIBLE_TICKS, already HiSpeed-scaled) governed by the tempo that
+  // actually drives scroll speed — the constant reference (dominantBpm) in C-Mode,
+  // or the local BPM at the playhead in M-Mode — divided by the practice rate.
+  // Reuses the DOM-free reactionWindowMs() engine so it stays testable. Read-only.
+  reactionMs(rate = 1) {
+    if (!this.chart) return 0;
+    let bpm;
+    if (this.scrollMode === 'cmode' && typeof this.chart.dominantBpm === 'function') {
+      bpm = this.chart.dominantBpm();
+    } else if (typeof this.chart.getBpmAt === 'function') {
+      bpm = this.chart.getBpmAt(this.playTick);
+    } else {
+      bpm = this.chart.meta?.bpm ?? 120;
+    }
+    return reactionWindowMs(this.VISIBLE_TICKS, bpm, rate);
   }
 
   resize() {
