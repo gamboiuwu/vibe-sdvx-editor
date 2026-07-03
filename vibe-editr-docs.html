@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.55 · 2026</span>
+  <span class="version">v0.0.56 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.56</span>Reaction-Time Readout &mdash; the &ldquo;Green Number&rdquo;</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Reaction readout.</strong> A new <strong>Reaction</strong> row in the preview panel shows the effective on-screen <strong>reading window in milliseconds</strong> &mdash; like IIDX&rsquo;s green number. It updates live from your <em>HiSpeed</em>, the BPM at the playhead, the <em>Scroll</em> mode, and the practice <em>Rate</em>, so you can dial HiSpeed to hit a target reading window numerically. <strong>Lower&nbsp;ms = faster scroll = harder to read</strong>; the value is colour-coded green &rarr; amber &rarr; red as the window tightens.</li>
+    <li><span class="tag add">add</span><strong>Soflan-aware.</strong> In <strong>M-mode</strong> the number tracks the live BPM as the playhead moves through tempo changes; in <strong>C-mode</strong> it reflects the constant reference tempo. Toggle it On/Off and it persists via <strong>Save Config</strong>.</li>
+    <li><span class="tag add">add</span>Backed by a DOM-free, unit-tested source of truth in <code>chart.js</code> &mdash; <code>reactionWindowMs(visibleTicks,&nbsp;bpm,&nbsp;rate)</code>. Pure render-only HUD; the chart is never touched.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.55</span>C-Mode &mdash; Constant Scroll Speed</h4>
