@@ -1,4 +1,4 @@
-import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, beatGridCrossings, countInGrid, beatFlashIntensity } from './chart.js';
+import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, beatGridCrossings, countInGrid, beatFlashIntensity, reactionTimeMs } from './chart.js';
 import { Renderer, C, laserColors, laserOpacity, laserWideMode, LASER_PRESETS, applyLaserPreset, setLaserColorCustom, buildLaneHeader, setLaserOpacity, setLaserWideMode } from './renderer.js';
 import { GameView } from './game.js';
 import { exportKsh, importKsh, downloadText } from './ksh.js';
@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.55';
+const APP_VERSION = '0.0.56';
 const CHANGELOG = [
+  {
+    version: '0.0.56',
+    title: 'Reaction-Time / “Green Number” Readout',
+    entries: [
+      ['add', '<strong>Reaction-time readout.</strong> A new <strong>React</strong> row in the preview side panel (next to <em>Scroll</em>) shows the effective <strong>on-screen reaction window in milliseconds</strong> — the rhythm-game “green number”. It is the real-world time a note is visible, from the top of the runway to the judgment line, so you can dial a target reading window <em>numerically</em> instead of eyeballing the HiSpeed slider.'],
+      ['add', 'It <strong>reacts to everything that changes scroll speed</strong>: <strong>HiSpeed</strong>, <strong>BPM</strong>, <strong>Scroll mode</strong> and the <strong>Practice Rate</strong>. In <strong>M-mode</strong> it tracks the tempo under the playhead (so it moves live across a soflan); in <strong>C-mode</strong> it stays constant at the reference tempo. The number is colour-coded green→amber→red as the window tightens.'],
+      ['add', 'Backed by a DOM-free, unit-tested single source of truth in <code>chart.js</code> — <code>reactionTimeMs(visibleTicks, bpm)</code> — joining v0.0.55’s <code>tickToSeconds()</code> / <code>dominantBpm()</code>. Purely a readout; the chart is never touched.'],
+    ],
+  },
   {
     version: '0.0.55',
     title: 'C-Mode — constant scroll speed (read soflan by eye)',
@@ -2005,6 +2014,7 @@ export function updateSeekbar(tick) {
   label.textContent = `${_fmtTime(curSec)} / ${_fmtTime(totSec)}`;
 
   _updateLoopMarkers();
+  updateReactionReadout();
 }
 
 // Position the A/B markers + shaded region on the game seekbar to match loopA/B.
@@ -2145,6 +2155,37 @@ function _updateScrollHud() {
       lbl.style.color = '';
     }
   }
+  updateReactionReadout();
+}
+
+// ── Reaction-time / "green number" readout ────────────────────────────────────
+// Surfaces the effective on-screen reaction window (ms) for the current
+// HiSpeed + BPM + scroll mode + practice rate. Render-only; reuses the pure
+// reactionTimeMs() engine in chart.js. Called from _updateScrollHud (mode/config
+// change), the HiSpeed + Rate handlers, and updateSeekbar (so it live-updates
+// every playback frame and on every scrub — in M-mode it then tracks soflan).
+function updateReactionReadout() {
+  const lbl = document.getElementById('pvc-react-label');
+  if (!lbl || !chart) return;
+  // Visible runway span in ticks (VISIBLE_TICKS = TICKS_PER_MEASURE*4 / hispeed).
+  const hs = (gameView && gameView.hispeed) ? gameView.hispeed : (chartSpeed || 1);
+  const visibleTicks = TICKS_PER_MEASURE * 4 / Math.max(0.1, hs);
+  // C-mode scrolls at the fixed reference tempo; M-mode tracks the BPM at the
+  // playhead so the number honestly moves with a soflan.
+  let bpm;
+  if (previewScrollMode === 'cmode' && typeof chart.dominantBpm === 'function') {
+    bpm = chart.dominantBpm();
+  } else {
+    bpm = chart.getBpmAt(Math.round(renderer.playTick)) || 120;
+  }
+  const rate = Math.max(0.05, playbackRate || 1);
+  // A slowed practice rate lengthens the real reaction window (÷ rate).
+  const ms = reactionTimeMs(visibleTicks, bpm) / rate;
+  if (!(ms > 0)) { lbl.textContent = '—'; lbl.style.color = ''; return; }
+  lbl.textContent = Math.round(ms) + ' ms';
+  // Colour like a rhythm-game green number: green when the window is comfortable,
+  // amber as it tightens, red when very fast. Render-only cue.
+  lbl.style.color = ms >= 500 ? '#3fdd6a' : ms >= 300 ? '#ffcc44' : '#ff6a6a';
 }
 
 function _seekbarTickFromEvent(e) {
@@ -3036,6 +3077,7 @@ window.addEventListener('DOMContentLoaded', () => {
       if (pvSl)  pvSl.value = hs;
       if (pvLbl) pvLbl.textContent = hs.toFixed(1) + '×';
       if (gameView) { gameView.hispeed = hs; if (!playing) gameView.draw(); }
+      updateReactionReadout();
     });
   }
   if (gameView) gameView.hispeed = chartSpeed;
@@ -9381,6 +9423,7 @@ function _initProjectionControls() {
     if (topLbl) topLbl.textContent = hs.toFixed(2) + '×';
     // Apply exclusively to the game view's visual rendering pipeline
     if (gameView) { gameView.hispeed = hs; gameView.draw(); }
+    updateReactionReadout();
   });
 
   // BT Width slider (wired here so it's near the other preview controls)
@@ -9411,6 +9454,7 @@ function _initProjectionControls() {
       rateLbl.textContent = newRate.toFixed(2) + '×';
       rateLbl.style.color = Math.abs(newRate - 1.0) > 0.001 ? '#ffcc44' : '';
     }
+    updateReactionReadout();
     // Audio pitch/speed is intentionally NOT changed — only chart tick advancement is scaled
   });
 

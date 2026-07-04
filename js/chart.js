@@ -510,6 +510,25 @@ export function beatFlashIntensity(secondsSinceBeat, decaySec) {
   return u * u;            // ease-out (quadratic) tail
 }
 
+// ── Reaction-time / "green number" readout ────────────────────────────────────
+// Real-world time, in milliseconds, for a note to travel the full visible runway
+// (from the moment it appears at the top to the judgment line). This is the
+// player's reaction window — the rhythm-game "green number" (IIDX) / hi-speed
+// readout. DOM-free single source of truth used by the Game-Preview React panel.
+//
+//   visibleTicks = how many chart ticks span the runway (GameView.VISIBLE_TICKS,
+//                  = TICKS_PER_MEASURE*4 / hispeed). More hispeed → fewer visible
+//                  ticks → shorter reaction window.
+//   bpm          = the tempo governing scroll speed. In M-mode this is the BPM at
+//                  the playhead (soflan-live); in C-mode it is the fixed reference
+//                  BPM (dominantBpm), so the number stays constant across a soflan.
+//
+// ms = beats-on-screen × ms-per-beat = (visibleTicks / TICKS_PER_BEAT) × (60000 / bpm).
+export function reactionTimeMs(visibleTicks, bpm) {
+  if (!(visibleTicks > 0) || !(bpm > 0)) return 0;
+  return (visibleTicks / TICKS_PER_BEAT) * (60000 / bpm);
+}
+
 // ── Preview Gameplay Modifiers (non-destructive MODs) ─────────────────────────
 // Pure, DOM-free lane-remap descriptors for the Game-Preview MOD system — the
 // render-only equivalent of arcade SDVX play options (MIRROR / RANDOM / S-RANDOM).

@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.55 · 2026</span>
+  <span class="version">v0.0.56 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.56</span>Reaction-Time / &ldquo;Green Number&rdquo; Readout</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Reaction-time readout.</strong> A new <strong>React</strong> row in the preview side panel (next to <em>Scroll</em>) shows the effective <strong>on-screen reaction window in milliseconds</strong> &mdash; the rhythm-game &ldquo;green number&rdquo;. It is the real-world time a note is visible, from the top of the runway to the judgment line, so a target reading window can be dialled in <em>numerically</em> rather than by eyeballing the HiSpeed slider.</li>
+    <li><span class="tag add">add</span>It <strong>reacts to everything that changes scroll speed</strong>: <strong>HiSpeed</strong>, <strong>BPM</strong>, <strong>Scroll mode</strong> and the <strong>Practice Rate</strong>. In <strong>M-mode</strong> it tracks the tempo under the playhead (so it moves live across a soflan); in <strong>C-mode</strong> it stays constant at the reference tempo. The value is colour-coded green&rarr;amber&rarr;red as the window tightens.</li>
+    <li><span class="tag add">add</span>Backed by a DOM-free, unit-tested single source of truth in <code>chart.js</code> &mdash; <code>reactionTimeMs(visibleTicks, bpm)</code> &mdash; joining v0.0.55&rsquo;s <code>tickToSeconds()</code> / <code>dominantBpm()</code>. Purely a readout; the chart is never touched.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.55</span>C-Mode &mdash; Constant Scroll Speed</h4>
