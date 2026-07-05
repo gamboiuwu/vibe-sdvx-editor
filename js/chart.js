@@ -819,6 +819,29 @@ export class ChartData {
     return Math.max(1, best);
   }
 
+  // ── Reading window (green number) ───────────────────────────────────────────
+  // Effective on-screen READING TIME in milliseconds: how long a note is visible
+  // travelling from the top of the runway (spawn) down to the judgment line, for
+  // a given HiSpeed + scroll mode. Mirrors the Game-Preview velocity chokepoint,
+  // where VISIBLE_TICKS = TICKS_PER_MEASURE * 4 / hispeed ticks span the runway.
+  //   • M-mode: BPM-integrated real time across the visible span [atTick, atTick
+  //     + VISIBLE_TICKS], so it shortens as the local tempo rises (like arcade).
+  //   • C-mode: constant at the reference tempo (dominant BPM unless overridden),
+  //     independent of atTick — the classic constant reading window.
+  // DOM-free single source of truth for the preview reaction-time readout; never
+  // mutates chart data. Returns 0 for degenerate inputs.
+  readingWindowMs({ hispeed = 1, scrollMode = 'mmode', refBpm = null, atTick = 0 } = {}) {
+    const hs = Math.max(0.1, Number.isFinite(hispeed) ? hispeed : 1);
+    const VT = TICKS_PER_MEASURE * 4 / hs;   // ticks visible top → judgment line
+    if (scrollMode === 'cmode') {
+      const b = Math.max(1, refBpm != null && Number.isFinite(refBpm) && refBpm > 0
+                            ? refBpm : this.dominantBpm());
+      return VT / TICKS_PER_BEAT * (60 / b) * 1000;
+    }
+    const a = Math.max(0, Number.isFinite(atTick) ? atTick : 0);
+    return Math.max(0, this.secondsBetween(a, a + VT)) * 1000;
+  }
+
   addBtNote(laneIdx, y, len = 0) {
     const arr = this.bt[laneIdx];
     this._removeOverlap(arr, y, len);

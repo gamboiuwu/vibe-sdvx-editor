@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.55 · 2026</span>
+  <span class="version">v0.0.56 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.56</span>Reading Window &mdash; the Green-Number Reaction-Time Readout</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Reading window (green number).</strong> A new <strong>Reading</strong> row in the preview panel shows the <strong>effective on-screen reaction time in milliseconds</strong> &mdash; how long a note is visible travelling from the top of the runway to the judgment line &mdash; for the current <em>HiSpeed + BPM + scroll mode</em>. Dial a target reading window numerically, the way IIDX players read a green number.</li>
+    <li><span class="tag add">add</span><strong>Mode-aware &amp; live.</strong> In <strong>M-mode</strong> the number tracks the local tempo as the playhead moves (faster BPM &rarr; shorter window); in <strong>C-mode</strong> it is the constant window locked to the reference tempo. A <strong>HUD</strong> toggle paints the same green number on the preview lane (single &amp; multi-chart). Updates instantly as you drag HiSpeed or flip M/C.</li>
+    <li><span class="tag add">add</span>Backed by a DOM-free, unit-tested source of truth in <code>chart.js</code> &mdash; <code>readingWindowMs()</code> &mdash; built on v0.0.55's <code>tickToSeconds()</code> / <code>dominantBpm()</code> and the preview's <code>VISIBLE_TICKS</code> chokepoint. Chart data is never touched. Persists via <strong>Save Config</strong>.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.55</span>C-Mode &mdash; Constant Scroll Speed</h4>
