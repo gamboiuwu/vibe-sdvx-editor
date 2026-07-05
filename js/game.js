@@ -19,6 +19,11 @@ export class GameView {
     // Render-only; never touches chart data.
     this.scrollMode = 'mmode';
 
+    // Reading-window (green number) HUD: when true, _drawHUD paints the effective
+    // on-screen reaction time in ms for the current HiSpeed + BPM + scroll mode.
+    // Render-only readability aid; never touches chart data.
+    this.readingHud = false;
+
     // Projection mode: 'ortho' | 'sdvx' | 'hybrid'
     this.projMode = 'sdvx';
     // Perspective intensity 0-100 (65 = SDVX arcade default)
@@ -1612,6 +1617,32 @@ export class GameView {
       ctx.fillStyle = diffCol;
       ctx.font      = 'bold 11px monospace';
       ctx.fillText(`${diff.toUpperCase()} Lv.${level}`, 14, 54);
+    }
+
+    // ── Reading window / green number (top left, below difficulty) ────────
+    // Effective time a note is on-screen (spawn → judgment line) for the
+    // current HiSpeed + BPM + scroll mode. IIDX-style "green number" reading
+    // aid. C-mode shows the constant window; M-mode shows the live value at
+    // the playhead's local tempo.
+    if (this.readingHud && this.chart && typeof this.chart.readingWindowMs === 'function') {
+      const ms = this.chart.readingWindowMs({
+        hispeed:    this.hispeed,
+        scrollMode: this.scrollMode,
+        refBpm:     this._cRefBpm,
+        atTick:     tick,
+      });
+      if (Number.isFinite(ms) && ms > 0) {
+        const y0 = diff ? 74 : 54;
+        ctx.textAlign   = 'left';
+        ctx.fillStyle   = '#33ff88';                 // green-number green
+        ctx.font        = 'bold 13px monospace';
+        ctx.shadowColor = '#33ff8899'; ctx.shadowBlur = 6;
+        ctx.fillText(`${Math.round(ms)} ms`, 14, y0);
+        ctx.shadowBlur  = 0;
+        ctx.fillStyle   = '#4a7a5a';
+        ctx.font        = '9px monospace';
+        ctx.fillText(this.scrollMode === 'cmode' ? 'READ (C)' : 'READ', 14, y0 + 15);
+      }
     }
   }
 

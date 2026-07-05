@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.55';
+const APP_VERSION = '0.0.56';
 const CHANGELOG = [
+  {
+    version: '0.0.56',
+    title: 'Reading Window — the green-number reaction-time readout',
+    entries: [
+      ['add', '<strong>Reading window (green number).</strong> A new <strong>Reading</strong> row in the preview panel shows the <strong>effective on-screen reaction time in milliseconds</strong> — how long a note is visible travelling from the top of the runway to the judgment line — for the current <em>HiSpeed + BPM + scroll mode</em>. Dial a target reading window numerically, the way IIDX players read a green number.'],
+      ['add', '<strong>Mode-aware &amp; live.</strong> In <strong>M-mode</strong> the number tracks the local tempo as the playhead moves (faster BPM → shorter window); in <strong>C-mode</strong> it is the constant window locked to the reference tempo. A <strong>HUD</strong> toggle paints the same green number on the preview lane (single &amp; multi-chart). Updates instantly as you drag HiSpeed or flip M/C.'],
+      ['add', 'Backed by a DOM-free, unit-tested source of truth in <code>chart.js</code> — <code>readingWindowMs()</code> — built on v0.0.55\'s <code>tickToSeconds()</code> / <code>dominantBpm()</code> and the preview\'s <code>VISIBLE_TICKS</code> chokepoint. Chart data is never touched. Persists via <strong>Save Config</strong>.'],
+    ],
+  },
   {
     version: '0.0.55',
     title: 'C-Mode — constant scroll speed (read soflan by eye)',
@@ -2005,6 +2014,9 @@ export function updateSeekbar(tick) {
   label.textContent = `${_fmtTime(curSec)} / ${_fmtTime(totSec)}`;
 
   _updateLoopMarkers();
+  // M-mode reading window tracks the local tempo, so refresh it as the playhead
+  // advances (cheap; C-mode is constant but harmless to recompute).
+  _updateReadingReadout();
 }
 
 // Position the A/B markers + shaded region on the game seekbar to match loopA/B.
@@ -2127,6 +2139,7 @@ function applyScrollMode(mode) {
     for (const mv of _multiViews) push(mv.gv);
   }
   _updateScrollHud();
+  _updateReadingReadout();
   if (gameView && !playing) gameView.draw();
 }
 
@@ -2145,6 +2158,43 @@ function _updateScrollHud() {
       lbl.style.color = '';
     }
   }
+}
+
+// ── Reading window (green number) ───────────────────────────────────────────
+// Render-only readability aid: the effective on-screen reaction time (ms) for
+// the current HiSpeed + BPM + scroll mode. `previewReadingHud` toggles the
+// on-lane green number; the side-panel label always shows the live value.
+let previewReadingHud = false;
+
+// Push the HUD flag onto every live GameView, sync the toggle button, refresh
+// the numeric readout, and redraw paused.
+function applyReadingHud(on) {
+  previewReadingHud = !!on;
+  const push = (gv) => { if (gv) gv.readingHud = previewReadingHud; };
+  push(gameView);
+  if (typeof _multiViews !== 'undefined' && Array.isArray(_multiViews)) {
+    for (const mv of _multiViews) push(mv.gv);
+  }
+  const btn = document.getElementById('pvc-reading-toggle');
+  if (btn) btn.classList.toggle('active', previewReadingHud);
+  _updateReadingReadout();
+  if (gameView && !playing) gameView.draw();
+}
+
+// Recompute the side-panel reading-window readout from the active GameView's
+// HiSpeed + scroll mode + the playhead's local tempo. Cheap; safe per-frame.
+function _updateReadingReadout() {
+  const lbl = document.getElementById('pvc-reading-label');
+  if (!lbl) return;
+  if (!chart || typeof chart.readingWindowMs !== 'function') { lbl.textContent = ''; return; }
+  const hs   = gameView ? gameView.hispeed : chartSpeed;
+  const tick = gameView ? gameView.playTick : (renderer?.playTick ?? 0);
+  const ref  = previewScrollMode === 'cmode' && typeof chart.dominantBpm === 'function'
+             ? chart.dominantBpm() : null;
+  const ms = chart.readingWindowMs({
+    hispeed: hs, scrollMode: previewScrollMode, refBpm: ref, atTick: tick,
+  });
+  lbl.textContent = Number.isFinite(ms) && ms > 0 ? `${Math.round(ms)} ms` : '';
 }
 
 function _seekbarTickFromEvent(e) {
@@ -2655,6 +2705,7 @@ function _multiRebuild() {
     gv._previewMod     = gvRef ? gvRef._previewMod     : previewMod;
     gv._previewModSeed = gvRef ? gvRef._previewModSeed : previewModSeed;
     gv.scrollMode      = gvRef ? gvRef.scrollMode      : previewScrollMode;
+    gv.readingHud      = gvRef ? gvRef.readingHud      : previewReadingHud;
     gv.playTick       = renderer.playTick;
 
     const mv = { wrap, canvasWrap, canvas, gv, tabIdx, mirrored: false, tickOffset: 0, hsSlider, hsVal };
@@ -2739,6 +2790,7 @@ function _multiSyncSettings() {
     mv.gv._previewMod     = gameView._previewMod;
     mv.gv._previewModSeed = gameView._previewModSeed;
     mv.gv.scrollMode      = gameView.scrollMode;
+    mv.gv.readingHud      = gameView.readingHud;
   }
 }
 
@@ -9381,6 +9433,8 @@ function _initProjectionControls() {
     if (topLbl) topLbl.textContent = hs.toFixed(2) + '×';
     // Apply exclusively to the game view's visual rendering pipeline
     if (gameView) { gameView.hispeed = hs; gameView.draw(); }
+    // HiSpeed changes the reading window — refresh the readout live.
+    _updateReadingReadout();
   });
 
   // BT Width slider (wired here so it's near the other preview controls)
@@ -9506,6 +9560,14 @@ function _initProjectionControls() {
     scrollMBtn.addEventListener('click', () => applyScrollMode('mmode'));
     document.getElementById('pvc-scroll-c')?.addEventListener('click', () => applyScrollMode('cmode'));
     applyScrollMode(previewScrollMode);   // sync buttons + gameView to current state
+  }
+
+  // Reading-window (green number) HUD toggle
+  const readBtn = document.getElementById('pvc-reading-toggle');
+  if (readBtn && !readBtn._wired) {
+    readBtn._wired = true;
+    readBtn.addEventListener('click', () => applyReadingHud(!previewReadingHud));
+    applyReadingHud(previewReadingHud);   // sync button + gameView + readout
   }
 
   // Judge Y slider
@@ -9640,6 +9702,8 @@ function _initProjectionControls() {
     prefs.previewModSeed   = previewModSeed;
     // Preview scroll mode (render-only constant-scroll readability aid)
     prefs.previewScrollMode = previewScrollMode;
+    // Reading-window (green number) HUD toggle
+    prefs.previewReadingHud = previewReadingHud;
     // Persist
     try { localStorage.setItem('vibe-editr-prefs', JSON.stringify(prefs)); } catch(_) {}
     // Show "Saved!" flash
@@ -9714,6 +9778,8 @@ function _initProjectionControls() {
   if (prefs.previewMod       != null) applyPreviewMod(prefs.previewMod, previewModSeed);
   // Restore preview scroll mode (render-only constant-scroll readability aid)
   if (prefs.previewScrollMode != null) applyScrollMode(prefs.previewScrollMode);
+  // Restore reading-window (green number) HUD toggle
+  if (prefs.previewReadingHud != null) applyReadingHud(prefs.previewReadingHud);
 
   // Set default projection to SDVX on load (only if no saved proj mode)
   if (!prefs.projMode) document.querySelector('.pvc-proj-btn[data-proj="sdvx"]')?.click();
