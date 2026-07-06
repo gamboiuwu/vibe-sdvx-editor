@@ -99,6 +99,36 @@ export class GameView {
 
   get VISIBLE_TICKS() { return TICKS_PER_MEASURE * 4 / Math.max(0.1, this.hispeed); }
 
+  // ── Green Number / Reaction-Time window ──────────────────────────────────
+  // The effective on-screen reaction time (in seconds) at the current HiSpeed +
+  // BPM + scroll mode + playback rate: how long a note stays visible while it
+  // travels from its spawn edge (the top of the VISIBLE_TICKS window) down to
+  // the judgment line.  This is the IIDX-style "green number", the numeric
+  // reading window a chartist can dial in.  Purely derived from VISIBLE_TICKS +
+  // tickToSeconds — no new state, no chart mutation.  `rate` is the practice
+  // playback rate (slower playback stretches real reaction time).
+  readWindowSeconds(rate = 1) {
+    const r  = Math.max(0.05, rate || 1);
+    const VT = this.VISIBLE_TICKS;
+    if (this.scrollMode === 'cmode' && this.chart && typeof this.chart.dominantBpm === 'function') {
+      // C-mode: scroll is locked to the reference tempo, so the window in real
+      // seconds is VT ticks at that constant BPM — independent of local soflan.
+      const b = this.chart.dominantBpm();
+      const refBpm = Math.max(1, Number.isFinite(b) && b > 0 ? b : 120);
+      return (VT * 60 / (TICKS_PER_BEAT * refBpm)) / r;
+    }
+    if (this.chart && typeof this.chart.tickToSeconds === 'function') {
+      // M-mode: scroll tracks the tempo, so the window is VT ticks of *local*
+      // chart time around the playhead (BPM/soflan-integrated, stop-aware).
+      const t0 = this.chart.tickToSeconds(this.playTick);
+      const t1 = this.chart.tickToSeconds(this.playTick + VT);
+      const dt = t1 - t0;
+      if (Number.isFinite(dt) && dt > 0) return dt / r;
+    }
+    // Fallback: assume 120 BPM if no timing model is available yet.
+    return (VT * 60 / (TICKS_PER_BEAT * 120)) / r;
+  }
+
   // ── Chart Velocity (visual scroll-speed) helpers ─────────────────────────
   // Effective "dt" from the playhead to a chart tick, integrating
   // chart.scrollSpeedEvents.  When no velocity events exist this is just
