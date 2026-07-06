@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.55';
+const APP_VERSION = '0.0.56';
 const CHANGELOG = [
+  {
+    version: '0.0.56',
+    title: 'Green Number — on-screen reaction-time readout',
+    entries: [
+      ['add', '<strong>Green Number readout.</strong> A new <strong>Read</strong> value next to the <em>Scroll</em> toggle in the preview panel shows the <strong>effective on-screen reaction time in milliseconds</strong> — how long a note stays visible while it travels from the top of the lane to the judgment line, for the current <strong>HiSpeed&nbsp;+&nbsp;BPM&nbsp;+&nbsp;scroll mode&nbsp;+&nbsp;Rate</strong>. Like IIDX\'s green number, it lets you dial in a target reading window numerically.'],
+      ['add', 'It updates <strong>live during playback</strong> — in <strong>M-mode</strong> it tracks the local BPM as soflan speeds up or slows down; in <strong>C-mode</strong> it stays locked to the constant reference tempo. The label is colour-cued: <span style="color:#66dd88">green</span> when the window is comfortable, <span style="color:#ffcc44">amber</span> when it tightens, <span style="color:#ff7766">red</span> when very fast.'],
+      ['add', 'Purely derived from the preview engine (<code>VISIBLE_TICKS</code>&nbsp;+&nbsp;<code>tickToSeconds</code> / <code>dominantBpm</code>) — no new chart state, no data changes. Reuses the same DOM-free, unit-tested timing source of truth the v0.0.55 C-Mode is built on.'],
+    ],
+  },
   {
     version: '0.0.55',
     title: 'C-Mode — constant scroll speed (read soflan by eye)',
@@ -918,6 +927,7 @@ function switchToTab(idx) {
   if (typeof resetPracticeLoop === 'function') resetPracticeLoop();
   render();
   updateSeekbar(renderer ? renderer.playTick : 0);
+  updateReactionReadout();
 }
 
 function addTab() {
@@ -1433,6 +1443,9 @@ function playFrame(now) {
       // Draw annotation markers on top of the game view
       _pruneAnnotations();
       gameView.drawAnnotations?.(_chartAnnotations, _annAlpha);
+      // Live green-number readout — in M-mode this tracks the local BPM as it
+      // changes; in C-mode it stays locked to the reference tempo.
+      updateReactionReadout();
       _lastGameFrameTime = now;
     }
   }
@@ -2127,7 +2140,29 @@ function applyScrollMode(mode) {
     for (const mv of _multiViews) push(mv.gv);
   }
   _updateScrollHud();
+  updateReactionReadout();
   if (gameView && !playing) gameView.draw();
+}
+
+// ── Green Number / Reaction-Time Readout ──────────────────────────────────
+// Surfaces the effective on-screen reaction window in milliseconds for the
+// current HiSpeed + BPM + scroll mode + playback Rate (IIDX-style "green
+// number"). Purely derived from the GameView's VISIBLE_TICKS + tickToSeconds
+// engine — no new state, no chart mutation. Colour-cued: green when the reading
+// window is comfortable, amber when it tightens, red when very fast.
+function updateReactionReadout() {
+  const lbl = document.getElementById('pvc-react-label');
+  if (!lbl) return;
+  if (!gameView || !chart || typeof gameView.readWindowSeconds !== 'function') {
+    lbl.textContent = '—'; lbl.style.color = ''; return;
+  }
+  const sec = gameView.readWindowSeconds(playbackRate);
+  if (!Number.isFinite(sec) || sec <= 0) {
+    lbl.textContent = '—'; lbl.style.color = ''; return;
+  }
+  const ms = Math.round(sec * 1000);
+  lbl.textContent = ms + ' ms';
+  lbl.style.color = ms >= 550 ? '#66dd88' : ms >= 300 ? '#ffcc44' : '#ff7766';
 }
 
 function _updateScrollHud() {
@@ -2165,6 +2200,7 @@ export function _seekTo(tick) {
   updatePlayStatus();
   render();
   if (gameView && viewMode !== 'edit') gameView.draw();
+  updateReactionReadout();
 }
 
 function initSeekbar() {
@@ -2392,6 +2428,7 @@ function setViewMode(mode) {
     }
   }
   if (gameView) { gameView.resize(); gameView.draw(); }
+  updateReactionReadout();
   document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === mode));
 }
 
@@ -3036,6 +3073,7 @@ window.addEventListener('DOMContentLoaded', () => {
       if (pvSl)  pvSl.value = hs;
       if (pvLbl) pvLbl.textContent = hs.toFixed(1) + '×';
       if (gameView) { gameView.hispeed = hs; if (!playing) gameView.draw(); }
+      updateReactionReadout();
     });
   }
   if (gameView) gameView.hispeed = chartSpeed;
@@ -9381,6 +9419,7 @@ function _initProjectionControls() {
     if (topLbl) topLbl.textContent = hs.toFixed(2) + '×';
     // Apply exclusively to the game view's visual rendering pipeline
     if (gameView) { gameView.hispeed = hs; gameView.draw(); }
+    updateReactionReadout();
   });
 
   // BT Width slider (wired here so it's near the other preview controls)
@@ -9412,6 +9451,7 @@ function _initProjectionControls() {
       rateLbl.style.color = Math.abs(newRate - 1.0) > 0.001 ? '#ffcc44' : '';
     }
     // Audio pitch/speed is intentionally NOT changed — only chart tick advancement is scaled
+    updateReactionReadout();
   });
 
   // ── Practice A–B Loop controls ──────────────────────────────────────────────
