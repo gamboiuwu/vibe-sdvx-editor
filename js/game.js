@@ -1,4 +1,4 @@
-import { ChartData, TICKS_PER_BEAT, TICKS_PER_MEASURE, BEATS_PER_MEASURE, previewModMaps } from './chart.js';
+import { ChartData, TICKS_PER_BEAT, TICKS_PER_MEASURE, BEATS_PER_MEASURE, previewModMaps, reactionTimeMs } from './chart.js';
 import { GLLaneRenderer } from './gl-lane.js';
 import { laserOpacity, laserColors } from './renderer.js';
 
@@ -70,6 +70,11 @@ export class GameView {
     // frame from beatFlashIntensity(); draw() glows the judgment line by it.
     this.beatFlash = 0;
 
+    // Reaction-time ("green number") readout. When true, _drawHUD paints the
+    // effective on-screen reading window (ms) for the current HiSpeed + tempo +
+    // scroll mode. Render-only readability aid; never touches chart data.
+    this.showReact = false;
+
     // Preview gameplay MOD (non-destructive). 'off' | 'mirror' | 'random' | 'sran'.
     // Remaps the lanes/lasers the renderer READS each frame — chart data is never
     // mutated. _previewModSeed drives the RANDOM/S-RANDOM shuffle (reroll = new seed).
@@ -128,6 +133,26 @@ export class GameView {
       this._playDist = this.chart.scrollDistanceTo(this.playTick);
     }
     return this.chart.scrollDistanceTo(y) - this._playDist;
+  }
+
+  // ── Reaction time ("green number") ─────────────────────────────────────────
+  // Effective on-screen reading window (ms) for the CURRENT playhead + HiSpeed +
+  // scroll mode. In C-mode the reference tempo is constant (the chart's dominant
+  // BPM, the same value C-mode scrolls at), so the number stays fixed across a
+  // soflan; in M-mode it tracks the BPM at the playhead, so it changes with the
+  // tempo exactly as the on-screen note speed does. Reuses the reactionTimeMs()
+  // single source of truth in chart.js. Returns 0 when there's no chart.
+  reactionMs() {
+    if (!this.chart) return 0;
+    let bpm;
+    if (this.scrollMode === 'cmode') {
+      bpm = (this._cRefBpm != null) ? this._cRefBpm
+          : (typeof this.chart.dominantBpm === 'function' ? this.chart.dominantBpm() : 120);
+    } else {
+      bpm = (typeof this.chart.getBpmAt === 'function')
+          ? this.chart.getBpmAt(Math.floor(this.playTick)) : 120;
+    }
+    return reactionTimeMs(this.VISIBLE_TICKS, bpm);
   }
 
   resize() {
@@ -1585,6 +1610,21 @@ export class GameView {
     ctx.fillStyle = '#8899cc';
     ctx.font      = '11px monospace';
     ctx.fillText(`M ${measure}`, 14, 36);
+
+    // ── Reaction time / "green number" (top left, below BPM) ──────────────
+    // The real-time window a note is on screen before the judgment line — the
+    // rhythm-game green number. Green when comfortable, amber when tight,
+    // red when very fast, so a chartist can eyeball the reading difficulty.
+    if (this.showReact) {
+      const ms = Math.round(this.reactionMs());
+      const rc = ms >= 550 ? '#33dd66' : ms >= 380 ? '#ffcc44' : '#ff5555';
+      ctx.textAlign   = 'left';
+      ctx.fillStyle   = rc;
+      ctx.font        = 'bold 12px monospace';
+      ctx.shadowColor = rc + '88'; ctx.shadowBlur = 6;
+      ctx.fillText(`▼ ${ms} ms`, 14, 70);
+      ctx.shadowBlur  = 0;
+    }
 
     // ── Song title / artist (top center) ─────────────────────────────────
     const title  = this.chart?.meta.title  || '';
