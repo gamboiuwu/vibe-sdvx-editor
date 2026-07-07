@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.55 · 2026</span>
+  <span class="version">v0.0.56 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.56</span>Reaction-Time Readout &mdash; the Rhythm-Game &ldquo;Green Number&rdquo;</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Reaction-time (green number) readout.</strong> A new <strong>&#9201; React</strong> toggle next to <em>Scroll</em> shows the <strong>real-time window, in milliseconds, that a note is on screen</strong> before it reaches the judgment line at the current HiSpeed + tempo &mdash; the classic rhythm-game &ldquo;green number&rdquo;. Lower = less time to react = harder to read. Drawn on the preview lane and mirrored in the side panel, <strong>colour-coded</strong> green (comfortable) &rarr; amber (tight) &rarr; red (very fast).</li>
+    <li><span class="tag add">add</span><strong>Follows the scroll mode automatically.</strong> In <strong>C-mode</strong> the number is <em>constant</em> across a soflan (it reads the same dominant-BPM reference C-mode scrolls at); in <strong>M-mode</strong> it tracks the BPM at the playhead, updating live as the tempo changes &mdash; so you can dial a target reading window numerically instead of by feel. Works in single <em>and</em> multi-chart preview and persists via <strong>Save Config</strong>.</li>
+    <li><span class="tag add">add</span>Backed by a DOM-free, unit-tested single source of truth in <code>chart.js</code> &mdash; <code>reactionTimeMs(visibleTicks, bpm)</code> &mdash; joining v0.0.55&rsquo;s <code>tickToSeconds()</code> / <code>dominantBpm()</code> to round out the readability subsystem. Render-only; the chart is never mutated.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.55</span>C-Mode &mdash; Constant Scroll Speed</h4>

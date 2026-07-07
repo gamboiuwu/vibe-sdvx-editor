@@ -563,6 +563,23 @@ export function seededDerangedPermutation(n, seed) {
   return Array.from({ length: n }, (_, i) => (i + 1) % n);
 }
 
+// ── Reaction time (rhythm-game "green number") ─────────────────────────────────
+// The real-time reading window, in milliseconds, for a note to travel the full
+// visible runway — i.e. how long a note is on screen before it reaches the
+// judgment line. Lower = less time to react = harder to read. Derived purely
+// from how many reference ticks fill the screen (`visibleTicks`, = the
+// GameView's VISIBLE_TICKS) and the effective tempo (`bpm`): a note crosses
+// `visibleTicks` ticks, which is `visibleTicks / TICKS_PER_BEAT` beats, each
+// beat lasting `60000 / bpm` ms. DOM-free single source of truth shared by the
+// Game-Preview HUD green number and its side-panel readout; render-only, never
+// touches chart data. Returns 0 for degenerate inputs so callers can guard on it.
+export function reactionTimeMs(visibleTicks, bpm) {
+  const vt = Number(visibleTicks);
+  const b  = Number(bpm);
+  if (!Number.isFinite(vt) || vt <= 0 || !Number.isFinite(b) || b <= 0) return 0;
+  return vt / TICKS_PER_BEAT * 60000 / b;
+}
+
 export function previewModMaps(mod, seed = 1) {
   const ID = { bt: [0, 1, 2, 3], fx: [0, 1], laserSwap: false, laserInvert: false };
   switch (mod) {
