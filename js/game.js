@@ -19,6 +19,13 @@ export class GameView {
     // Render-only; never touches chart data.
     this.scrollMode = 'mmode';
 
+    // Reaction-time "green number" HUD. showReaction toggles the on-lane readout;
+    // reactionMs is the value to paint (ms a note is on screen) — computed by the
+    // app layer via ChartData.reactionWindowMs so there is one source of truth.
+    // Render-only; never touches chart data.
+    this.showReaction = true;
+    this.reactionMs   = 0;
+
     // Projection mode: 'ortho' | 'sdvx' | 'hybrid'
     this.projMode = 'sdvx';
     // Perspective intensity 0-100 (65 = SDVX arcade default)
@@ -1612,6 +1619,26 @@ export class GameView {
       ctx.fillStyle = diffCol;
       ctx.font      = 'bold 11px monospace';
       ctx.fillText(`${diff.toUpperCase()} Lv.${level}`, 14, 54);
+    }
+
+    // ── Reaction window "green number" (right, above the judgment line) ────────
+    // Milliseconds a note is visible before the judgment line, for the current
+    // HiSpeed / BPM / scroll mode. Value is computed by the app layer via
+    // ChartData.reactionWindowMs (single source of truth) and pushed onto
+    // this.reactionMs. Painted like the arcade green number.
+    if (this.showReaction && this.reactionMs > 0) {
+      const rms   = Math.round(this.reactionMs);
+      const jy    = p.judgeY ?? (p.h * this.judgeYFrac);
+      const gy     = Math.max(30, jy - 26);
+      ctx.textAlign = 'right';
+      ctx.font      = 'bold 15px monospace';
+      ctx.shadowColor = '#00ff7788'; ctx.shadowBlur = 6;
+      ctx.fillStyle = '#66ff99';
+      ctx.fillText(String(rms), p.w - 14, gy);
+      ctx.shadowBlur = 0;
+      ctx.font      = '9px monospace';
+      ctx.fillStyle = '#4fbf7a';
+      ctx.fillText('ms react', p.w - 14, gy + 12);
     }
   }
 
