@@ -531,6 +531,8 @@
       <span class="pvc-label" data-i18n="preview.hispeed">HiSpeed</span>
       <input type="range" id="pvc-hispeed" min="0.2" max="10" step="0.1" value="1" title="Visual scroll speed">
       <span id="pvc-hispeed-label" class="pvc-val">1.0×</span>
+      <button id="pvc-reaction-toggle" class="pvc-loop-btn toggle active" title="Green number: show the on-screen reaction window — how many milliseconds a note is visible before the judgment line — for the current HiSpeed, BPM and scroll mode. Lower = less time to react. Follows the practice rate; in C-mode it stays constant across soflan.">&#9201; <span data-i18n="preview.reaction">Green#</span></button>
+      <span id="pvc-reaction" class="pvc-val" title="Reaction window (green number) — milliseconds a note is on screen before the judgment line. Lower = harder to react.">&#8211;</span>
     </div>
     <div class="pvc-section" id="pvc-scroll-section">
       <span class="pvc-label" data-i18n="preview.scroll" title="Scroll mode. M-mode (default): scroll speed follows the BPM, so faster sections move faster. C-mode: notes move at a constant real-time speed regardless of BPM changes / soflan, locked to the chart's main tempo — a readability aid that never changes the saved chart.">Scroll</span>

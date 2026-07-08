@@ -796,6 +796,22 @@ export class ChartData {
   // Signed real-time delta (seconds) between two ticks (b - a).
   secondsBetween(a, b) { return this.tickToSeconds(b) - this.tickToSeconds(a); }
 
+  // ── Reaction window (green number) ─────────────────────────────────────────
+  // Milliseconds a note is on screen while it travels the visible field —
+  // `visibleTicks` reference ticks of scroll distance (GameView.VISIBLE_TICKS) —
+  // at tempo `bpm`, scaled by the practice playback `rate` (0.5× DOUBLES the
+  // reading time because the lane scrolls half as fast in real time). This is
+  // the rhythm-game "green number": lower = less time to react (harder). DOM-free
+  // single source of truth for the Game-Preview reaction-time readout. In C-Mode
+  // pass the constant reference BPM so the number stays FIXED across soflan; in
+  // M-Mode pass getBpmAt(playhead) so it tracks the local tempo live.
+  reactionWindowMs(visibleTicks, bpm, rate = 1) {
+    const vt = Math.max(0, Number(visibleTicks) || 0);
+    const b  = Math.max(1, Number(bpm) || 120);
+    const r  = Math.max(0.01, Number(rate) || 1);
+    return vt / TICKS_PER_BEAT * (60 / b) * 1000 / r;
+  }
+
   // ── Dominant BPM ───────────────────────────────────────────────────────────
   // Returns the tempo (BPM) that plays for the greatest total time across the
   // whole chart — the natural reference for C-Mode so the bulk of a soflan
