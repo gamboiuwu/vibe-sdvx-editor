@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.56';
+const APP_VERSION = '0.0.57';
 const CHANGELOG = [
+  {
+    version: '0.0.57',
+    title: 'Target Green Number — float hi-speed solver',
+    entries: [
+      ['add', '<strong>Target Green Number (float hi-speed).</strong> A new <em>target ms</em> field next to the <em>Green#</em> readout: type the reaction window you want and press <strong>Set</strong> (or Enter) and the preview solves for the <strong>HiSpeed that yields it</strong> at the current BPM, scroll mode and practice rate — the IIDX "float hi-speed" workflow. Pick a reading window numerically instead of nudging the HiSpeed slider by feel.'],
+      ['add', '<strong>Scroll-mode aware &amp; render-only.</strong> In <strong>C-mode</strong> it solves against the constant dominant tempo; in <strong>M-mode</strong> against the BPM at the playhead. The solved speed is snapped to the HiSpeed slider so the resulting <em>Green#</em> reads back exactly. The chart is never touched — only the visual HiSpeed changes. The target value persists via <strong>Save Config</strong>.'],
+      ['add', 'Backed by a DOM-free, unit-tested source of truth in <code>chart.js</code> — <code>hispeedForReactionMs(targetMs, bpm, rate)</code>, the exact inverse of <code>reactionWindowMs()</code>, so a set-then-read round-trip is identity.'],
+    ],
+  },
   {
     version: '0.0.56',
     title: 'Green Number — reaction-time readout',
@@ -2203,6 +2212,35 @@ function toggleReactionReadout() {
   reactionReadout = !reactionReadout;
   updateReactionReadout();
   if (gameView && !playing) gameView.draw();
+}
+
+// Solve for the HiSpeed that yields a target green number (reaction window, ms)
+// at the current reference BPM + practice rate, and apply it — the IIDX
+// "float hi-speed" workflow. Render-only: only the visual HiSpeed changes; the
+// chart is never touched. Uses the same BPM the readout uses (dominant tempo in
+// C-mode so the lock is constant across soflan, local BPM in M-mode).
+function applyTargetReaction() {
+  const inp = document.getElementById('pvc-reaction-target');
+  if (!inp || !chart || typeof chart.hispeedForReactionMs !== 'function') return;
+  const target = Number(inp.value);
+  if (!(target > 0)) { inp.classList.add('pvc-num-bad'); return; }
+  inp.classList.remove('pvc-num-bad');
+  const t   = renderer ? renderer.playTick : 0;
+  const bpm = (previewScrollMode === 'cmode' && typeof chart.dominantBpm === 'function')
+            ? chart.dominantBpm()
+            : chart.getBpmAt(Math.floor(t));
+  let hs = chart.hispeedForReactionMs(target, bpm, playbackRate);
+  if (!(hs > 0)) return;
+  // Snap to the HiSpeed slider's granularity + range so the applied speed
+  // matches what the green-number readout will report back.
+  hs = Math.max(0.2, Math.min(10, Math.round(hs * 10) / 10));
+  const hsSl = document.getElementById('pvc-hispeed');
+  if (hsSl) {
+    hsSl.value = hs;
+    hsSl.dispatchEvent(new Event('input', { bubbles: true }));  // reuse the slider handler
+  } else if (gameView) {
+    gameView.hispeed = hs; updateReactionReadout(); gameView.draw();
+  }
 }
 
 function _seekbarTickFromEvent(e) {
@@ -9446,6 +9484,14 @@ function _initProjectionControls() {
   reactBtn?.addEventListener('click', toggleReactionReadout);
   updateReactionReadout();   // sync label + button to current state
 
+  // Target green number → HiSpeed solver ("float hi-speed")
+  const reactSetBtn = document.getElementById('pvc-reaction-set');
+  const reactTgtInp = document.getElementById('pvc-reaction-target');
+  reactSetBtn?.addEventListener('click', applyTargetReaction);
+  reactTgtInp?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); applyTargetReaction(); }
+  });
+
   // BT Width slider (wired here so it's near the other preview controls)
   const bwSl  = document.getElementById('pvc-bt-width');
   const bwLbl = document.getElementById('pvc-bt-width-label');
@@ -9707,6 +9753,9 @@ function _initProjectionControls() {
     prefs.previewScrollMode = previewScrollMode;
     // Reaction-time "green number" readout (render-only)
     prefs.reactionReadout   = reactionReadout;
+    // Target green-number field (float hi-speed solver input)
+    const reactTgtEl = document.getElementById('pvc-reaction-target');
+    if (reactTgtEl && reactTgtEl.value !== '') prefs.reactionTargetMs = +reactTgtEl.value;
     // Persist
     try { localStorage.setItem('vibe-editr-prefs', JSON.stringify(prefs)); } catch(_) {}
     // Show "Saved!" flash
@@ -9783,6 +9832,11 @@ function _initProjectionControls() {
   if (prefs.previewScrollMode != null) applyScrollMode(prefs.previewScrollMode);
   // Restore reaction-time "green number" readout (render-only)
   if (prefs.reactionReadout != null) { reactionReadout = !!prefs.reactionReadout; updateReactionReadout(); }
+  // Restore target green-number field (float hi-speed solver input)
+  if (prefs.reactionTargetMs != null) {
+    const rt = document.getElementById('pvc-reaction-target');
+    if (rt) rt.value = prefs.reactionTargetMs;
+  }
 
   // Set default projection to SDVX on load (only if no saved proj mode)
   if (!prefs.projMode) document.querySelector('.pvc-proj-btn[data-proj="sdvx"]')?.click();
