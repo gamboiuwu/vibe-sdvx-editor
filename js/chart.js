@@ -812,6 +812,26 @@ export class ChartData {
     return vt / TICKS_PER_BEAT * (60 / b) * 1000 / r;
   }
 
+  // ── Target green number → HiSpeed (float hi-speed) ─────────────────────────
+  // Exact inverse of reactionWindowMs: the HiSpeed multiplier that makes a note
+  // stay on screen for `targetMs` milliseconds at tempo `bpm` and practice
+  // `rate`. The preview's visible span is (TICKS_PER_MEASURE*4 / hispeed) ticks,
+  // so with reactionWindowMs = visibleTicks/TICKS_PER_BEAT · 60000/bpm / rate,
+  // solving for hispeed gives the closed form below. This is the IIDX
+  // "float hi-speed" workflow — pick a reading window and derive the speed.
+  // DOM-free single source of truth; guards mirror reactionWindowMs so bad
+  // input returns 0 rather than NaN/Infinity. The caller clamps to the slider.
+  hispeedForReactionMs(targetMs, bpm, rate = 1) {
+    const ms = Number(targetMs);
+    const b  = Math.max(1, Number(bpm) || 120);
+    const r  = Math.max(0.01, Number(rate) || 1);
+    if (!(ms > 0)) return 0;
+    const fullSpanTicks = TICKS_PER_MEASURE * 4;          // VISIBLE_TICKS at hispeed = 1
+    const visibleTicks  = ms * r * b * TICKS_PER_BEAT / 60000;
+    if (!(visibleTicks > 0)) return 0;
+    return fullSpanTicks / visibleTicks;
+  }
+
   // ── Dominant BPM ───────────────────────────────────────────────────────────
   // Returns the tempo (BPM) that plays for the greatest total time across the
   // whole chart — the natural reference for C-Mode so the bulk of a soflan

@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.56 · 2026</span>
+  <span class="version">v0.0.57 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.57</span>Target Green Number &mdash; Float Hi-Speed Solver</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Target Green Number (float hi-speed).</strong> A new <em>target&nbsp;ms</em> field next to the <em>Green#</em> readout. Type the reaction window you want and press <strong>Set</strong> (or <kbd>Enter</kbd>) and the preview solves for the <strong>HiSpeed that yields it</strong> at the current BPM, scroll mode and practice rate &mdash; the IIDX &ldquo;float hi-speed&rdquo; workflow. Pick a reading window numerically instead of nudging the HiSpeed slider by feel.</li>
+    <li><span class="tag add">add</span><strong>Scroll-mode aware &amp; render-only.</strong> In <strong>C-mode</strong> it solves against the constant dominant tempo; in <strong>M-mode</strong> against the BPM at the playhead. The solved speed is snapped to the HiSpeed slider so the resulting <em>Green#</em> reads back exactly. The chart is never touched &mdash; only the visual HiSpeed changes. The target value persists via <strong>Save Config</strong>.</li>
+    <li><span class="tag add">add</span>Backed by a DOM-free, unit-tested source of truth in <code>chart.js</code> &mdash; <code>hispeedForReactionMs(targetMs, bpm, rate)</code>, the exact inverse of <code>reactionWindowMs()</code>, so a set-then-read round-trip is identity.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.56</span>Green Number &mdash; Reaction-Time Readout</h4>
