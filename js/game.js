@@ -18,6 +18,10 @@ export class GameView {
     //              velocity regardless of BPM changes / soflan — readability aid).
     // Render-only; never touches chart data.
     this.scrollMode = 'mmode';
+    // C-Mode reference-BPM override. null = Auto (lock to chart.dominantBpm());
+    // a positive number auditions the lane at that fixed tempo. Resolved through
+    // chart.cModeRefBpm() so the label, projection and green number stay in sync.
+    this.cRefBpmOverride = null;
 
     // Reaction-time "green number" HUD. showReaction toggles the on-lane readout;
     // reactionMs is the value to paint (ms a note is on screen) — computed by the
@@ -124,7 +128,10 @@ export class GameView {
     if (this.scrollMode === 'cmode' && typeof this.chart.tickToSeconds === 'function') {
       if (this._playSec == null) this._playSec = this.chart.tickToSeconds(this.playTick);
       if (this._cRefBpm == null) {
-        const b = (typeof this.chart.dominantBpm === 'function') ? this.chart.dominantBpm() : 0;
+        // Auto (dominant BPM) unless the user has locked a manual reference tempo.
+        const b = (typeof this.chart.cModeRefBpm === 'function')
+                ? this.chart.cModeRefBpm(this.cRefBpmOverride)
+                : (typeof this.chart.dominantBpm === 'function' ? this.chart.dominantBpm() : 0);
         this._cRefBpm = Math.max(1, Number.isFinite(b) && b > 0 ? b : 120);
       }
       const secAhead = this.chart.tickToSeconds(y) - this._playSec;

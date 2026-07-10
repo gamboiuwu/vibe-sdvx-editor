@@ -439,6 +439,15 @@
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
 
 <div class="update-entry">
+  <h4><span class="ver-tag">v0.0.57</span>Manual C-Mode Reference BPM</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Manual C-Mode reference BPM.</strong> The <strong>Scroll</strong> row now shows an editable <code>@bpm</code> field while <strong>C-mode</strong> is active. Leave it on <strong>Auto</strong> to lock to the chart&rsquo;s dominant tempo (the previous behaviour), or type any BPM to audition the lane at that <strong>fixed speed</strong> &mdash; for reading a soflan / BPM-gimmick chart at a tempo of your choosing rather than only its main one.</li>
+    <li><span class="tag add">add</span><strong>The Green Number follows it.</strong> Overriding the reference tempo immediately re-computes the reaction-time readout, so you can dial a target reading window by tempo. An <strong>Auto</strong> button clears the lock. Applies to single <em>and</em> multi-chart preview, both the 2D overlay and the WebGL lane, and persists via <strong>Save Config</strong> &mdash; all render-only, the chart is never mutated.</li>
+    <li><span class="tag add">add</span>Backed by a DOM-free, unit-tested source of truth in <code>chart.js</code> &mdash; <code>cModeRefBpm(override)</code> &mdash; which resolves the manual lock or falls back to <code>dominantBpm()</code>, so the label, the C-mode projection (<code>_effDt</code>) and the green number always agree.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
   <h4><span class="ver-tag">v0.0.56</span>Green Number &mdash; Reaction-Time Readout</h4>
   <ul>
     <li><span class="tag add">add</span><strong>Green Number (reaction-time readout).</strong> A new readout next to <em>HiSpeed</em> in the preview panel shows how many <strong>milliseconds a note is on screen</strong> before the judgment line, for the current <strong>HiSpeed&nbsp;+&nbsp;BPM&nbsp;+&nbsp;scroll mode</strong>. Lower&nbsp;=&nbsp;less time to react &mdash; the rhythm-game &ldquo;green number&rdquo;. It also prints on the play field above the judgment line during preview.</li>
