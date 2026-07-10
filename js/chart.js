@@ -835,6 +835,19 @@ export class ChartData {
     return Math.max(1, best);
   }
 
+  // ── C-Mode reference BPM (auto-or-manual) ──────────────────────────────────
+  // The constant tempo C-Mode scrolls at.  `override` is the user's manual lock:
+  // when it is a positive finite number the lane is auditioned at that fixed
+  // speed; otherwise (null / undefined / non-positive) it falls back to the
+  // chart's dominantBpm() so the bulk of a soflan chart reads at its main tempo.
+  // DOM-free single source of truth so the Game-Preview reference-BPM label, the
+  // C-Mode projection (_effDt) and the reaction-time green number always agree.
+  cModeRefBpm(override) {
+    const v = Number(override);
+    if (Number.isFinite(v) && v > 0) return v;
+    return this.dominantBpm();
+  }
+
   addBtNote(laneIdx, y, len = 0) {
     const arr = this.bt[laneIdx];
     this._removeOverlap(arr, y, len);
