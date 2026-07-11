@@ -835,6 +835,35 @@ export class ChartData {
     return Math.max(1, best);
   }
 
+  // ── Soflan (tempo-change) markers ──────────────────────────────────────────
+  // Returns one entry per BPM CHANGE (skipping the initial tempo at chart start
+  // and any no-op events that repeat the current BPM): { tick, fromBpm, toBpm,
+  // ratio, dir } where dir = +1 for a speed-up, -1 for a slow-down. This is the
+  // DOM-free single source of truth for the C-Mode "soflan runway markers"
+  // readability aid — C-Mode neutralises tempo shifts on the lane, so the game
+  // view paints these faint labels where each change occurs so the flattened
+  // gimmicks stay legible. Render-only: never mutates chart data.
+  soflanMarkers() {
+    const evs = (Array.isArray(this.bpmEvents) && this.bpmEvents.length)
+              ? [...this.bpmEvents].sort((a, b) => a.y - b.y) : [];
+    const out = [];
+    let cur = Math.max(1, evs[0]?.bpm || 120);
+    for (let i = 1; i < evs.length; i++) {
+      const to = Math.max(1, evs[i].bpm || 120);
+      if (to !== cur) {
+        out.push({
+          tick:    evs[i].y,
+          fromBpm: cur,
+          toBpm:   to,
+          ratio:   to / cur,
+          dir:     to > cur ? 1 : -1,
+        });
+        cur = to;
+      }
+    }
+    return out;
+  }
+
   addBtNote(laneIdx, y, len = 0) {
     const arr = this.bt[laneIdx];
     this._removeOverlap(arr, y, len);

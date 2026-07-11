@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.56 · 2026</span>
+  <span class="version">v0.0.57 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.57</span>Soflan Runway Markers &mdash; Read Tempo Changes in C-Mode</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Soflan runway markers.</strong> A new <em>&#9209; Soflan</em> toggle in the preview <strong>Scroll</strong> section paints a faint <code>fromBPM&rarr;toBPM</code> label on the runway wherever a <strong>BPM change</strong> occurs, with a direction arrow (&#9650; speed-up, &#9660; slow-down) and colour cue (warm orange up, cool cyan down). It fades in as the change approaches the judgment line.</li>
+    <li><span class="tag add">add</span><strong>Made for C-Mode.</strong> Constant scroll flattens tempo gimmicks so you can&rsquo;t see them on the lane &mdash; these markers put them back, legibly, without changing the scroll. They also ride the lane in M-mode. Works in single <em>and</em> multi-chart preview and on both the 2D and WebGL paths; state persists via <strong>Save Config</strong>.</li>
+    <li><span class="tag add">add</span>Backed by a DOM-free, unit-tested source of truth in <code>chart.js</code> &mdash; <code>soflanMarkers()</code> &mdash; returning one entry per real BPM change (initial tempo and no-op repeats skipped). Render-only: the chart is never mutated.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.56</span>Green Number &mdash; Reaction-Time Readout</h4>

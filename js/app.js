@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.56';
+const APP_VERSION = '0.0.57';
 const CHANGELOG = [
+  {
+    version: '0.0.57',
+    title: 'Soflan Runway Markers — read tempo changes in C-Mode',
+    entries: [
+      ['add', '<strong>Soflan runway markers.</strong> A new <em>⏹ Soflan</em> toggle in the preview <strong>Scroll</strong> section paints a faint <code>fromBPM→toBPM</code> label on the runway wherever a <strong>BPM change</strong> occurs, with an arrow for the direction (▲ speed-up, ▼ slow-down) and colour cue (warm orange up, cool cyan down). It fades in as the change approaches the judgment line.'],
+      ['add', '<strong>Made for C-Mode.</strong> Constant scroll flattens tempo gimmicks so you can\'t see them on the lane — these markers put them back, legibly, without changing the scroll. They also ride the lane in M-mode. Works in single <em>and</em> multi-chart preview and on both the 2D and WebGL paths; state persists via <strong>Save Config</strong>.'],
+      ['add', 'Backed by a DOM-free, unit-tested source of truth in <code>chart.js</code> — <code>soflanMarkers()</code> — that returns one entry per real BPM change (initial tempo and no-op repeats skipped). Render-only: the chart is never mutated.'],
+    ],
+  },
   {
     version: '0.0.56',
     title: 'Green Number — reaction-time readout',
@@ -2205,6 +2214,31 @@ function toggleReactionReadout() {
   if (gameView && !playing) gameView.draw();
 }
 
+// ── Soflan runway markers ──────────────────────────────────────────────────────
+// Render-only. When on, the game view paints a faint "fromBpm→toBpm" band on the
+// runway wherever a BPM change occurs. Chiefly a C-Mode companion: constant scroll
+// flattens tempo gimmicks, and these keep them legible. Never mutates chart data.
+let soflanMarkersOn = false;
+
+// Push the flag onto every live GameView (main + multi-views), sync the toggle
+// button state, and redraw when paused.
+function applySoflanMarkers() {
+  const push = (gv) => { if (gv) gv.showSoflan = soflanMarkersOn; };
+  push(gameView);
+  if (typeof _multiViews !== 'undefined' && Array.isArray(_multiViews)) {
+    for (const mv of _multiViews) push(mv.gv);
+  }
+  const btn = document.getElementById('pvc-soflan-toggle');
+  if (btn) btn.classList.toggle('active', soflanMarkersOn);
+  if (gameView && !playing) gameView.draw();
+}
+
+// Toggle the soflan markers on/off.
+function toggleSoflanMarkers() {
+  soflanMarkersOn = !soflanMarkersOn;
+  applySoflanMarkers();
+}
+
 function _seekbarTickFromEvent(e) {
   const track = document.getElementById('game-seekbar-track');
   if (!track) return null;
@@ -2713,6 +2747,7 @@ function _multiRebuild() {
     gv._previewMod     = gvRef ? gvRef._previewMod     : previewMod;
     gv._previewModSeed = gvRef ? gvRef._previewModSeed : previewModSeed;
     gv.scrollMode      = gvRef ? gvRef.scrollMode      : previewScrollMode;
+    gv.showSoflan      = gvRef ? gvRef.showSoflan      : soflanMarkersOn;
     gv.playTick       = renderer.playTick;
 
     const mv = { wrap, canvasWrap, canvas, gv, tabIdx, mirrored: false, tickOffset: 0, hsSlider, hsVal };
@@ -9573,6 +9608,14 @@ function _initProjectionControls() {
     applyScrollMode(previewScrollMode);   // sync buttons + gameView to current state
   }
 
+  // Soflan runway markers toggle — render-only C-Mode readability companion.
+  const soflanBtn = document.getElementById('pvc-soflan-toggle');
+  if (soflanBtn && !soflanBtn._wired) {
+    soflanBtn._wired = true;
+    soflanBtn.addEventListener('click', toggleSoflanMarkers);
+    applySoflanMarkers();   // sync button + gameView to current state
+  }
+
   // Judge Y slider
   const jySl  = document.getElementById('pvc-judge-y');
   const jyLbl = document.getElementById('pvc-judge-y-label');
@@ -9707,6 +9750,8 @@ function _initProjectionControls() {
     prefs.previewScrollMode = previewScrollMode;
     // Reaction-time "green number" readout (render-only)
     prefs.reactionReadout   = reactionReadout;
+    // Soflan runway markers (render-only)
+    prefs.soflanMarkers     = soflanMarkersOn;
     // Persist
     try { localStorage.setItem('vibe-editr-prefs', JSON.stringify(prefs)); } catch(_) {}
     // Show "Saved!" flash
@@ -9783,6 +9828,8 @@ function _initProjectionControls() {
   if (prefs.previewScrollMode != null) applyScrollMode(prefs.previewScrollMode);
   // Restore reaction-time "green number" readout (render-only)
   if (prefs.reactionReadout != null) { reactionReadout = !!prefs.reactionReadout; updateReactionReadout(); }
+  // Restore soflan runway markers (render-only)
+  if (prefs.soflanMarkers != null) { soflanMarkersOn = !!prefs.soflanMarkers; applySoflanMarkers(); }
 
   // Set default projection to SDVX on load (only if no saved proj mode)
   if (!prefs.projMode) document.querySelector('.pvc-proj-btn[data-proj="sdvx"]')?.click();
