@@ -26,6 +26,13 @@ export class GameView {
     this.showReaction = true;
     this.reactionMs   = 0;
 
+    // Soflan (tempo-change) runway markers. When on, faint "fromBpm→toBpm"
+    // labels are painted on the lane where each BPM change occurs — chiefly a
+    // C-Mode readability aid (constant scroll flattens the tempo gimmicks, so
+    // these keep them legible). Source of truth: ChartData.soflanMarkers().
+    // Render-only; never touches chart data.
+    this.showSoflan = false;
+
     // Projection mode: 'ortho' | 'sdvx' | 'hybrid'
     this.projMode = 'sdvx';
     // Perspective intensity 0-100 (65 = SDVX arcade default)
@@ -1206,7 +1213,74 @@ export class GameView {
     if (p.tilt) ctx.restore();
 
     if (window.prefs?.ghostTrace) this._drawGhostTrace(p, tick, chart);
+    if (this.showSoflan) this._drawSoflanMarkers(p, chart);
     this._drawHUD(p, tick, score, chain);
+  }
+
+  // ── Soflan (tempo-change) runway markers ──────────────────────────────────
+  // Paints a faint band + "fromBpm→toBpm" label across the runway at every BPM
+  // change that is currently within the visible field. Uses the SAME velocity
+  // chokepoint (_effDt) and projection (_screenY/_screenX) as notes, so in
+  // C-Mode the marker sits exactly where the (flattened) tempo shift happens and
+  // in M-Mode it rides the lane like any note. Render-only; reads chart data,
+  // never writes it.
+  _drawSoflanMarkers(p, chart) {
+    if (!chart || typeof chart.soflanMarkers !== 'function') return;
+    const marks = chart.soflanMarkers();
+    if (!marks.length) return;
+    const ctx = this.ctx;
+    const VT  = this.VISIBLE_TICKS;
+
+    ctx.save();
+    // Ride the lane tilt so the bands align with the runway, exactly like
+    // drawAnnotations / notes.
+    if (p.tilt) {
+      ctx.translate(p.cx, p.judgeY);
+      ctx.rotate(p.tilt);
+      ctx.translate(-p.cx, -p.judgeY);
+    }
+    ctx.textBaseline = 'bottom';
+
+    for (const m of marks) {
+      const dt = this._effDt(m.tick);          // ticks ahead of playhead (mode-aware)
+      if (dt < 0 || dt > VT) continue;          // outside the visible runway
+
+      const sy = this._screenY(dt, p);
+      if (sy < p.cutoffY || sy > p.judgeY) continue;
+      const lx = this._screenX(0, sy, p);
+      const rx = this._screenX(1, sy, p);
+
+      const prox  = 1 - dt / VT;                // 0 far → 1 at judge line
+      // Speed-up = warm orange, slow-down = cool cyan.
+      const col   = m.dir > 0 ? '#ff9a4d' : '#4dc3ff';
+      const aBand  = 0.12 + prox * 0.30;
+
+      // Dashed line across the lane.
+      ctx.globalAlpha = aBand;
+      ctx.strokeStyle = col;
+      ctx.lineWidth   = 1;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(lx, sy);
+      ctx.lineTo(rx, sy);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Label: "120→240 ▲" (arrow = direction). Fades in as it approaches.
+      const arrow = m.dir > 0 ? '▲' : '▼';
+      const txt   = `${Math.round(m.fromBpm)}→${Math.round(m.toBpm)} ${arrow}`;
+      ctx.font    = `bold ${Math.round(8 + prox * 3)}px monospace`;
+      ctx.textAlign = 'center';
+      const tw = ctx.measureText(txt).width + 8;
+      // Backdrop for legibility.
+      ctx.globalAlpha = aBand * 1.4;
+      ctx.fillStyle   = '#000000';
+      ctx.fillRect(p.cx - tw / 2, sy - 15, tw, 13);
+      ctx.globalAlpha = Math.min(1, 0.45 + prox * 0.55);
+      ctx.fillStyle   = col;
+      ctx.fillText(txt, p.cx, sy - 3);
+    }
+    ctx.restore();
   }
 
   // ── Edit-mode ghost cursor ────────────────────────────────────────────────
