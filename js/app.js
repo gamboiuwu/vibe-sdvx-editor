@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.56';
+const APP_VERSION = '0.0.57';
 const CHANGELOG = [
+  {
+    version: '0.0.57',
+    title: 'Live NPS — notes-per-second density meter',
+    entries: [
+      ['add', '<strong>Live NPS meter.</strong> A new <em>♫ NPS</em> readout next to <em>HiSpeed</em> in the preview panel shows the <strong>note density at the playhead</strong> — a rolling 1-second window of BT + FX onsets — so you can watch the number spike through dense sections during preview playback. It also prints on the play field (top-left) with a peak-aware <strong>▲ hot</strong> cue at the chart\'s busiest moments.'],
+      ['add', '<strong>Soflan-accurate &amp; render-only.</strong> Density is measured in real time via <code>tickToSeconds</code>, so the same tick span reads denser at a faster tempo. The value is colour-cued green (calm) → yellow (busy) → orange (dense) → red (brutal). Toggle it on/off with the <em>♫ NPS</em> button; state persists via <strong>Save Config</strong>. The chart is never mutated.'],
+      ['add', 'Backed by DOM-free, unit-tested sources of truth in <code>chart.js</code> — <code>npsAt(tick, windowSec)</code> (live density) and <code>peakNps(windowSec)</code> (busiest moment, used for the colour scale).'],
+    ],
+  },
   {
     version: '0.0.56',
     title: 'Green Number — reaction-time readout',
@@ -2015,6 +2024,7 @@ export function updateSeekbar(tick) {
 
   _updateLoopMarkers();
   updateReactionReadout(tick);
+  updateNpsReadout(tick);
 }
 
 // Position the A/B markers + shaded region on the game seekbar to match loopA/B.
@@ -2202,6 +2212,55 @@ function updateReactionReadout(tick) {
 function toggleReactionReadout() {
   reactionReadout = !reactionReadout;
   updateReactionReadout();
+  if (gameView && !playing) gameView.draw();
+}
+
+// ── Live NPS (notes-per-second) density meter ─────────────────────────────────
+// Render-only. Shows the note density at the playhead — a rolling 1-second
+// window of BT + FX onsets — so a chartist can watch spikes live during preview
+// playback. Soflan-accurate (uses ChartData.tickToSeconds), never touches chart
+// data. The chart's peak NPS is cached (recomputed only when the chart identity
+// changes) to colour-cue the busiest moments without an O(N) sweep per frame.
+let npsReadout = true;
+const NPS_WINDOW_SEC = 1.0;
+let _npsPeakChart = null, _npsPeakVal = 0;
+
+function updateNpsReadout(tick) {
+  const lbl = document.getElementById('pvc-nps');
+  const btn = document.getElementById('pvc-nps-toggle');
+  if (btn) btn.classList.toggle('active', npsReadout);
+  if (!chart || typeof chart.npsAt !== 'function') {
+    if (lbl) lbl.textContent = '–';
+    if (gameView) { gameView.showNps = false; gameView.npsValue = 0; }
+    return;
+  }
+  // Peak is only needed for the colour cue; cache it per chart to stay cheap.
+  if (_npsPeakChart !== chart && typeof chart.peakNps === 'function') {
+    _npsPeakChart = chart;
+    _npsPeakVal   = chart.peakNps(NPS_WINDOW_SEC);
+  }
+  const t   = (tick != null) ? tick : (renderer ? renderer.playTick : 0);
+  const nps = chart.npsAt(t, NPS_WINDOW_SEC);
+  if (lbl) {
+    if (npsReadout) {
+      lbl.textContent = `${nps.toFixed(1)}`;
+      lbl.style.color = nps >= 20 ? '#ff5566' : nps >= 12 ? '#ffaa33' : nps >= 6 ? '#ffee66' : '#44dd88';
+    } else {
+      lbl.textContent = '–';
+      lbl.style.color = '';
+    }
+  }
+  if (gameView) {
+    gameView.showNps  = npsReadout;
+    gameView.npsValue = npsReadout ? nps : 0;
+    gameView.npsPeak  = _npsPeakVal;
+  }
+}
+
+// Toggle the NPS meter on/off; refresh HUD and redraw when paused.
+function toggleNpsReadout() {
+  npsReadout = !npsReadout;
+  updateNpsReadout();
   if (gameView && !playing) gameView.draw();
 }
 
@@ -9446,6 +9505,11 @@ function _initProjectionControls() {
   reactBtn?.addEventListener('click', toggleReactionReadout);
   updateReactionReadout();   // sync label + button to current state
 
+  // Live NPS (notes-per-second) density meter toggle
+  const npsBtn = document.getElementById('pvc-nps-toggle');
+  npsBtn?.addEventListener('click', toggleNpsReadout);
+  updateNpsReadout();        // sync label + button to current state
+
   // BT Width slider (wired here so it's near the other preview controls)
   const bwSl  = document.getElementById('pvc-bt-width');
   const bwLbl = document.getElementById('pvc-bt-width-label');
@@ -9707,6 +9771,8 @@ function _initProjectionControls() {
     prefs.previewScrollMode = previewScrollMode;
     // Reaction-time "green number" readout (render-only)
     prefs.reactionReadout   = reactionReadout;
+    // Live NPS density meter (render-only)
+    prefs.npsReadout        = npsReadout;
     // Persist
     try { localStorage.setItem('vibe-editr-prefs', JSON.stringify(prefs)); } catch(_) {}
     // Show "Saved!" flash
@@ -9783,6 +9849,8 @@ function _initProjectionControls() {
   if (prefs.previewScrollMode != null) applyScrollMode(prefs.previewScrollMode);
   // Restore reaction-time "green number" readout (render-only)
   if (prefs.reactionReadout != null) { reactionReadout = !!prefs.reactionReadout; updateReactionReadout(); }
+  // Restore live NPS density meter (render-only)
+  if (prefs.npsReadout != null) { npsReadout = !!prefs.npsReadout; updateNpsReadout(); }
 
   // Set default projection to SDVX on load (only if no saved proj mode)
   if (!prefs.projMode) document.querySelector('.pvc-proj-btn[data-proj="sdvx"]')?.click();

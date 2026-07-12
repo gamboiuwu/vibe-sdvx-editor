@@ -26,6 +26,13 @@ export class GameView {
     this.showReaction = true;
     this.reactionMs   = 0;
 
+    // Live NPS (notes-per-second density) HUD. showNps toggles the on-lane
+    // readout; npsValue / npsPeak are computed by the app layer via
+    // ChartData.npsAt / peakNps (single source of truth). Render-only.
+    this.showNps = true;
+    this.npsValue = 0;
+    this.npsPeak  = 0;
+
     // Projection mode: 'ortho' | 'sdvx' | 'hybrid'
     this.projMode = 'sdvx';
     // Perspective intensity 0-100 (65 = SDVX arcade default)
@@ -1639,6 +1646,31 @@ export class GameView {
       ctx.font      = '9px monospace';
       ctx.fillStyle = '#4fbf7a';
       ctx.fillText('ms react', p.w - 14, gy + 12);
+    }
+
+    // ── Live NPS density meter (top left, below difficulty) ───────────────────
+    // Current notes-per-second at the playhead, computed by the app layer via
+    // ChartData.npsAt (single source of truth) and pushed onto this.npsValue,
+    // with this.npsPeak used to colour-scale relative to the chart's busiest
+    // moment. Render-only; the chart is never mutated.
+    if (this.showNps && this.npsValue >= 0) {
+      const nps  = this.npsValue;
+      // Colour by absolute density with a peak-aware "hot" cue when at ≥85% peak.
+      let col = '#44dd88';                       // calm green
+      if (nps >= 20)      col = '#ff5566';       // brutal
+      else if (nps >= 12) col = '#ffaa33';       // dense
+      else if (nps >= 6)  col = '#ffee66';       // busy
+      const hot = this.npsPeak > 0 && nps >= this.npsPeak * 0.85 && nps >= 4;
+      ctx.textAlign    = 'left';
+      ctx.textBaseline = 'top';
+      ctx.font         = 'bold 13px monospace';
+      ctx.shadowColor  = col + '88'; ctx.shadowBlur = hot ? 10 : 4;
+      ctx.fillStyle    = col;
+      ctx.fillText(`${nps.toFixed(1)}`, 14, 72);
+      ctx.shadowBlur   = 0;
+      ctx.font         = '9px monospace';
+      ctx.fillStyle    = '#8899aa';
+      ctx.fillText(hot ? 'NPS ▲' : 'NPS', 14, 88);
     }
   }
 

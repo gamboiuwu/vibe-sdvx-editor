@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.56 · 2026</span>
+  <span class="version">v0.0.57 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.57</span>Live NPS &mdash; Notes-Per-Second Density Meter</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Live NPS meter.</strong> A new <em>&#9835; NPS</em> readout next to <em>HiSpeed</em> in the preview panel shows the <strong>note density at the playhead</strong> &mdash; a rolling 1-second window of BT&nbsp;+&nbsp;FX onsets &mdash; so you can watch the number spike through dense sections during preview playback. It also prints on the play field (top-left) with a peak-aware <strong>&#9650; hot</strong> cue at the chart&rsquo;s busiest moments.</li>
+    <li><span class="tag add">add</span><strong>Soflan-accurate &amp; render-only.</strong> Density is measured in real time via <code>tickToSeconds</code>, so the same tick span reads denser at a faster tempo. The value is colour-cued green (calm) &rarr; yellow (busy) &rarr; orange (dense) &rarr; red (brutal). Toggle it with the <em>&#9835; NPS</em> button; state persists via <strong>Save Config</strong>. The chart is never mutated.</li>
+    <li><span class="tag add">add</span>Backed by DOM-free, unit-tested sources of truth in <code>chart.js</code> &mdash; <code>npsAt(tick, windowSec)</code> (live density) and <code>peakNps(windowSec)</code> (busiest moment, used for the colour scale).</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.56</span>Green Number &mdash; Reaction-Time Readout</h4>
