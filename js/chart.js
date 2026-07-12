@@ -812,6 +812,60 @@ export class ChartData {
     return vt / TICKS_PER_BEAT * (60 / b) * 1000 / r;
   }
 
+  // ── Live NPS (notes-per-second density) ─────────────────────────────────────
+  // Real-time note density at a playhead `tick`: a rolling window of the last
+  // `windowSec` seconds ending at the tick, counting note ONSETS (BT + FX heads),
+  // divided by the window length. Because it converts every candidate onset
+  // through tickToSeconds it is soflan-accurate — the same tick span is denser at
+  // a faster tempo. DOM-free single source of truth for the Game-Preview live NPS
+  // meter. Onsets only (hold bodies and continuous lasers are not re-counted),
+  // matching the conventional rhythm-game NPS metric. Never mutates chart data.
+  npsAt(tick, windowSec = 1) {
+    const w      = Math.max(0.05, Number(windowSec) || 1);
+    const endSec = this.tickToSeconds(Math.max(0, Math.floor(Number(tick) || 0)));
+    const loSec  = endSec - w;
+    let count = 0;
+    const lanes = [this.bt, this.fx];
+    for (const group of lanes) {
+      if (!Array.isArray(group)) continue;
+      for (const lane of group) {
+        if (!Array.isArray(lane)) continue;
+        for (const n of lane) {
+          const s = this.tickToSeconds(n.y);
+          if (s > loSec && s <= endSec) count++;
+        }
+      }
+    }
+    return count / w;
+  }
+
+  // Peak live NPS across the whole chart, sampled at each note onset (BT + FX
+  // heads) with the same rolling `windowSec` window as npsAt — the busiest moment
+  // in the chart. DOM-free; used to colour-scale / label the live meter. Never
+  // mutates chart data.
+  peakNps(windowSec = 1) {
+    const w = Math.max(0.05, Number(windowSec) || 1);
+    const ys = [];
+    for (const group of [this.bt, this.fx]) {
+      if (!Array.isArray(group)) continue;
+      for (const lane of group) {
+        if (!Array.isArray(lane)) continue;
+        for (const n of lane) ys.push(n.y);
+      }
+    }
+    if (!ys.length) return 0;
+    ys.sort((a, b) => a - b);
+    // Convert onsets to seconds once, then slide a window across them.
+    const secs = ys.map(y => this.tickToSeconds(y));
+    let peak = 0, lo = 0;
+    for (let hi = 0; hi < secs.length; hi++) {
+      while (secs[hi] - secs[lo] >= w) lo++;
+      const cnt = hi - lo + 1;
+      if (cnt > peak) peak = cnt;
+    }
+    return peak / w;
+  }
+
   // ── Dominant BPM ───────────────────────────────────────────────────────────
   // Returns the tempo (BPM) that plays for the greatest total time across the
   // whole chart — the natural reference for C-Mode so the bulk of a soflan
