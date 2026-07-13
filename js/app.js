@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.56';
+const APP_VERSION = '0.0.57';
 const CHANGELOG = [
+  {
+    version: '0.0.57',
+    title: 'Manual C-Mode Reference BPM (lock the constant scroll speed)',
+    entries: [
+      ['add', '<strong>Manual C-Mode reference BPM.</strong> A new editable <em>BPM</em> field next to the <strong>Scroll</strong> M/C toggle lets you <strong>lock the C-mode constant scroll speed to any tempo</strong> instead of the chart\'s auto dominant BPM. Leave it blank for <em>auto</em>; type a value (20–1000) to audition a soflan chart at a fixed reading speed of your choosing.'],
+      ['add', '<strong>Drives the Green Number too.</strong> When a manual reference is set, the <em>@bpm</em> label shows it with a ✎ pencil and the <strong>green-number reaction readout</strong> relocks to the chosen tempo — so you can dial a target reading window on any chart. Works in single <em>and</em> multi-chart preview; the field is enabled only in C-mode.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Resolved through <code>GameView.cModeRefBpm()</code> (override wins, else <code>dominantBpm()</code>) so the <code>_effDt</code> projection, the label, and the green number always agree. The chart is never mutated. Persists via <strong>Save Config</strong>; i18n in all 5 locales.'],
+    ],
+  },
   {
     version: '0.0.56',
     title: 'Green Number — reaction-time readout',
@@ -2126,6 +2135,24 @@ function _updateModHud() {
 // Render-only: 'mmode' = BPM-relative scroll (default), 'cmode' = constant
 // real-time scroll locked to the chart's dominant BPM. Never mutates chart data.
 let previewScrollMode = 'mmode';
+// Manual C-Mode reference-BPM override. 0 = AUTO (the chart's dominant BPM, the
+// v0.0.55 default); a positive value LOCKS the constant scroll speed / green
+// number to any tempo the user types, so a soflan chart can be auditioned at an
+// arbitrary reading speed. Render-only; never touches chart data.
+let previewCRefBpm = 0;
+
+// Resolve the C-Mode reference BPM the same way GameView.cModeRefBpm() does, so
+// the side-panel label and the green number match the actual scroll projection
+// even before the first draw (falls back to the raw dominant BPM if no view).
+function cModeRefBpmResolved() {
+  if (gameView && typeof gameView.cModeRefBpm === 'function') return gameView.cModeRefBpm();
+  if (Number.isFinite(previewCRefBpm) && previewCRefBpm > 0) return Math.max(1, previewCRefBpm);
+  if (chart && typeof chart.dominantBpm === 'function') {
+    const b = chart.dominantBpm();
+    return Math.max(1, Number.isFinite(b) && b > 0 ? b : 120);
+  }
+  return 120;
+}
 
 // Push the active scroll mode onto every live GameView (main + multi-views),
 // refresh the M/C button HUD + the C-mode reference-BPM label, and redraw paused.
@@ -2141,20 +2168,47 @@ function applyScrollMode(mode) {
   if (gameView && !playing) gameView.draw();
 }
 
+// Apply a manual C-Mode reference BPM (0/blank/invalid = AUTO dominant BPM).
+// Clamped to a sane 20–1000 range; pushed onto every live view so C-mode scroll
+// + the green number relock immediately. Render-only.
+function applyCRefBpm(bpm) {
+  const v = Number(bpm);
+  previewCRefBpm = (Number.isFinite(v) && v > 0) ? Math.max(20, Math.min(1000, v)) : 0;
+  const push = (gv) => { if (gv) gv.cRefOverride = previewCRefBpm; };
+  push(gameView);
+  if (typeof _multiViews !== 'undefined' && Array.isArray(_multiViews)) {
+    for (const mv of _multiViews) push(mv.gv);
+  }
+  _updateScrollHud();
+  updateReactionReadout();
+  if (gameView && !playing) gameView.draw();
+}
+
 function _updateScrollHud() {
   const mBtn = document.getElementById('pvc-scroll-m');
   const cBtn = document.getElementById('pvc-scroll-c');
   if (mBtn) mBtn.classList.toggle('active', previewScrollMode === 'mmode');
   if (cBtn) cBtn.classList.toggle('active', previewScrollMode === 'cmode');
+  const cmode = previewScrollMode === 'cmode';
+  const overridden = Number.isFinite(previewCRefBpm) && previewCRefBpm > 0;
   const lbl = document.getElementById('pvc-scroll-label');
   if (lbl) {
-    if (previewScrollMode === 'cmode' && chart && typeof chart.dominantBpm === 'function') {
-      lbl.textContent = '@' + Math.round(chart.dominantBpm());
-      lbl.style.color = '#ffcc44';
+    if (cmode && chart && typeof chart.dominantBpm === 'function') {
+      // Show the RESOLVED reference (override wins); a pencil marks a manual lock.
+      lbl.textContent = '@' + Math.round(cModeRefBpmResolved()) + (overridden ? ' ✎' : '');
+      lbl.style.color = overridden ? '#66ff99' : '#ffcc44';
     } else {
       lbl.textContent = '';
       lbl.style.color = '';
     }
+  }
+  // The manual-BPM input only matters in C-mode; reflect state + enable there.
+  const inp = document.getElementById('pvc-cref-bpm');
+  if (inp) {
+    inp.disabled = !cmode;
+    inp.style.opacity = cmode ? '1' : '0.4';
+    const want = overridden ? String(Math.round(previewCRefBpm)) : '';
+    if (document.activeElement !== inp && inp.value !== want) inp.value = want;
   }
 }
 
@@ -2180,7 +2234,7 @@ function updateReactionReadout(tick) {
   const t  = (tick != null) ? tick : (renderer ? renderer.playTick : 0);
   const vt = gameView ? gameView.VISIBLE_TICKS : (TICKS_PER_MEASURE * 4 / Math.max(0.1, chartSpeed));
   const bpm = (previewScrollMode === 'cmode' && typeof chart.dominantBpm === 'function')
-            ? chart.dominantBpm()
+            ? cModeRefBpmResolved()   // honours the manual C-mode reference override
             : chart.getBpmAt(Math.floor(t));
   const ms = chart.reactionWindowMs(vt, bpm, playbackRate);
   if (lbl) {
@@ -2713,6 +2767,7 @@ function _multiRebuild() {
     gv._previewMod     = gvRef ? gvRef._previewMod     : previewMod;
     gv._previewModSeed = gvRef ? gvRef._previewModSeed : previewModSeed;
     gv.scrollMode      = gvRef ? gvRef.scrollMode      : previewScrollMode;
+    gv.cRefOverride    = gvRef ? gvRef.cRefOverride    : previewCRefBpm;
     gv.playTick       = renderer.playTick;
 
     const mv = { wrap, canvasWrap, canvas, gv, tabIdx, mirrored: false, tickOffset: 0, hsSlider, hsVal };
@@ -2797,6 +2852,7 @@ function _multiSyncSettings() {
     mv.gv._previewMod     = gameView._previewMod;
     mv.gv._previewModSeed = gameView._previewModSeed;
     mv.gv.scrollMode      = gameView.scrollMode;
+    mv.gv.cRefOverride    = gameView.cRefOverride;
   }
 }
 
@@ -9573,6 +9629,20 @@ function _initProjectionControls() {
     applyScrollMode(previewScrollMode);   // sync buttons + gameView to current state
   }
 
+  // Manual C-Mode reference BPM — blank = auto (dominant BPM); a value locks the
+  // constant scroll speed / green number to any tempo. Enter or blur commits.
+  const crefInput = document.getElementById('pvc-cref-bpm');
+  if (crefInput && !crefInput._wired) {
+    crefInput._wired = true;
+    const commit = () => {
+      const v = parseFloat(crefInput.value);
+      applyCRefBpm(Number.isFinite(v) && v > 0 ? v : 0);
+    };
+    crefInput.addEventListener('change', commit);
+    crefInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { commit(); crefInput.blur(); } });
+    applyCRefBpm(previewCRefBpm);   // sync input + gameView to current state
+  }
+
   // Judge Y slider
   const jySl  = document.getElementById('pvc-judge-y');
   const jyLbl = document.getElementById('pvc-judge-y-label');
@@ -9705,6 +9775,8 @@ function _initProjectionControls() {
     prefs.previewModSeed   = previewModSeed;
     // Preview scroll mode (render-only constant-scroll readability aid)
     prefs.previewScrollMode = previewScrollMode;
+    // Manual C-Mode reference BPM override (0 = auto / dominant BPM)
+    prefs.previewCRefBpm    = previewCRefBpm;
     // Reaction-time "green number" readout (render-only)
     prefs.reactionReadout   = reactionReadout;
     // Persist
@@ -9781,6 +9853,8 @@ function _initProjectionControls() {
   if (prefs.previewMod       != null) applyPreviewMod(prefs.previewMod, previewModSeed);
   // Restore preview scroll mode (render-only constant-scroll readability aid)
   if (prefs.previewScrollMode != null) applyScrollMode(prefs.previewScrollMode);
+  // Restore manual C-Mode reference BPM override (0 = auto / dominant BPM)
+  if (prefs.previewCRefBpm   != null) applyCRefBpm(prefs.previewCRefBpm);
   // Restore reaction-time "green number" readout (render-only)
   if (prefs.reactionReadout != null) { reactionReadout = !!prefs.reactionReadout; updateReactionReadout(); }
 

@@ -18,6 +18,13 @@ export class GameView {
     //              velocity regardless of BPM changes / soflan — readability aid).
     // Render-only; never touches chart data.
     this.scrollMode = 'mmode';
+    // C-Mode reference BPM override. 0 (or non-finite) = AUTO, i.e. the chart's
+    // dominant BPM (the v0.0.55 default). A positive value LOCKS the constant
+    // scroll speed to any tempo the user picks, so a soflan chart can be
+    // auditioned at an arbitrary reading speed. Render-only; never touches chart
+    // data. Resolved through cModeRefBpm() so _effDt, the label, and the green
+    // number all read one source of truth.
+    this.cRefOverride = 0;
 
     // Reaction-time "green number" HUD. showReaction toggles the on-lane readout;
     // reactionMs is the value to paint (ms a note is on screen) — computed by the
@@ -110,6 +117,18 @@ export class GameView {
   // Effective "dt" from the playhead to a chart tick, integrating
   // chart.scrollSpeedEvents.  When no velocity events exist this is just
   // (y - playTick) so behaviour is identical to before.  Cached per draw().
+  // Resolve the C-Mode reference BPM: a manual override (cRefOverride > 0) wins,
+  // otherwise the chart's dominant BPM. Single source of truth so the _effDt
+  // projection, the '@bpm' label, and the reaction "green number" all agree.
+  cModeRefBpm() {
+    if (Number.isFinite(this.cRefOverride) && this.cRefOverride > 0) {
+      return Math.max(1, this.cRefOverride);
+    }
+    const b = (this.chart && typeof this.chart.dominantBpm === 'function')
+            ? this.chart.dominantBpm() : 0;
+    return Math.max(1, Number.isFinite(b) && b > 0 ? b : 120);
+  }
+
   _effDt(y) {
     if (!this.chart || !this.chart.scrollDistanceTo) return y - this.playTick;
     // ── C-Mode: constant real-time scroll ────────────────────────────────────
@@ -123,10 +142,7 @@ export class GameView {
     // neutralised in this mode.  Chart data is never touched.
     if (this.scrollMode === 'cmode' && typeof this.chart.tickToSeconds === 'function') {
       if (this._playSec == null) this._playSec = this.chart.tickToSeconds(this.playTick);
-      if (this._cRefBpm == null) {
-        const b = (typeof this.chart.dominantBpm === 'function') ? this.chart.dominantBpm() : 0;
-        this._cRefBpm = Math.max(1, Number.isFinite(b) && b > 0 ? b : 120);
-      }
+      if (this._cRefBpm == null) this._cRefBpm = this.cModeRefBpm();
       const secAhead = this.chart.tickToSeconds(y) - this._playSec;
       // seconds → ticks at the constant reference BPM (TICKS_PER_BEAT ticks/beat)
       return secAhead * TICKS_PER_BEAT * this._cRefBpm / 60;
