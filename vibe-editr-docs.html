@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.56 · 2026</span>
+  <span class="version">v0.0.57 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.57</span>Manual C-Mode Reference BPM</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Manual C-Mode reference BPM.</strong> A new editable <em>BPM</em> field next to the <strong>Scroll</strong> M/C toggle lets you <strong>lock the C-mode constant scroll speed to any tempo</strong> instead of the chart&rsquo;s auto dominant BPM. Leave it blank for <em>auto</em>; type a value (20&ndash;1000) to audition a soflan chart at a fixed reading speed of your choosing. The field is enabled only in C-mode.</li>
+    <li><span class="tag add">add</span><strong>Drives the Green Number too.</strong> When a manual reference is set, the <em>@bpm</em> label shows it with a &#9998; pencil and the <strong>green-number reaction readout</strong> relocks to the chosen tempo &mdash; so you can dial a target reading window on any chart. Works in single <em>and</em> multi-chart preview.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Resolved through <code>GameView.cModeRefBpm()</code> (override wins, else <code>dominantBpm()</code>) so the <code>_effDt</code> projection, the label, and the green number always agree. The chart is never mutated. Persists via <strong>Save Config</strong>; i18n in all 5 locales.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.56</span>Green Number &mdash; Reaction-Time Readout</h4>
