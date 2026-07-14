@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.57';
+const APP_VERSION = '0.0.58';
 const CHANGELOG = [
+  {
+    version: '0.0.58',
+    title: 'Target Green Number → auto HiSpeed (pick your reading window)',
+    entries: [
+      ['add', '<strong>Target green-number preset.</strong> A new <em>→ms</em> field next to the <strong>Green#</strong> readout lets you type the <strong>reaction window you want</strong> (e.g. <code>300</code>) and press <strong>Enter</strong> — the editor solves for the <strong>HiSpeed</strong> that yields it at the current reference BPM and practice rate, the way an IIDX/SDVX player picks a float hi-speed. No more guessing the slider.'],
+      ['add', '<strong>Composes with everything.</strong> In <strong>C-mode</strong> it solves against your <strong>manual C-ref lock</strong> (v0.0.57); in <strong>M-mode</strong> against the tempo at the playhead; it honours the <strong>practice rate</strong> (v0.0.56). The solved HiSpeed is snapped to the slider and <strong>clamped to range</strong>, so an extreme target lands on the nearest achievable speed and the green number updates to the real value.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Backed by a DOM-free, unit-tested inverse of the green-number engine — <code>chart.hispeedForReactionMs(targetMs, bpm, rate)</code> — an exact round-trip with <code>reactionWindowMs</code>. Only the visual HiSpeed changes; the chart is never mutated. i18n in all 5 locales.'],
+    ],
+  },
   {
     version: '0.0.57',
     title: 'Manual C-Mode Reference BPM (lock the constant scroll speed)',
@@ -2255,6 +2264,41 @@ function updateReactionReadout(tick) {
 // Toggle the green-number readout on/off; refresh HUD and redraw when paused.
 function toggleReactionReadout() {
   reactionReadout = !reactionReadout;
+  updateReactionReadout();
+  if (gameView && !playing) gameView.draw();
+}
+
+// ── Target green-number → HiSpeed preset ──────────────────────────────────────
+// Render-only. Given a desired reaction window (ms), solve for the HiSpeed that
+// yields it at the CURRENT reference BPM (C-mode honours the manual C-ref lock,
+// M-mode uses the local tempo at the playhead) and practice rate, using the
+// inverse of the reactionWindowMs engine (chart.hispeedForReactionMs). The
+// solved HiSpeed is clamped to the slider range, applied to the game view and
+// mirrored onto the HiSpeed slider / labels, then the green-number readout is
+// refreshed so the achieved number reflects any clamping. Never touches chart data.
+function applyGreenTarget(targetMs) {
+  if (!chart || typeof chart.hispeedForReactionMs !== 'function') return;
+  const t = Number(targetMs);
+  if (!Number.isFinite(t) || t <= 0) return;
+  const bpm = (previewScrollMode === 'cmode' && typeof chart.dominantBpm === 'function')
+            ? cModeRefBpmResolved()
+            : chart.getBpmAt(Math.floor(renderer ? renderer.playTick : 0));
+  // Solve, then clamp to the HiSpeed slider's declared [min,max] so an extreme
+  // target lands on the nearest achievable scroll speed rather than off-scale.
+  const hsSl = document.getElementById('pvc-hispeed');
+  const lo = hsSl ? (+hsSl.min || 0.2) : 0.2;
+  const hi = hsSl ? (+hsSl.max || 10)  : 10;
+  let hs = chart.hispeedForReactionMs(t, bpm, playbackRate);
+  hs = Math.max(lo, Math.min(hi, Math.round(hs * 10) / 10)); // snap to slider step (0.1)
+  // Mirror to the HiSpeed slider + labels + top-menu control (same path the slider uses)
+  if (hsSl) hsSl.value = hs;
+  const hsLbl = document.getElementById('pvc-hispeed-label');
+  if (hsLbl) hsLbl.textContent = hs.toFixed(1) + '×';
+  const topSl  = document.getElementById('chart-speed');
+  const topLbl = document.getElementById('chart-speed-label');
+  if (topSl)  topSl.value = hs;
+  if (topLbl) topLbl.textContent = hs.toFixed(2) + '×';
+  if (gameView) gameView.hispeed = hs;
   updateReactionReadout();
   if (gameView && !playing) gameView.draw();
 }
@@ -9501,6 +9545,20 @@ function _initProjectionControls() {
   const reactBtn = document.getElementById('pvc-reaction-toggle');
   reactBtn?.addEventListener('click', toggleReactionReadout);
   updateReactionReadout();   // sync label + button to current state
+
+  // Target green-number → HiSpeed preset: type ms, press Enter (or blur) to
+  // auto-solve the HiSpeed that yields it at the current reference BPM + rate.
+  const greenTgt = document.getElementById('pvc-green-target');
+  if (greenTgt && !greenTgt._wired) {
+    greenTgt._wired = true;
+    const apply = () => {
+      const v = greenTgt.value.trim();
+      if (v === '') return;                 // blank = keep manual HiSpeed control
+      applyGreenTarget(+v);
+    };
+    greenTgt.addEventListener('change', apply);
+    greenTgt.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); apply(); greenTgt.blur(); } });
+  }
 
   // BT Width slider (wired here so it's near the other preview controls)
   const bwSl  = document.getElementById('pvc-bt-width');

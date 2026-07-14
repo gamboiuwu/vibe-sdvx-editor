@@ -812,6 +812,23 @@ export class ChartData {
     return vt / TICKS_PER_BEAT * (60 / b) * 1000 / r;
   }
 
+  // Inverse of reactionWindowMs: given a TARGET green number (`targetMs`, the ms a
+  // note should be on screen), return the HiSpeed multiplier that achieves it at
+  // tempo `bpm` and practice `rate`. `visibleTicksAt1x` is the visible scroll
+  // distance at HiSpeed 1× (GameView.VISIBLE_TICKS × hispeed = TICKS_PER_MEASURE×4
+  // = 768), since VISIBLE_TICKS(h) = visibleTicksAt1x / h. Solving
+  //   targetMs = reactionWindowMs(visibleTicksAt1x / h, bpm, rate)
+  // for h gives the closed form below — an exact round-trip with reactionWindowMs.
+  // This is how a rhythm-game player picks HiSpeed by target green number (IIDX
+  // float hi-speed). DOM-free single source of truth; never touches chart data.
+  hispeedForReactionMs(targetMs, bpm, rate = 1, visibleTicksAt1x = TICKS_PER_MEASURE * BEATS_PER_MEASURE) {
+    const t   = Math.max(1,    Number(targetMs) || 1);
+    const b   = Math.max(1,    Number(bpm) || 120);
+    const r   = Math.max(0.01, Number(rate) || 1);
+    const vt1 = Math.max(1,    Number(visibleTicksAt1x) || 1);
+    return vt1 / TICKS_PER_BEAT * (60 / b) * 1000 / r / t;
+  }
+
   // ── Dominant BPM ───────────────────────────────────────────────────────────
   // Returns the tempo (BPM) that plays for the greatest total time across the
   // whole chart — the natural reference for C-Mode so the bulk of a soflan
