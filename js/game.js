@@ -26,6 +26,12 @@ export class GameView {
     // number all read one source of truth.
     this.cRefOverride = 0;
 
+    // Soflan runway markers (v0.0.59). In C-mode the on-screen scroll speed is
+    // held constant, so BPM changes become invisible; when true, _drawSoflanMarkers
+    // redraws faint tempo-change lines on the runway. Pushed by the app layer onto
+    // every live view (main + multi) like scrollMode / cRefOverride. Render-only.
+    this.soflanMarkers = true;
+
     // Reaction-time "green number" HUD. showReaction toggles the on-lane readout;
     // reactionMs is the value to paint (ms a note is on screen) — computed by the
     // app layer via ChartData.reactionWindowMs so there is one source of truth.
@@ -1218,6 +1224,10 @@ export class GameView {
     // with the lane, on top of notes/lasers but under the HUD.
     this._drawLaneCover(p);
 
+    // Soflan runway markers — faint tempo-change labels (C-mode readability aid).
+    // Drawn inside the tilt context so the lines ride the lane like the notes.
+    this._drawSoflanMarkers(p);
+
     // Close the tilt rotation context (HUD is always drawn unrotated)
     if (p.tilt) ctx.restore();
 
@@ -1656,6 +1666,77 @@ export class GameView {
       ctx.fillStyle = '#4fbf7a';
       ctx.fillText('ms react', p.w - 14, gy + 12);
     }
+  }
+
+  /* ── Soflan Runway Markers (C-Mode readability aid) ────────────────────────
+     In C-mode the on-screen scroll speed is intentionally held constant, so
+     BPM changes (soflan) become invisible. These faint markers redraw that
+     information: a dashed line across the runway at each tempo-change tick,
+     labelled with the jump (e.g. "120→240") and colour-coded (green when the
+     tempo drops, amber when it rises). Screen-Y comes straight from _effDt so
+     the marker rides the exact same projection as the notes. Render-only —
+     chart data is never touched. Gated on prefs.soflanMarkers + C-mode.
+  ─────────────────────────────────────────────────────────────────────────── */
+  _drawSoflanMarkers(p) {
+    if (this.scrollMode !== 'cmode') return;         // only meaningful in C-mode
+    if (!this.soflanMarkers) return;
+    const chart = this.chart;
+    const evs = chart && Array.isArray(chart.bpmEvents) ? chart.bpmEvents : null;
+    if (!evs || evs.length < 2) return;              // need at least one change
+
+    const ctx = this.ctx;
+    const VT  = this.VISIBLE_TICKS;
+    const sorted = evs.slice().sort((a, b) => a.y - b.y);
+    const fmt = v => (Math.abs(v - Math.round(v)) < 0.05 ? String(Math.round(v)) : v.toFixed(1));
+
+    ctx.save();
+    ctx.textBaseline = 'middle';
+    ctx.font = '9px monospace';
+
+    for (let i = 1; i < sorted.length; i++) {
+      const ev   = sorted[i];
+      const prev = sorted[i - 1].bpm;
+      const cur  = ev.bpm;
+      if (!(cur > 0) || !(prev > 0) || Math.abs(cur - prev) < 1e-6) continue; // no real change
+
+      const dt = this._effDt(ev.y);                  // ticks ahead (C-mode projection)
+      if (dt < -TICKS_PER_BEAT * 0.25 || dt > VT) continue;   // outside the runway
+
+      const sy = this._screenY(Math.max(0, dt), p);
+      if (sy < p.cutoffY || sy > p.judgeY + 2) continue;
+
+      const lx = this._screenX(0, sy, p);
+      const rx = this._screenX(1, sy, p);
+
+      const prox  = 1 - Math.max(0, Math.min(1, dt / VT));   // 0 far → 1 at judge
+      const isUp  = cur > prev;
+      const color = isUp ? '#ffb040' : '#40d0a0';    // amber = speed up, green = slow down
+      const baseA = 0.22 + prox * 0.45;
+
+      // Dashed line across the runway
+      ctx.globalAlpha = baseA;
+      ctx.strokeStyle = color;
+      ctx.lineWidth   = 1;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      ctx.moveTo(lx, sy);
+      ctx.lineTo(rx, sy);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Label to the right of the lane: "prev→cur"
+      const txt = `${fmt(prev)}→${fmt(cur)}`;
+      const tw  = ctx.measureText(txt).width;
+      ctx.globalAlpha = baseA * 0.5;
+      ctx.fillStyle   = '#000000';
+      ctx.fillRect(rx + 3, sy - 6, tw + 6, 12);
+      ctx.globalAlpha = Math.min(1, baseA + 0.25);
+      ctx.fillStyle   = color;
+      ctx.textAlign   = 'left';
+      ctx.fillText(txt, rx + 6, sy);
+    }
+
+    ctx.restore();
   }
 
   /* ── Annotation overlay: warning bands for tool-flagged issues ─────────────

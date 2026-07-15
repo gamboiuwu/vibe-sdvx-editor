@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.58';
+const APP_VERSION = '0.0.59';
 const CHANGELOG = [
+  {
+    version: '0.0.59',
+    title: 'Soflan Runway Markers (keep tempo changes legible in C-mode)',
+    entries: [
+      ['add', '<strong>Soflan runway markers.</strong> In <strong>C-mode</strong> the on-screen scroll speed is held constant on purpose, so BPM changes (<em>soflan</em>) become invisible. A new <em>☰ Soflan</em> toggle in the preview <strong>Scroll</strong> row redraws that lost information: a faint <strong>dashed line across the runway</strong> wherever the tempo changes, with a label of the jump (e.g. <code>120→240</code>), colour-coded <strong>amber for a speed-up</strong> and <strong>green for a slow-down</strong>, fading in as it nears the judgment line.'],
+      ['add', '<strong>Rides the same projection as the notes.</strong> Each marker\'s screen position comes straight from the C-mode <code>_effDt</code> layer (the same chokepoint the notes use), so the line always sits exactly where the tempo change lands on the runway. Drawn inside the lane tilt and mirrored onto every multi-chart pane. On by default; gated to C-mode so it never touches M-mode.'],
+      ['add', '<strong>Render-only.</strong> Walks <code>chart.bpmEvents</code> without ever mutating them — <code>GameView._drawSoflanMarkers()</code>. Persists via <strong>Save Config</strong> (<code>prefs.soflanMarkers</code>); i18n in all 5 locales. Verified with a real-browser test against the live preview render pipeline.'],
+    ],
+  },
   {
     version: '0.0.58',
     title: 'Target Green Number → auto HiSpeed (pick your reading window)',
@@ -2177,6 +2186,22 @@ function applyScrollMode(mode) {
   if (gameView && !playing) gameView.draw();
 }
 
+// Toggle Soflan Runway Markers (render-only, C-mode readability aid). Pushed onto
+// every live GameView (main + multi-views) like scrollMode / cRefOverride, mirrored
+// to prefs.soflanMarkers for Save Config, and reflected on the button HUD.
+function applySoflanMarkers(on) {
+  const val = (typeof on === 'boolean') ? on : !prefs.soflanMarkers;
+  prefs.soflanMarkers = val;
+  const push = (gv) => { if (gv) gv.soflanMarkers = val; };
+  push(gameView);
+  if (typeof _multiViews !== 'undefined' && Array.isArray(_multiViews)) {
+    for (const mv of _multiViews) push(mv.gv);
+  }
+  const btn = document.getElementById('pvc-soflan-markers');
+  if (btn) btn.classList.toggle('active', val);
+  if (gameView && !playing) gameView.draw();
+}
+
 // Apply a manual C-Mode reference BPM (0/blank/invalid = AUTO dominant BPM).
 // Clamped to a sane 20–1000 range; pushed onto every live view so C-mode scroll
 // + the green number relock immediately. Render-only.
@@ -2812,6 +2837,7 @@ function _multiRebuild() {
     gv._previewModSeed = gvRef ? gvRef._previewModSeed : previewModSeed;
     gv.scrollMode      = gvRef ? gvRef.scrollMode      : previewScrollMode;
     gv.cRefOverride    = gvRef ? gvRef.cRefOverride    : previewCRefBpm;
+    gv.soflanMarkers   = gvRef ? gvRef.soflanMarkers   : (prefs.soflanMarkers !== false);
     gv.playTick       = renderer.playTick;
 
     const mv = { wrap, canvasWrap, canvas, gv, tabIdx, mirrored: false, tickOffset: 0, hsSlider, hsVal };
@@ -2897,6 +2923,7 @@ function _multiSyncSettings() {
     mv.gv._previewModSeed = gameView._previewModSeed;
     mv.gv.scrollMode      = gameView.scrollMode;
     mv.gv.cRefOverride    = gameView.cRefOverride;
+    mv.gv.soflanMarkers   = gameView.soflanMarkers;
   }
 }
 
@@ -8540,6 +8567,7 @@ const prefs = {
   anomalyDetect:    false,
   predictAssist:    false,
   ghostTrace:       false,
+  soflanMarkers:    true,
   physicsLaser:     false,
   snapToTransients: false,
   fxAutoVis:        false,
@@ -9687,6 +9715,14 @@ function _initProjectionControls() {
     applyScrollMode(previewScrollMode);   // sync buttons + gameView to current state
   }
 
+  // Soflan Runway Markers toggle (C-mode readability aid, render-only)
+  const soflanBtn = document.getElementById('pvc-soflan-markers');
+  if (soflanBtn && !soflanBtn._wired) {
+    soflanBtn._wired = true;
+    soflanBtn.addEventListener('click', () => applySoflanMarkers());
+    applySoflanMarkers(prefs.soflanMarkers !== false);   // sync button to current pref
+  }
+
   // Manual C-Mode reference BPM — blank = auto (dominant BPM); a value locks the
   // constant scroll speed / green number to any tempo. Enter or blur commits.
   const crefInput = document.getElementById('pvc-cref-bpm');
@@ -9913,6 +9949,8 @@ function _initProjectionControls() {
   if (prefs.previewScrollMode != null) applyScrollMode(prefs.previewScrollMode);
   // Restore manual C-Mode reference BPM override (0 = auto / dominant BPM)
   if (prefs.previewCRefBpm   != null) applyCRefBpm(prefs.previewCRefBpm);
+  // Restore Soflan Runway Markers toggle (render-only, C-mode readability aid)
+  if (prefs.soflanMarkers    != null) applySoflanMarkers(!!prefs.soflanMarkers);
   // Restore reaction-time "green number" readout (render-only)
   if (prefs.reactionReadout != null) { reactionReadout = !!prefs.reactionReadout; updateReactionReadout(); }
 
