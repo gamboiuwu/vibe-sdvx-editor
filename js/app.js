@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.58';
+const APP_VERSION = '0.0.59';
 const CHANGELOG = [
+  {
+    version: '0.0.59',
+    title: 'Soflan Runway Markers — read the tempo shifts in C-mode',
+    entries: [
+      ['add', '<strong>Soflan runway markers.</strong> A new <strong>☰ Soflan</strong> toggle in the preview <em>Scroll</em> row draws a faint labelled line on the lane <strong>wherever the chart tempo changes</strong> — e.g. <code>▲120→240</code> for a speed-up, <code>▼</code> for a slow-down. Warm-tinted markers rise in tempo, cool-tinted fall, and they brighten as the change approaches the judgment line.'],
+      ['add', '<strong>Built for C-mode.</strong> In <strong>C-mode</strong> the constant scroll speed <em>neutralises soflan</em> (v0.0.55) so tempo shifts become invisible — the markers put them back, legibly. They also work in <strong>M-mode</strong> as a reference. Each marker rides the <strong>same <code>_effDt</code> projection as the notes</strong>, so it sits exactly on the tick where the tempo changes and moves down the runway with the chart; it honours tilt, perspective and the manual C-ref lock (v0.0.57).'],
+      ['add', '<strong>Render-only, everywhere.</strong> Drawn straight from <code>chart.bpmEvents</code> inside the existing game-preview projection — the chart is never mutated. Works in single <em>and</em> multi-chart preview, persists via <strong>Save Config</strong> / prefs, and is i18n’d in all 5 locales.'],
+    ],
+  },
   {
     version: '0.0.58',
     title: 'Target Green Number → auto HiSpeed (pick your reading window)',
@@ -8544,6 +8553,7 @@ const prefs = {
   snapToTransients: false,
   fxAutoVis:        false,
   minimapVisible:   false,
+  soflanMarkers:    false,
 };
 let _autosaveTimer = null;
 
@@ -9545,6 +9555,28 @@ function _initProjectionControls() {
   const reactBtn = document.getElementById('pvc-reaction-toggle');
   reactBtn?.addEventListener('click', toggleReactionReadout);
   updateReactionReadout();   // sync label + button to current state
+
+  // Soflan runway markers toggle — faint on-lane labels at every tempo change.
+  // Render-only; state persists on prefs so it composes with Save Config too.
+  // The game-preview renderer reads the flag through window.prefs (the bridge it
+  // already uses for laserThickness etc.), so we mirror it there on load and on
+  // every toggle to keep the module pref (persisted) and the render gate in sync.
+  const soflanBtn = document.getElementById('pvc-soflan-toggle');
+  if (soflanBtn && !soflanBtn._wired) {
+    soflanBtn._wired = true;
+    window.prefs = window.prefs || {};
+    window.prefs.soflanMarkers = !!prefs.soflanMarkers;
+    soflanBtn.classList.toggle('active', !!prefs.soflanMarkers);
+    soflanBtn.addEventListener('click', () => {
+      prefs.soflanMarkers = !prefs.soflanMarkers;
+      window.prefs = window.prefs || {};
+      window.prefs.soflanMarkers = prefs.soflanMarkers;
+      soflanBtn.classList.toggle('active', prefs.soflanMarkers);
+      savePrefsToLocalStorage();
+      if (gameView && !playing) gameView.draw();
+      render();
+    });
+  }
 
   // Target green-number → HiSpeed preset: type ms, press Enter (or blur) to
   // auto-solve the HiSpeed that yields it at the current reference BPM + rate.

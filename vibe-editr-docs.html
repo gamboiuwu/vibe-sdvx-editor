@@ -439,6 +439,24 @@
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
 
 <div class="update-entry">
+  <h4><span class="ver-tag">v0.0.59</span>Soflan Runway Markers</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Soflan runway markers.</strong> A new <strong>&#9776; Soflan</strong> toggle in the preview <em>Scroll</em> row draws a faint labelled line on the lane <strong>wherever the chart tempo changes</strong> &mdash; e.g. <code>&#9650;120&rarr;240</code> for a speed-up, <code>&#9660;</code> for a slow-down. Warm-tinted markers rise in tempo, cool-tinted fall, and they brighten as the change approaches the judgment line.</li>
+    <li><span class="tag add">add</span><strong>Built for C-mode.</strong> In <strong>C-mode</strong> the constant scroll speed <em>neutralises soflan</em> (v0.0.55) so tempo shifts become invisible &mdash; the markers put them back, legibly. They also work in <strong>M-mode</strong> as a reference. Each marker rides the <strong>same <code>_effDt</code> projection as the notes</strong>, so it sits exactly on the tick where the tempo changes and rides the runway with the chart; it honours tilt, perspective and the manual C-ref lock (v0.0.57).</li>
+    <li><span class="tag add">add</span><strong>Render-only, everywhere.</strong> Drawn straight from <code>chart.bpmEvents</code> inside the existing game-preview projection &mdash; the chart is never mutated. Works in single <em>and</em> multi-chart preview, persists via <strong>Save Config</strong> / prefs, and is i18n&rsquo;d in all 5 locales.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.58</span>Target Green Number &rarr; Auto HiSpeed</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Target green-number preset.</strong> A new <em>&rarr;ms</em> field next to the <strong>Green#</strong> readout lets you type the <strong>reaction window you want</strong> (e.g. <code>300</code>) and press <strong>Enter</strong> &mdash; the editor solves for the <strong>HiSpeed</strong> that yields it at the current reference BPM and practice rate, the way an IIDX/SDVX player picks a float hi-speed.</li>
+    <li><span class="tag add">add</span><strong>Composes with everything.</strong> In <strong>C-mode</strong> it solves against your <strong>manual C-ref lock</strong> (v0.0.57); in <strong>M-mode</strong> against the tempo at the playhead; it honours the <strong>practice rate</strong> (v0.0.56). The solved HiSpeed is snapped to the slider and <strong>clamped to range</strong>, so an extreme target lands on the nearest achievable speed and the green number updates to the real value.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a DOM-free, unit-tested inverse of the green-number engine &mdash; <code>chart.hispeedForReactionMs(targetMs, bpm, rate)</code> &mdash; an exact round-trip with <code>reactionWindowMs</code>. Only the visual HiSpeed changes; the chart is never mutated. i18n in all 5 locales.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
   <h4><span class="ver-tag">v0.0.57</span>Manual C-Mode Reference BPM</h4>
   <ul>
     <li><span class="tag add">add</span><strong>Manual C-Mode reference BPM.</strong> A new editable <em>BPM</em> field next to the <strong>Scroll</strong> M/C toggle lets you <strong>lock the C-mode constant scroll speed to any tempo</strong> instead of the chart&rsquo;s auto dominant BPM. Leave it blank for <em>auto</em>; type a value (20&ndash;1000) to audition a soflan chart at a fixed reading speed of your choosing. The field is enabled only in C-mode.</li>
