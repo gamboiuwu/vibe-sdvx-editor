@@ -1211,6 +1211,10 @@ export class GameView {
       ctx.fillText(['L','R'][li], lx + w2 / 2, p.judgeY + 32);
     }
 
+    // Soflan runway markers (inside tilt context so they ride the lane and sit
+    // on the same _effDt projection as the notes). Render-only overlay.
+    this._drawSoflanMarkers(p, chart);
+
     // Edit-mode ghost cursor (rendered inside tilt context so it aligns with the lane)
     if (this._editGhost) this._drawEditGhost(p);
 
@@ -1656,6 +1660,76 @@ export class GameView {
       ctx.fillStyle = '#4fbf7a';
       ctx.fillText('ms react', p.w - 14, gy + 12);
     }
+  }
+
+  /* ── Soflan Runway Markers ─────────────────────────────────────────────────
+     Faint labels drawn on the runway wherever the chart tempo changes (a
+     bpmEvents entry whose BPM differs from the previous one), showing the
+     transition e.g. "120→240" with an ▲/▼ direction chevron. Most useful in
+     C-Mode, where the constant scroll speed neutralises soflan so the tempo
+     shifts would otherwise be invisible — but it also works in M-Mode as a
+     reference. The marker rides the SAME _effDt projection as the notes, so it
+     sits exactly where the tempo change occurs on the lane and moves with it.
+     Render-only; never touches chart data. Toggled by prefs.soflanMarkers.
+  ─────────────────────────────────────────────────────────────────────────── */
+  _drawSoflanMarkers(p, chart) {
+    if (!window.prefs?.soflanMarkers) return;
+    const evs = chart?.bpmEvents;
+    if (!Array.isArray(evs) || evs.length < 2) return;   // no soflan → nothing
+    const sorted = [...evs].sort((a, b) => a.y - b.y);
+    const ctx = this.ctx;
+    const VT  = this.VISIBLE_TICKS;
+    const fmt = b => { const r = Math.round(b * 10) / 10;
+                       return Number.isInteger(r) ? String(r) : r.toFixed(1); };
+
+    ctx.save();
+    ctx.textBaseline = 'middle';
+    ctx.font = '9px monospace';
+
+    let prevBpm = sorted[0].bpm;
+    for (let i = 1; i < sorted.length; i++) {
+      const nb = sorted[i].bpm;
+      if (Math.abs(nb - prevBpm) <= 1e-3) continue;    // no real tempo change
+      const from = prevBpm;
+      prevBpm = nb;
+
+      const dt = this._effDt(sorted[i].y);
+      if (dt < 0 || dt > VT) continue;                 // outside the runway
+      const sy = this._screenY(dt, p);
+      if (sy < p.cutoffY || sy > p.judgeY) continue;
+
+      const lx = this._screenX(0, sy, p);
+      const rx = this._screenX(1, sy, p);
+
+      const prox   = 1 - Math.max(0, Math.min(1, dt / VT));  // 0 far → 1 at judge
+      const faster = nb > from;
+      const col    = faster ? '#ffcc66' : '#66ccff';         // warm = up, cool = down
+      const alpha  = 0.22 + prox * 0.5;
+
+      // Faint dashed line across the lane at the tempo-change tick
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = col;
+      ctx.lineWidth   = 1;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(lx, sy);
+      ctx.lineTo(rx, sy);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Label just right of the lane: "▲120→240"
+      const txt = (faster ? '▲' : '▼') + fmt(from) + '→' + fmt(nb);
+      ctx.textAlign = 'left';
+      const tw = ctx.measureText(txt).width;
+      ctx.globalAlpha = alpha * 0.55;
+      ctx.fillStyle   = '#000000';
+      ctx.fillRect(rx + 4, sy - 6, tw + 6, 12);
+      ctx.globalAlpha = Math.min(1, alpha + 0.2);
+      ctx.fillStyle   = col;
+      ctx.fillText(txt, rx + 7, sy);
+    }
+
+    ctx.restore();
   }
 
   /* ── Annotation overlay: warning bands for tool-flagged issues ─────────────
