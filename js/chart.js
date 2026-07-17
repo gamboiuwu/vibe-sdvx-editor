@@ -829,6 +829,67 @@ export class ChartData {
     return vt1 / TICKS_PER_BEAT * (60 / b) * 1000 / r / t;
   }
 
+  // ── Local note density (live NPS) ──────────────────────────────────────────
+  // Onset density around a point in the chart, in notes-per-second. Each BT and
+  // FX note contributes exactly ONE onset at its head — a hold counts once, the
+  // way a player's hands reckon it — while laser / slam points are NOT counted
+  // (NPS is a button-taps metric). `centerSec` is the playhead in CHART seconds;
+  // the window is `windowSec` chart-seconds wide, centered on it. `rate` scales
+  // the result into REAL time: at 0.5× practice speed the same notes span twice
+  // the wall-clock, so the hands' NPS halves. DOM-free single source of truth for
+  // the Game-Preview live density readout — distinct from radar.js (static
+  // full-chart difficulty rating) and heatmap.js (per-measure full-chart map).
+  // Returns { count, nps }. Never touches chart data.
+  npsAtTime(centerSec, windowSec = 1, rate = 1) {
+    const w  = Math.max(0.05, Number(windowSec) || 1);
+    const r  = Math.max(0.01, Number(rate) || 1);
+    const c  = Number(centerSec) || 0;
+    const lo = c - w / 2, hi = c + w / 2;
+    let count = 0;
+    const scan = arr => {
+      for (const n of arr) {
+        const t = this.tickToSeconds(n.y);
+        if (t >= lo && t < hi) count++;
+      }
+    };
+    this.bt.forEach(scan);
+    this.fx.forEach(scan);
+    return { count, nps: (count / w) * r };
+  }
+
+  // Peak local NPS across the WHOLE chart — the densest `windowSec` window found
+  // by sliding over every onset (BT + FX heads, one each; lasers excluded, to
+  // match npsAtTime). Used as the reference the live readout ramps its colour
+  // against ("cur / peak"). Cached on the instance keyed by a cheap signature
+  // (onset count + last onset tick + window), so the per-frame call during
+  // playback is O(1) and only recomputes when the notes actually change. `rate`
+  // scales into real time to agree with npsAtTime. Returns notes-per-second.
+  peakNps(windowSec = 1, rate = 1) {
+    const w = Math.max(0.05, Number(windowSec) || 1);
+    const r = Math.max(0.01, Number(rate) || 1);
+    let n = 0, maxTick = 0;
+    const tally = arr => { for (const x of arr) { n++; if (x.y > maxTick) maxTick = x.y; } };
+    this.bt.forEach(tally);
+    this.fx.forEach(tally);
+    const sig = n + ':' + maxTick + ':' + w;
+    if (this._npsPeakCache && this._npsPeakCache.sig === sig) return this._npsPeakCache.peak * r;
+    // Sorted onset seconds → two-pointer sliding window for the densest span.
+    const secs = [];
+    const push = arr => { for (const x of arr) secs.push(this.tickToSeconds(x.y)); };
+    this.bt.forEach(push);
+    this.fx.forEach(push);
+    secs.sort((a, b) => a - b);
+    let loP = 0, best = 0;
+    for (let hiP = 0; hiP < secs.length; hiP++) {
+      while (secs[hiP] - secs[loP] >= w) loP++;
+      const inWin = hiP - loP + 1;
+      if (inWin > best) best = inWin;
+    }
+    const peak = best / w;   // at 1× rate; rate applied on return
+    this._npsPeakCache = { sig, peak };
+    return peak * r;
+  }
+
   // ── Dominant BPM ───────────────────────────────────────────────────────────
   // Returns the tempo (BPM) that plays for the greatest total time across the
   // whole chart — the natural reference for C-Mode so the bulk of a soflan

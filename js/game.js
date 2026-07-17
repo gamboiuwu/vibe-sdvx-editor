@@ -33,6 +33,15 @@ export class GameView {
     this.showReaction = true;
     this.reactionMs   = 0;
 
+    // Live NPS (notes-per-second) HUD. showNps toggles the on-lane readout;
+    // npsCur / npsPeak are computed by the app layer via ChartData.npsAtTime /
+    // peakNps (single source of truth) and pushed here each frame. npsHistory is
+    // a rolling array of recent samples for the mini sparkline. Render-only.
+    this.showNps    = false;
+    this.npsCur     = 0;
+    this.npsPeak    = 0;
+    this.npsHistory = null;
+
     // Projection mode: 'ortho' | 'sdvx' | 'hybrid'
     this.projMode = 'sdvx';
     // Perspective intensity 0-100 (65 = SDVX arcade default)
@@ -1660,6 +1669,65 @@ export class GameView {
       ctx.fillStyle = '#4fbf7a';
       ctx.fillText('ms react', p.w - 14, gy + 12);
     }
+
+    // ── Live NPS meter (top left, below the difficulty line) ──────────────────
+    // Current notes-per-second at the playhead over a short window, with a peak
+    // reference and a rolling sparkline. Values are computed by the app layer
+    // (ChartData.npsAtTime / peakNps) so the panel readout and this HUD agree.
+    if (this.showNps) {
+      const cur  = Math.max(0, this.npsCur  || 0);
+      const peak = Math.max(0, this.npsPeak || 0);
+      const frac = peak > 0 ? Math.min(1, cur / peak) : 0;
+      const col  = this._npsHudColor(frac);
+      const ny   = 74;                       // just below "DIFF Lv.x" at y=54
+      ctx.textAlign    = 'left';
+      ctx.textBaseline = 'alphabetic';
+      ctx.font         = 'bold 13px monospace';
+      ctx.shadowColor  = col + '66'; ctx.shadowBlur = 5;
+      ctx.fillStyle    = col;
+      ctx.fillText(cur.toFixed(1), 14, ny);
+      ctx.shadowBlur   = 0;
+      const cw = ctx.measureText(cur.toFixed(1)).width;
+      ctx.font      = '9px monospace';
+      ctx.fillStyle = '#7a89b0';
+      ctx.fillText('NPS', 14 + cw + 5, ny);
+      if (peak > 0) ctx.fillText('pk ' + peak.toFixed(1), 14, ny + 11);
+
+      // Rolling sparkline of recent NPS samples, scaled to peak.
+      const hist = this.npsHistory;
+      if (hist && hist.length > 1 && peak > 0) {
+        const sw = 66, sh = 14, sx = 14, sy = ny + 15;
+        ctx.globalAlpha = 0.85;
+        ctx.strokeStyle = col;
+        ctx.lineWidth   = 1;
+        ctx.beginPath();
+        const step = sw / (hist.length - 1);
+        for (let i = 0; i < hist.length; i++) {
+          const v = Math.min(1, (hist[i] || 0) / peak);
+          const px = sx + i * step;
+          const py = sy + sh - v * sh;
+          if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+    }
+  }
+
+  // Cool→hot colour ramp for the NPS readout, by fraction of the chart's peak
+  // density (0 = sparse, 1 = as dense as the chart ever gets). Shared by the HUD
+  // and mirrored in the app-layer panel readout for a consistent look.
+  _npsHudColor(frac) {
+    const f = Math.max(0, Math.min(1, frac));
+    const stops = [[0,[80,180,255]],[0.4,[90,230,140]],[0.7,[255,210,90]],[1,[255,90,90]]];
+    let a = stops[0], b = stops[stops.length - 1];
+    for (let i = 1; i < stops.length; i++) {
+      if (f <= stops[i][0]) { a = stops[i - 1]; b = stops[i]; break; }
+    }
+    const span = (b[0] - a[0]) || 1;
+    const t = (f - a[0]) / span;
+    const c = k => Math.round(a[1][k] + (b[1][k] - a[1][k]) * t);
+    return `rgb(${c(0)},${c(1)},${c(2)})`;
   }
 
   /* ── Soflan Runway Markers ─────────────────────────────────────────────────
