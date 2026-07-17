@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.57 · 2026</span>
+  <span class="version">v0.0.60 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.60</span>Live NPS Meter</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Live NPS (notes-per-second) meter.</strong> A new <strong>&#9202; NPS</strong> toggle next to the <em>Green#</em> readout shows the <strong>local note density at the playhead</strong> over a one-second window, as <strong>current / peak</strong> &mdash; where <em>peak</em> is the densest the chart ever gets. It complements the green number (how <em>hard</em> each note is to read) with how <em>much</em> is coming.</li>
+    <li><span class="tag add">add</span><strong>On-lane HUD + sparkline.</strong> With the meter on, the play field paints the current NPS below the difficulty label with a <strong>cool&rarr;hot colour</strong> (blue = sparse, red = as dense as the chart gets) and a small <strong>rolling sparkline</strong> of the last ~64 samples, so density is legible without looking away from the lane. Counts <strong>BT + FX onsets</strong> (a hold counts once, like your hands do); lasers are excluded.</li>
+    <li><span class="tag add">add</span><strong>Rate-aware, render-only, one source of truth.</strong> The figure follows the <strong>practice rate</strong> &mdash; at 0.5&times; the same notes span twice the real time, so the reported NPS halves. Backed by DOM-free, unit-tested math in <code>chart.js</code> (<code>npsAtTime</code> / <code>peakNps</code>) so the side-panel readout and the on-lane HUD always agree. Persists via <strong>Save Config</strong> / prefs, i18n&rsquo;d in all 5 locales, and never touches chart data.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.59</span>Soflan Runway Markers</h4>

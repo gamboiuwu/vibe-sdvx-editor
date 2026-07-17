@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.59';
+const APP_VERSION = '0.0.60';
 const CHANGELOG = [
+  {
+    version: '0.0.60',
+    title: 'Live NPS Meter — how much is coming, at a glance',
+    entries: [
+      ['add', '<strong>Live NPS (notes-per-second) meter.</strong> A new <strong>⏲ NPS</strong> toggle next to the <em>Green#</em> readout shows the <strong>local note density at the playhead</strong> over a one-second window, as <strong>current / peak</strong> — where <em>peak</em> is the densest the chart ever gets. It complements the green number (how <em>hard</em> each note is to read) with how <em>much</em> is coming.'],
+      ['add', '<strong>On-lane HUD + sparkline.</strong> With the meter on, the play field paints the current NPS below the difficulty label with a <strong>cool→hot colour</strong> (blue = sparse, red = as dense as the chart gets) and a small <strong>rolling sparkline</strong> of the last ~64 samples, so density is legible without looking away from the lane. Counts <strong>BT + FX onsets</strong> (a hold counts once, like your hands do); lasers are excluded.'],
+      ['add', '<strong>Rate-aware, render-only, one source of truth.</strong> The figure follows the <strong>practice rate</strong> — at 0.5× the same notes span twice the real time, so the reported NPS halves. Backed by DOM-free, unit-tested math in <code>chart.js</code> (<code>npsAtTime</code> / <code>peakNps</code>) so the side-panel readout and the on-lane HUD always agree. Persists via <strong>Save Config</strong> / prefs, i18n’d in all 5 locales, and never touches chart data.'],
+    ],
+  },
   {
     version: '0.0.59',
     title: 'Soflan Runway Markers — read the tempo shifts in C-mode',
@@ -2042,6 +2051,7 @@ export function updateSeekbar(tick) {
 
   _updateLoopMarkers();
   updateReactionReadout(tick);
+  updateNpsReadout(tick);
 }
 
 // Position the A/B markers + shaded region on the game seekbar to match loopA/B.
@@ -2183,6 +2193,7 @@ function applyScrollMode(mode) {
   }
   _updateScrollHud();
   updateReactionReadout();
+  updateNpsReadout();
   if (gameView && !playing) gameView.draw();
 }
 
@@ -2199,6 +2210,7 @@ function applyCRefBpm(bpm) {
   }
   _updateScrollHud();
   updateReactionReadout();
+  updateNpsReadout();
   if (gameView && !playing) gameView.draw();
 }
 
@@ -2274,6 +2286,75 @@ function updateReactionReadout(tick) {
 function toggleReactionReadout() {
   reactionReadout = !reactionReadout;
   updateReactionReadout();
+  if (gameView && !playing) gameView.draw();
+}
+
+// ── Live NPS (notes-per-second) meter ─────────────────────────────────────────
+// Render-only. Shows the local note density at the playhead — how many BT/FX
+// onsets fall inside a short window, as notes-per-second — with a peak reference
+// and a rolling sparkline. It complements the green number (how HARD each note is
+// to read) with how MUCH is coming, and follows the practice rate so the figure
+// is what the player's hands actually do. Backed by DOM-free, unit-testable math
+// in chart.js (npsAtTime / peakNps) so the side-panel readout and the on-lane HUD
+// always agree. Never touches chart data.
+let npsReadout = false;
+const NPS_WINDOW_SEC   = 1.0;   // centered density window (chart seconds)
+const NPS_HISTORY_MAX  = 64;    // rolling sparkline sample count
+let _npsHistory = [];
+
+// Cool→hot colour ramp by fraction of the chart's peak density. Mirrors
+// GameView._npsHudColor so the panel number and the on-lane HUD match.
+function _npsColor(frac) {
+  const f = Math.max(0, Math.min(1, frac));
+  const stops = [[0,[80,180,255]],[0.4,[90,230,140]],[0.7,[255,210,90]],[1,[255,90,90]]];
+  let a = stops[0], b = stops[stops.length - 1];
+  for (let i = 1; i < stops.length; i++) {
+    if (f <= stops[i][0]) { a = stops[i - 1]; b = stops[i]; break; }
+  }
+  const span = (b[0] - a[0]) || 1;
+  const t = (f - a[0]) / span;
+  const c = k => Math.round(a[1][k] + (b[1][k] - a[1][k]) * t);
+  return `rgb(${c(0)},${c(1)},${c(2)})`;
+}
+
+// Compute the current NPS and push it to the side-panel label + the on-lane HUD.
+// `tick` is the current playhead (defaults to live playTick).
+function updateNpsReadout(tick) {
+  const lbl = document.getElementById('pvc-nps');
+  const btn = document.getElementById('pvc-nps-toggle');
+  if (btn) btn.classList.toggle('active', npsReadout);
+  if (!chart || typeof chart.npsAtTime !== 'function' || !npsReadout) {
+    if (lbl) { lbl.textContent = '–'; lbl.style.color = ''; }
+    if (gameView) { gameView.showNps = false; gameView.npsCur = 0; gameView.npsPeak = 0; gameView.npsHistory = null; }
+    return;
+  }
+  const t    = (tick != null) ? tick : (renderer ? renderer.playTick : 0);
+  const sec  = tickToSeconds(t);
+  const cur  = chart.npsAtTime(sec, NPS_WINDOW_SEC, playbackRate).nps;
+  const peak = chart.peakNps(NPS_WINDOW_SEC, playbackRate);
+  // Advance the sparkline history only while actually playing.
+  if (playing) {
+    _npsHistory.push(cur);
+    if (_npsHistory.length > NPS_HISTORY_MAX) _npsHistory.shift();
+  }
+  if (lbl) {
+    const frac = peak > 0 ? Math.min(1, cur / peak) : 0;
+    lbl.textContent = `${cur.toFixed(1)} / ${peak.toFixed(1)}`;
+    lbl.style.color = _npsColor(frac);
+  }
+  if (gameView) {
+    gameView.showNps    = true;
+    gameView.npsCur     = cur;
+    gameView.npsPeak    = peak;
+    gameView.npsHistory = _npsHistory;
+  }
+}
+
+// Toggle the live NPS meter on/off; clear history, refresh HUD, redraw if paused.
+function toggleNpsReadout() {
+  npsReadout = !npsReadout;
+  if (!npsReadout) _npsHistory = [];
+  updateNpsReadout();
   if (gameView && !playing) gameView.draw();
 }
 
@@ -9556,6 +9637,11 @@ function _initProjectionControls() {
   reactBtn?.addEventListener('click', toggleReactionReadout);
   updateReactionReadout();   // sync label + button to current state
 
+  // Live NPS (notes-per-second) meter toggle
+  const npsBtn = document.getElementById('pvc-nps-toggle');
+  npsBtn?.addEventListener('click', toggleNpsReadout);
+  updateNpsReadout();        // sync label + button to current state
+
   // Soflan runway markers toggle — faint on-lane labels at every tempo change.
   // Render-only; state persists on prefs so it composes with Save Config too.
   // The game-preview renderer reads the flag through window.prefs (the bridge it
@@ -9622,6 +9708,7 @@ function _initProjectionControls() {
     }
     // Audio pitch/speed is intentionally NOT changed — only chart tick advancement is scaled
     updateReactionReadout();   // reaction window scales with the practice rate
+    updateNpsReadout();       // NPS is reported in real time, so it scales too
     if (gameView && !playing) gameView.draw();
   });
 
@@ -9869,6 +9956,8 @@ function _initProjectionControls() {
     prefs.previewCRefBpm    = previewCRefBpm;
     // Reaction-time "green number" readout (render-only)
     prefs.reactionReadout   = reactionReadout;
+    // Live NPS (notes-per-second) meter (render-only)
+    prefs.npsReadout        = npsReadout;
     // Persist
     try { localStorage.setItem('vibe-editr-prefs', JSON.stringify(prefs)); } catch(_) {}
     // Show "Saved!" flash
@@ -9947,6 +10036,8 @@ function _initProjectionControls() {
   if (prefs.previewCRefBpm   != null) applyCRefBpm(prefs.previewCRefBpm);
   // Restore reaction-time "green number" readout (render-only)
   if (prefs.reactionReadout != null) { reactionReadout = !!prefs.reactionReadout; updateReactionReadout(); }
+  // Restore live NPS (notes-per-second) meter (render-only)
+  if (prefs.npsReadout != null) { npsReadout = !!prefs.npsReadout; updateNpsReadout(); }
 
   // Set default projection to SDVX on load (only if no saved proj mode)
   if (!prefs.projMode) document.querySelector('.pvc-proj-btn[data-proj="sdvx"]')?.click();
