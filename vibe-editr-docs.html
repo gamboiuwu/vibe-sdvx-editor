@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.57 · 2026</span>
+  <span class="version">v0.0.60 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.60</span>Green-Number Auto-Follow</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Hold the green number.</strong> A new <strong>&#8644; Hold</strong> toggle next to the <em>&rarr;ms</em> field <strong>pins the reaction window</strong> to your target. Once you&rsquo;ve dialled a green number (v0.0.58), turn Hold on and the editor <strong>auto-re-solves HiSpeed</strong> whenever the reference BPM changes &mdash; so the reading window stays fixed at the chosen ms without re-typing.</li>
+    <li><span class="tag add">add</span><strong>Follows every ref-BPM change.</strong> Switching charts, editing the <strong>manual C-ref</strong> (v0.0.57), flipping <strong>scroll mode</strong> (v0.0.55), moving the <strong>practice rate</strong> (v0.0.56), or <strong>crossing a soflan boundary in M-mode</strong> during playback &mdash; the HiSpeed steps to keep the green number constant, the way you&rsquo;d hold a fixed reaction time across a set.</li>
+    <li><span class="tag add">add</span><strong>Render-only, re-entrancy-safe.</strong> A thin wrapper over the v0.0.58 <code>applyGreenTarget</code> inverse-solver, guarded so the readout it refreshes can never recurse. Only the visual HiSpeed changes &mdash; the chart is never mutated. The hold + held target persist via <strong>Save Config</strong> / prefs; i18n in all 5 locales.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.59</span>Soflan Runway Markers</h4>
