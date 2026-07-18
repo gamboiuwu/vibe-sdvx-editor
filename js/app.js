@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.59';
+const APP_VERSION = '0.0.60';
 const CHANGELOG = [
+  {
+    version: '0.0.60',
+    title: 'Green-Number Auto-Follow — hold your reading window across BPM changes',
+    entries: [
+      ['add', '<strong>Hold the green number.</strong> A new <strong>⇄ Hold</strong> toggle next to the <em>→ms</em> field <strong>pins the reaction window</strong> to your target. Once you\'ve dialled a green number (v0.0.58), turn Hold on and the editor <strong>auto-re-solves HiSpeed</strong> whenever the reference BPM changes — so the reading window stays fixed at the chosen ms without re-typing.'],
+      ['add', '<strong>Follows every ref-BPM change.</strong> Switching charts, editing the <strong>manual C-ref</strong> (v0.0.57), flipping <strong>scroll mode</strong> (v0.0.55), moving the <strong>practice rate</strong> (v0.0.56), or <strong>crossing a soflan boundary in M-mode</strong> during playback — the HiSpeed steps to keep the green number constant, the way you\'d hold a fixed reaction time across a set.'],
+      ['add', '<strong>Render-only, re-entrancy-safe.</strong> A thin wrapper over the v0.0.58 <code>applyGreenTarget</code> inverse-solver, guarded so the readout it refreshes can never recurse. Only the visual HiSpeed changes — the chart is never mutated. The hold + held target persist via <strong>Save Config</strong> / prefs; i18n in all 5 locales.'],
+    ],
+  },
   {
     version: '0.0.59',
     title: 'Soflan Runway Markers — read the tempo shifts in C-mode',
@@ -2041,6 +2050,7 @@ export function updateSeekbar(tick) {
   label.textContent = `${_fmtTime(curSec)} / ${_fmtTime(totSec)}`;
 
   _updateLoopMarkers();
+  updateGreenFollow(tick);      // hold the green number as the ref BPM moves (soflan / chart switch)
   updateReactionReadout(tick);
 }
 
@@ -2182,6 +2192,7 @@ function applyScrollMode(mode) {
     for (const mv of _multiViews) push(mv.gv);
   }
   _updateScrollHud();
+  updateGreenFollow();         // hold the green number across the scroll-mode ref-BPM change
   updateReactionReadout();
   if (gameView && !playing) gameView.draw();
 }
@@ -2198,6 +2209,7 @@ function applyCRefBpm(bpm) {
     for (const mv of _multiViews) push(mv.gv);
   }
   _updateScrollHud();
+  updateGreenFollow();         // hold the green number as the C-ref lock changes
   updateReactionReadout();
   if (gameView && !playing) gameView.draw();
 }
@@ -2237,6 +2249,17 @@ function _updateScrollHud() {
 // reference is the constant dominant tempo, so the number stays fixed across
 // soflan; in M-mode it tracks the local tempo live. Never touches chart data.
 let reactionReadout = true;
+
+// ── Green-Number Auto-Follow (v0.0.60) ────────────────────────────────────────
+// A lock that HOLDS the green number. Once the user has dialled a target
+// reaction window via the →ms preset, enabling the lock keeps that window fixed:
+// the HiSpeed is auto-re-solved whenever the reference BPM changes — switching
+// charts, editing the manual C-ref, changing scroll mode / practice rate, or (in
+// M-mode) crossing a soflan boundary during playback — so the reading window
+// stays at the chosen ms without re-typing. Render-only; never mutates the chart.
+let greenFollowLock   = false;  // is the hold active?
+let greenFollowTarget = 0;      // reaction window (ms) to hold; 0 = none set yet
+let _greenFollowBusy  = false;  // re-entrancy guard: applyGreenTarget → updateReactionReadout
 
 // Compute the current reaction window (ms) and push it to the side-panel label
 // and the on-lane HUD. `tick` is the current playhead (defaults to live playTick).
@@ -2285,13 +2308,14 @@ function toggleReactionReadout() {
 // solved HiSpeed is clamped to the slider range, applied to the game view and
 // mirrored onto the HiSpeed slider / labels, then the green-number readout is
 // refreshed so the achieved number reflects any clamping. Never touches chart data.
-function applyGreenTarget(targetMs) {
+function applyGreenTarget(targetMs, tick) {
   if (!chart || typeof chart.hispeedForReactionMs !== 'function') return;
   const t = Number(targetMs);
   if (!Number.isFinite(t) || t <= 0) return;
+  const at  = (tick != null) ? tick : (renderer ? renderer.playTick : 0);
   const bpm = (previewScrollMode === 'cmode' && typeof chart.dominantBpm === 'function')
             ? cModeRefBpmResolved()
-            : chart.getBpmAt(Math.floor(renderer ? renderer.playTick : 0));
+            : chart.getBpmAt(Math.floor(at));
   // Solve, then clamp to the HiSpeed slider's declared [min,max] so an extreme
   // target lands on the nearest achievable scroll speed rather than off-scale.
   const hsSl = document.getElementById('pvc-hispeed');
@@ -2309,6 +2333,45 @@ function applyGreenTarget(targetMs) {
   if (topLbl) topLbl.textContent = hs.toFixed(2) + '×';
   if (gameView) gameView.hispeed = hs;
   updateReactionReadout();
+  if (gameView && !playing) gameView.draw();
+}
+
+// ── Green-Number Auto-Follow (v0.0.60) ────────────────────────────────────────
+// When the hold is on and a target ms is set, re-solve the HiSpeed so the
+// reaction window stays fixed as the reference BPM changes. A thin wrapper over
+// applyGreenTarget, re-entrancy-guarded so the updateReactionReadout it fires
+// can never recurse back in. Called from the same BPM-change hooks that already
+// refresh the green number (seek/playback, scroll-mode, C-ref, practice rate).
+// `tick` is threaded through so M-mode solves against the live playhead tempo.
+function updateGreenFollow(tick) {
+  if (!greenFollowLock || !(greenFollowTarget > 0)) return;
+  if (_greenFollowBusy) return;
+  _greenFollowBusy = true;
+  try { applyGreenTarget(greenFollowTarget, tick); }
+  finally { _greenFollowBusy = false; }
+}
+
+// Sync the hold button's active state to the current lock flag.
+function _updateGreenFollowHud() {
+  const btn = document.getElementById('pvc-green-follow');
+  if (btn) btn.classList.toggle('active', greenFollowLock);
+}
+
+// Toggle the hold. On enabling, adopt whatever target is currently in the →ms
+// field (if any) and snap to it immediately; persist the flag + target so the
+// hold survives a reload. Render-only.
+function toggleGreenFollow() {
+  greenFollowLock = !greenFollowLock;
+  if (greenFollowLock) {
+    const inp = document.getElementById('pvc-green-target');
+    const v   = inp ? Number(String(inp.value).trim()) : NaN;
+    if (Number.isFinite(v) && v > 0) greenFollowTarget = v;
+    updateGreenFollow();   // snap the HiSpeed to hold the window right now
+  }
+  prefs.greenFollowLock   = greenFollowLock;
+  prefs.greenFollowTarget = greenFollowTarget;
+  _updateGreenFollowHud();
+  savePrefsToLocalStorage();
   if (gameView && !playing) gameView.draw();
 }
 
@@ -9586,10 +9649,26 @@ function _initProjectionControls() {
     const apply = () => {
       const v = greenTgt.value.trim();
       if (v === '') return;                 // blank = keep manual HiSpeed control
-      applyGreenTarget(+v);
+      const t = +v;
+      applyGreenTarget(t);
+      // Remember the target so the Auto-Follow hold (v0.0.60) can re-solve later.
+      if (Number.isFinite(t) && t > 0) {
+        greenFollowTarget = t;
+        prefs.greenFollowTarget = t;
+        savePrefsToLocalStorage();
+      }
     };
     greenTgt.addEventListener('change', apply);
     greenTgt.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); apply(); greenTgt.blur(); } });
+  }
+
+  // Green-Number Auto-Follow hold toggle (v0.0.60) — keep the reaction window
+  // pinned to the target ms by auto-re-solving HiSpeed on every ref-BPM change.
+  const greenFollowBtn = document.getElementById('pvc-green-follow');
+  if (greenFollowBtn && !greenFollowBtn._wired) {
+    greenFollowBtn._wired = true;
+    greenFollowBtn.addEventListener('click', toggleGreenFollow);
+    _updateGreenFollowHud();
   }
 
   // BT Width slider (wired here so it's near the other preview controls)
@@ -9621,6 +9700,7 @@ function _initProjectionControls() {
       rateLbl.style.color = Math.abs(newRate - 1.0) > 0.001 ? '#ffcc44' : '';
     }
     // Audio pitch/speed is intentionally NOT changed — only chart tick advancement is scaled
+    updateGreenFollow();       // the reaction window scales with rate → re-solve to hold it
     updateReactionReadout();   // reaction window scales with the practice rate
     if (gameView && !playing) gameView.draw();
   });
@@ -9869,6 +9949,9 @@ function _initProjectionControls() {
     prefs.previewCRefBpm    = previewCRefBpm;
     // Reaction-time "green number" readout (render-only)
     prefs.reactionReadout   = reactionReadout;
+    // Green-Number Auto-Follow hold + held target ms (render-only)
+    prefs.greenFollowLock   = greenFollowLock;
+    prefs.greenFollowTarget = greenFollowTarget;
     // Persist
     try { localStorage.setItem('vibe-editr-prefs', JSON.stringify(prefs)); } catch(_) {}
     // Show "Saved!" flash
@@ -9947,6 +10030,21 @@ function _initProjectionControls() {
   if (prefs.previewCRefBpm   != null) applyCRefBpm(prefs.previewCRefBpm);
   // Restore reaction-time "green number" readout (render-only)
   if (prefs.reactionReadout != null) { reactionReadout = !!prefs.reactionReadout; updateReactionReadout(); }
+  // Restore Green-Number Auto-Follow hold + held target (render-only). Reflect the
+  // target into the →ms field so the UI shows what is being held, then snap.
+  if (prefs.greenFollowTarget != null) {
+    const gt = Number(prefs.greenFollowTarget);
+    if (Number.isFinite(gt) && gt > 0) {
+      greenFollowTarget = gt;
+      const gtEl = document.getElementById('pvc-green-target');
+      if (gtEl && gtEl.value.trim() === '') gtEl.value = String(gt);
+    }
+  }
+  if (prefs.greenFollowLock != null) {
+    greenFollowLock = !!prefs.greenFollowLock;
+    _updateGreenFollowHud();
+    if (greenFollowLock) updateGreenFollow();
+  }
 
   // Set default projection to SDVX on load (only if no saved proj mode)
   if (!prefs.projMode) document.querySelector('.pvc-proj-btn[data-proj="sdvx"]')?.click();
