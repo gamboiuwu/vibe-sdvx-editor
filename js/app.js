@@ -1,4 +1,4 @@
-import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, beatGridCrossings, countInGrid, beatFlashIntensity } from './chart.js';
+import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, computeSelectionStats, beatGridCrossings, countInGrid, beatFlashIntensity } from './chart.js';
 import { Renderer, C, laserColors, laserOpacity, laserWideMode, LASER_PRESETS, applyLaserPreset, setLaserColorCustom, buildLaneHeader, setLaserOpacity, setLaserWideMode } from './renderer.js';
 import { GameView } from './game.js';
 import { exportKsh, importKsh, downloadText } from './ksh.js';
@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.60';
+const APP_VERSION = '0.0.61';
 const CHANGELOG = [
+  {
+    version: '0.0.61',
+    title: 'Selection Breakdown — see what\'s inside your marquee, not just its span',
+    entries: [
+      ['add', '<strong>Live selection breakdown.</strong> With the <strong>Select</strong> tool, the status bar now reports <em>what your marquee actually contains</em> — <strong>BT</strong> and <strong>FX</strong> note counts (with a <code>·Nh</code> tag for hold notes), <strong>VOL</strong> laser segments, and <strong>slam</strong> count — alongside the range it already showed. Great for balancing hands and comparing pattern density between two sections at a glance.'],
+      ['add', '<strong>Real-time length.</strong> The breakdown also shows the selection\'s <strong>duration in seconds</strong> (BPM/soflan-aware via <code>tickToSeconds</code>), so a range reads as e.g. <code>M5–M9 · 2.10s · BT 24·2h · FX 8 · VOL 3 · slam 2</code>.'],
+      ['add', '<strong>Render-only, single source of truth.</strong> Backed by a new DOM-free <code>computeSelectionStats(chart, lo, hi)</code> in <code>chart.js</code> (the range-scoped sibling of <code>computeChartStats</code>), so the numbers stay canonical and unit-testable. It only reads the chart — nothing is ever mutated.'],
+    ],
+  },
   {
     version: '0.0.60',
     title: 'Green-Number Auto-Follow — hold your reading window across BPM changes',
@@ -6916,7 +6925,16 @@ function updateSelStatus() {
   const [lo, hi] = selTickRange();
   const mLo = Math.floor(lo / TICKS_PER_MEASURE) + 1;
   const mHi = Math.floor(hi / TICKS_PER_MEASURE) + 1;
-  el.textContent = `Selection: M${mLo}–M${mHi} (${hi - lo} ticks) | Space=play sel | Ctrl+C/X/V | Ctrl+RClick=menu | Esc=clear`;
+  // v0.0.61 Selection Breakdown — what's actually inside the marquee, not just its span.
+  const s = computeSelectionStats(chart, lo, hi);
+  const parts = [
+    `BT ${s.btTotal}${s.btHold ? `·${s.btHold}h` : ''}`,
+    `FX ${s.fxTotal}${s.fxHold ? `·${s.fxHold}h` : ''}`,
+    `VOL ${s.vol}`,
+  ];
+  if (s.slams) parts.push(`slam ${s.slams}`);
+  const dur = s.durSec >= 0.005 ? ` · ${s.durSec.toFixed(2)}s` : '';
+  el.textContent = `Selection: M${mLo}–M${mHi}${dur} · ${parts.join(' · ')}  |  ${hi - lo} ticks · Space=play · Ctrl+C/X/V · Esc=clear`;
   const hint = document.getElementById('play-region-hint');
   if (hint) hint.textContent = sel.active ? '(plays selection)' : '';
 }

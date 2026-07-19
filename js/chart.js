@@ -114,6 +114,56 @@ export function computeChartStats(chart) {
   };
 }
 
+// Range-scoped selection statistics — the single source of truth for the editor's
+// live "Selection Breakdown" status-bar readout (v0.0.61). Where computeChartStats
+// summarises the whole chart, this counts only the content inside a tick range,
+// matching the inclusive band selCopy/selCut operate on (n.y >= lo && n.y <= hi).
+// A BT/FX note is counted by its onset; a laser section counts if it OVERLAPS the
+// range; a slam counts if its landing tick falls inside it (canonical slam = two
+// consecutive points that jump horizontally |Δv| ≥ LASER_SLAM_V_EPS within
+// LASER_SLAM_TICKS — see the top of this file). durSec is the real-time length of
+// the range via tickToSeconds (BPM/soflan-aware). DOM-free so it can be unit-tested
+// and reused without the global `chart`.
+export function computeSelectionStats(chart, lo, hi) {
+  const a = Math.min(lo, hi), b = Math.max(lo, hi);
+  const base = { btTotal: 0, btHold: 0, fxTotal: 0, fxHold: 0, vol: 0, slams: 0,
+                 tickSpan: Math.max(0, b - a), durSec: 0 };
+  if (!chart || !(b > a)) return base;
+
+  let btTotal = 0, btHold = 0;
+  for (const lane of chart.bt) for (const n of lane) {
+    if (n.y >= a && n.y <= b) { btTotal++; if (n.len > 0) btHold++; }
+  }
+  let fxTotal = 0, fxHold = 0;
+  for (const lane of chart.fx) for (const n of lane) {
+    if (n.y >= a && n.y <= b) { fxTotal++; if (n.len > 0) fxHold++; }
+  }
+
+  let vol = 0, slams = 0;
+  for (const side of (chart.lasers || [])) {
+    for (const sec of side) {
+      const pts = sec.points || [];
+      if (!pts.length) continue;
+      const secEnd = sec.y + (pts[pts.length - 1]?.ry ?? 0);
+      if (secEnd >= a && sec.y <= b) vol++;
+      for (let i = 1; i < pts.length; i++) {
+        const dRy = pts[i].ry - pts[i - 1].ry;
+        const dv  = Math.abs((pts[i].v ?? 0) - (pts[i - 1].v ?? 0));
+        if (dRy >= 0 && dRy <= LASER_SLAM_TICKS && dv >= LASER_SLAM_V_EPS) {
+          const at = sec.y + pts[i].ry;
+          if (at >= a && at <= b) slams++;
+        }
+      }
+    }
+  }
+
+  const durSec = (typeof chart.tickToSeconds === 'function')
+    ? Math.max(0, chart.tickToSeconds(b) - chart.tickToSeconds(a))
+    : 0;
+
+  return { btTotal, btHold, fxTotal, fxHold, vol, slams, tickSpan: b - a, durSec };
+}
+
 // ── Quantize / Nudge engine ──────────────────────────────────────────────────
 // Shared, side-effect-isolated tick math used by the Tools Hub "Quantize" tool.
 // Kept here (not in tools.js) so it can be unit-tested without a DOM, and so any

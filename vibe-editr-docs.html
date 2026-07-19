@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.60 · 2026</span>
+  <span class="version">v0.0.61 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.61</span>Selection Breakdown</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>See what&rsquo;s inside your selection.</strong> With the <strong>Select</strong> tool, the status bar now reports the <em>content</em> of your marquee &mdash; <strong>BT</strong> and <strong>FX</strong> note counts (with a <code>&middot;Nh</code> tag for hold notes), <strong>VOL</strong> laser segments, and <strong>slam</strong> count &mdash; not just the range. Handy for balancing hands and comparing pattern density between two sections at a glance.</li>
+    <li><span class="tag add">add</span><strong>Real-time length.</strong> The breakdown also shows the selection&rsquo;s <strong>duration in seconds</strong> (BPM/soflan-aware via <code>tickToSeconds</code>), so a range reads as e.g. <code>M5&ndash;M9 &middot; 2.10s &middot; BT 24&middot;2h &middot; FX 8 &middot; VOL 3 &middot; slam 2</code>.</li>
+    <li><span class="tag add">add</span><strong>Render-only, single source of truth.</strong> Backed by a new DOM-free <code>computeSelectionStats(chart, lo, hi)</code> in <code>chart.js</code> (the range-scoped sibling of <code>computeChartStats</code>), so the numbers stay canonical and unit-testable. It only reads the chart &mdash; nothing is ever mutated.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.60</span>Green-Number Auto-Follow</h4>
