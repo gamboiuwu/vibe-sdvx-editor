@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.60 · 2026</span>
+  <span class="version">v0.0.61 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.61</span>Density Seekbar</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Density heat band on the seek bar.</strong> A new <strong>&#9636; Density</strong> toggle in the preview <em>Scroll</em> row paints a note-density heat band over the game-preview seek bar &mdash; <span style="color:#3a7bff">cool</span> where the chart is sparse, <span style="color:#ff4040">hot</span> where it spikes. The band is tick-aligned to the fill, so you can scrub straight to the busiest bursts to audition them.</li>
+    <li><span class="tag add">add</span><strong>Pure button density.</strong> Counts <strong>BT + FX taps</strong> (a hold counts once at its head; continuous lasers excluded), downsampled into 96 equal-tick buckets and normalised against the chart&rsquo;s peak bucket. The math lives in <code>chart.js</code> <code>densityProfile()</code> as a DOM-free, unit-tested single source of truth.</li>
+    <li><span class="tag add">add</span><strong>Render-only.</strong> Never touches chart data. State persists via <strong>Save Config</strong> and restores on load; the band recomputes only when the chart actually changes (cheap signature gate), so playback stays smooth. i18n in all 5 locales.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.60</span>Green-Number Auto-Follow</h4>
