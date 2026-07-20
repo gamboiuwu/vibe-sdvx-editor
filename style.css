@@ -1113,6 +1113,19 @@ kbd {
   pointer-events: none;
   transition: width 0.05s linear;
 }
+/* Note-density heat band — floats just above the 6px track, aligned to the same
+   tick-linear x as the fill. Render-only; hidden when the Density toggle is off. */
+#game-seekbar-density {
+  position: absolute;
+  left: 0;
+  bottom: 9px;
+  width: 100%;
+  height: 20px;
+  display: none;
+  pointer-events: none;
+  opacity: 0.9;
+}
+#game-seekbar-density.on { display: block; }
 #game-seekbar-thumb {
   position: absolute;
   top: 50%;

@@ -114,6 +114,40 @@ export function computeChartStats(chart) {
   };
 }
 
+// ── Preview seekbar density profile ───────────────────────────────────────────
+// Downsampled note-density profile across the whole chart, powering the game-
+// preview seekbar heat band. Buckets are equal-TICK spans, so they line up
+// exactly with the seekbar's tick-linear playhead position (fill = tick/total).
+// Each bucket holds the count of BT + FX *onsets* whose tick lands inside it — a
+// hold counts once at its head (matching computeChartStats and a player's taps);
+// continuous lasers are not counted, so this reads as pure button density.
+// DOM-free single source of truth so the render layer stays a thin consumer and
+// the math is unit-tested directly. `peak` is the busiest bucket (the value the
+// render layer normalises the colour ramp against); `total` is every onset placed.
+export function densityProfile(chart, bucketCount = 96) {
+  const n = Math.max(1, Math.floor(bucketCount) || 1);
+  const buckets = new Array(n).fill(0);
+  if (!chart) return { buckets, peak: 0, total: 0, bucketCount: n };
+
+  const totalTicks = (chart.totalMeasures || 1) * TICKS_PER_MEASURE;
+  if (!(totalTicks > 0)) return { buckets, peak: 0, total: 0, bucketCount: n };
+
+  let total = 0;
+  const add = (y) => {
+    if (!(y >= 0)) return;
+    let b = Math.floor((y / totalTicks) * n);
+    if (b < 0) b = 0; else if (b >= n) b = n - 1;   // clamp the final tick into the last bucket
+    buckets[b]++;
+    total++;
+  };
+  for (const lane of (chart.bt || [])) for (const note of lane) add(note.y);
+  for (const lane of (chart.fx || [])) for (const note of lane) add(note.y);
+
+  let peak = 0;
+  for (const c of buckets) if (c > peak) peak = c;
+  return { buckets, peak, total, bucketCount: n };
+}
+
 // ── Quantize / Nudge engine ──────────────────────────────────────────────────
 // Shared, side-effect-isolated tick math used by the Tools Hub "Quantize" tool.
 // Kept here (not in tools.js) so it can be unit-tested without a DOM, and so any

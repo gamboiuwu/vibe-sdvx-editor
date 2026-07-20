@@ -1,4 +1,4 @@
-import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, beatGridCrossings, countInGrid, beatFlashIntensity } from './chart.js';
+import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, densityProfile, beatGridCrossings, countInGrid, beatFlashIntensity } from './chart.js';
 import { Renderer, C, laserColors, laserOpacity, laserWideMode, LASER_PRESETS, applyLaserPreset, setLaserColorCustom, buildLaneHeader, setLaserOpacity, setLaserWideMode } from './renderer.js';
 import { GameView } from './game.js';
 import { exportKsh, importKsh, downloadText } from './ksh.js';
@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.60';
+const APP_VERSION = '0.0.61';
 const CHANGELOG = [
+  {
+    version: '0.0.61',
+    title: 'Density Seekbar — scrub straight to the busy sections',
+    entries: [
+      ['add', '<strong>Density seekbar heat band.</strong> A new <strong>&#9636; Density</strong> toggle in the preview <em>Scroll</em> row paints a note-density heat band over the game-preview seek bar — <span style="color:#3a7bff">cool</span> where the chart is sparse, <span style="color:#ff4040">hot</span> where it spikes. The band is tick-aligned to the seekbar fill, so you can scrub straight to the busiest bursts to audition them.'],
+      ['add', 'Counts <strong>BT + FX taps</strong> (a hold counts once at its head, continuous lasers excluded — pure button density), downsampled into 96 equal-tick buckets and normalised against the chart\'s peak bucket. The math lives in <code>chart.js</code> <code>densityProfile()</code> as a DOM-free, unit-tested single source of truth.'],
+      ['add', '<strong>Render-only</strong> — never touches chart data. State persists via <strong>Save Config</strong> and restores on load; the band recomputes only when the chart actually changes, so playback stays smooth.'],
+    ],
+  },
   {
     version: '0.0.60',
     title: 'Green-Number Auto-Follow — hold your reading window across BPM changes',
@@ -2050,8 +2059,70 @@ export function updateSeekbar(tick) {
   label.textContent = `${_fmtTime(curSec)} / ${_fmtTime(totSec)}`;
 
   _updateLoopMarkers();
+  _drawDensitySeekbar();        // note-density heat band under the seekbar (render-only)
   updateGreenFollow(tick);      // hold the green number as the ref BPM moves (soflan / chart switch)
   updateReactionReadout(tick);
+}
+
+// ── Density seekbar heat band (v0.0.61) ───────────────────────────────────────
+// Paints a note-density profile over the game-preview seek bar so a chartist can
+// scrub straight to the busiest sections. Pure consumer of chart.js densityProfile
+// (the DOM-free single source of truth) — never mutates chart data. The O(N) note
+// scan is cached behind a cheap O(1) signature so this stays a no-op during
+// playback until the chart actually changes; only the 96-rect canvas paint runs
+// per call, and only when the toggle is on and the seekbar has a measurable width.
+const DENSITY_BUCKETS = 96;
+let _densCache = { sig: null, profile: null };
+let _densCanvasW = -1;
+
+function _densitySignature() {
+  if (!chart) return 'none';
+  const part = (lanes) => lanes.map(l => {
+    const n = l.length;
+    return n + '/' + (n ? l[n - 1].y : -1);
+  }).join(',');
+  return `${chart.totalMeasures}|${part(chart.bt)}|${part(chart.fx)}`;
+}
+
+function _drawDensitySeekbar() {
+  const cv = document.getElementById('game-seekbar-density');
+  if (!cv) return;
+  const on = !!prefs.densitySeekbar;
+  cv.classList.toggle('on', on);
+  if (!on) return;
+
+  const cssW = cv.clientWidth, cssH = cv.clientHeight;
+  if (cssW <= 0 || cssH <= 0) return;                 // not laid out yet (e.g. not in game view)
+
+  const dpr = window.devicePixelRatio || 1;
+  const bw = Math.round(cssW * dpr), bh = Math.round(cssH * dpr);
+  if (cv.width !== bw || cv.height !== bh) { cv.width = bw; cv.height = bh; _densCanvasW = -1; }
+
+  // Recompute the profile only when the chart changes (cheap signature gate).
+  const sig = _densitySignature();
+  if (sig !== _densCache.sig) {
+    _densCache = { sig, profile: densityProfile(chart, DENSITY_BUCKETS) };
+  }
+  const prof = _densCache.profile;
+
+  const ctx = cv.getContext('2d');
+  ctx.clearRect(0, 0, bw, bh);
+  if (!prof || prof.peak <= 0) { _densCanvasW = bw; return; }   // empty chart → clear band
+
+  const n = prof.buckets.length;
+  const colW = bw / n;
+  for (let i = 0; i < n; i++) {
+    const c = prof.buckets[i];
+    if (c <= 0) continue;
+    const r = c / prof.peak;                            // 0..1 relative to busiest bucket
+    const hue = 210 * (1 - r);                          // blue (calm) → red (dense)
+    const barH = Math.max(bh * 0.18, r * bh);           // floor so sparse buckets still read
+    const x = Math.floor(i * colW);
+    const w = Math.max(1, Math.ceil(colW));
+    ctx.fillStyle = `hsl(${hue}, 85%, 55%)`;
+    ctx.fillRect(x, bh - barH, w, barH);
+  }
+  _densCanvasW = bw;
 }
 
 // Position the A/B markers + shaded region on the game seekbar to match loopA/B.
@@ -2621,6 +2692,8 @@ function setViewMode(mode) {
   }
   if (gameView) { gameView.resize(); gameView.draw(); }
   document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === mode));
+  // Repaint the density seekbar once the (now-visible) seek bar has a width.
+  if (mode !== 'edit') requestAnimationFrame(() => _drawDensitySeekbar());
 }
 
 let _isGameViewFullscreen = false;
@@ -8617,6 +8690,7 @@ const prefs = {
   fxAutoVis:        false,
   minimapVisible:   false,
   soflanMarkers:    false,
+  densitySeekbar:   true,
 };
 let _autosaveTimer = null;
 
@@ -9638,6 +9712,21 @@ function _initProjectionControls() {
       savePrefsToLocalStorage();
       if (gameView && !playing) gameView.draw();
       render();
+    });
+  }
+
+  // Density seekbar heat band toggle — paints note density over the seek bar.
+  // Render-only; state persists on prefs so it composes with Save Config too.
+  const densityBtn = document.getElementById('pvc-density-toggle');
+  if (densityBtn && !densityBtn._wired) {
+    densityBtn._wired = true;
+    densityBtn.classList.toggle('active', !!prefs.densitySeekbar);
+    densityBtn.addEventListener('click', () => {
+      prefs.densitySeekbar = !prefs.densitySeekbar;
+      densityBtn.classList.toggle('active', prefs.densitySeekbar);
+      savePrefsToLocalStorage();
+      _densCache = { sig: null, profile: null };   // force a fresh paint on next draw
+      _drawDensitySeekbar();
     });
   }
 
