@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.60 · 2026</span>
+  <span class="version">v0.0.61 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.61</span>Cover-Adjusted Green Number</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>The green number now respects your track cover.</strong> Turn on <strong>Sudden+</strong> or <strong>Hidden+</strong> (v0.0.42) and the <strong>Green#</strong> readout drops to the <em>visible</em> reaction window &mdash; the ms a note is actually on screen across the uncovered strip &mdash; the real <strong>&ldquo;SUD+ green number&rdquo;</strong> IIDX/SDVX players read. A <code>&#9619;</code> glyph and an <strong>amber</strong> tint mark the number as cover-adjusted (vs full-lane green), both in the side panel and on the play field; hover the readout for the visible-vs-full-lane breakdown.</li>
+    <li><span class="tag add">add</span><strong>The target solver composes with it.</strong> The <em>&rarr;ms</em> preset (v0.0.58) and <strong>&#8644; Hold</strong> auto-follow (v0.0.60) now solve HiSpeed against the <strong>covered</strong> runway, so a target green number is hit as the window you <em>see</em> &mdash; moving either cover slider live re-solves the held number. With no cover active the maths is identical to before.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a DOM-free, unit-tested <code>chart.coverVisibleFraction(sud, hid)</code> shared by the readout and the solver so they can never disagree. Only the visual readout / HiSpeed change &mdash; the chart is never mutated. i18n in all 5 locales.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.60</span>Green-Number Auto-Follow</h4>
