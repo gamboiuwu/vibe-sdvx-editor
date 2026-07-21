@@ -829,6 +829,22 @@ export class ChartData {
     return vt1 / TICKS_PER_BEAT * (60 / b) * 1000 / r / t;
   }
 
+  // ── Cover-adjusted reaction window (SUD+/HID+ green number) ────────────────
+  // The Sudden+/Hidden+ track covers hide the far/top end (sud) and the near/
+  // bottom end (hid) of the runway, so a note is only *visible* while it crosses
+  // the uncovered strip. Because the reaction window is proportional to the
+  // distance a note is on screen, an active cover shrinks it by exactly the
+  // uncovered fraction — this is the real-world "SUD+ green number" IIDX/SDVX
+  // players read. Returns the fraction (0..1) of the runway still visible.
+  // DOM-free single source of truth shared by the green-number readout AND the
+  // target-green→HiSpeed solver, so the two never disagree under a cover. Never
+  // touches chart data.
+  coverVisibleFraction(coverSudden = 0, coverHidden = 0) {
+    const s = Math.max(0, Math.min(0.9, Number(coverSudden) || 0));
+    const h = Math.max(0, Math.min(0.9, Number(coverHidden) || 0));
+    return Math.max(0, Math.min(1, 1 - s - h));
+  }
+
   // ── Dominant BPM ───────────────────────────────────────────────────────────
   // Returns the tempo (BPM) that plays for the greatest total time across the
   // whole chart — the natural reference for C-Mode so the bulk of a soflan

@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.60';
+const APP_VERSION = '0.0.61';
 const CHANGELOG = [
+  {
+    version: '0.0.61',
+    title: 'Cover-Adjusted Green Number — your SUD+ / HID+ reading window',
+    entries: [
+      ['add', '<strong>The green number now respects your track cover.</strong> Turn on <strong>Sudden+</strong> or <strong>Hidden+</strong> (v0.0.42) and the <strong>Green#</strong> readout drops to the <em>visible</em> reaction window — the ms a note is actually on screen across the uncovered strip — the real <strong>“SUD+ green number”</strong> IIDX/SDVX players read. A <code>▓</code> glyph and an <strong>amber</strong> tint mark the number as cover-adjusted (vs full-lane green), both in the side panel and on the play field; hover the readout for the visible-vs-full-lane breakdown.'],
+      ['add', '<strong>The target solver composes with it.</strong> The <em>→ms</em> preset (v0.0.58) and <strong>⇄ Hold</strong> auto-follow (v0.0.60) now solve HiSpeed against the <strong>covered</strong> runway, so a target green number is hit as the window you <em>see</em> — moving either cover slider live re-solves the held number. With no cover active the maths is identical to before.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Backed by a DOM-free, unit-tested <code>chart.coverVisibleFraction(sud, hid)</code> shared by the readout and the solver so they can never disagree. Only the visual readout / HiSpeed change — the chart is never mutated. i18n in all 5 locales.'],
+    ],
+  },
   {
     version: '0.0.60',
     title: 'Green-Number Auto-Follow — hold your reading window across BPM changes',
@@ -2272,24 +2281,42 @@ function updateReactionReadout(tick) {
     if (gameView) { gameView.showReaction = false; gameView.reactionMs = 0; }
     return;
   }
-  const t  = (tick != null) ? tick : (renderer ? renderer.playTick : 0);
+  const tkNow = (tick != null) ? tick : (renderer ? renderer.playTick : 0);
   const vt = gameView ? gameView.VISIBLE_TICKS : (TICKS_PER_MEASURE * 4 / Math.max(0.1, chartSpeed));
   const bpm = (previewScrollMode === 'cmode' && typeof chart.dominantBpm === 'function')
             ? cModeRefBpmResolved()   // honours the manual C-mode reference override
-            : chart.getBpmAt(Math.floor(t));
-  const ms = chart.reactionWindowMs(vt, bpm, playbackRate);
+            : chart.getBpmAt(Math.floor(tkNow));
+  // Cover-Adjusted Green Number (v0.0.61): when Sudden+/Hidden+ covers are active
+  // the note is only visible across the uncovered strip, so the reaction window
+  // shrinks by that fraction — the real "SUD+ green number". Same fraction feeds
+  // applyGreenTarget so the readout and the target solver always agree.
+  const covFrac = (gameView && typeof chart.coverVisibleFraction === 'function')
+    ? chart.coverVisibleFraction(gameView.coverSudden, gameView.coverHidden) : 1;
+  const covered = covFrac < 0.999;
+  const ms = chart.reactionWindowMs(vt * covFrac, bpm, playbackRate);
   if (lbl) {
     if (reactionReadout) {
-      lbl.textContent = `${Math.round(ms)} ms`;
-      lbl.style.color = '#66ff99';
+      lbl.textContent = covered ? `▓ ${Math.round(ms)} ms` : `${Math.round(ms)} ms`;
+      // Cover-adjusted numbers glow amber so the chartist reads them as "under a
+      // cover", not the full-lane green number.
+      lbl.style.color = covered ? '#ffcc55' : '#66ff99';
+      if (covered) {
+        const raw = chart.reactionWindowMs(vt, bpm, playbackRate);
+        lbl.title = ((typeof t === 'function' ? t('preview.reactionCover') : '') || 'Cover-adjusted reaction window')
+          + `: ${Math.round(ms)} ms visible (${Math.round(covFrac * 100)}% of ${Math.round(raw)} ms full-lane)`;
+      } else {
+        lbl.title = '';
+      }
     } else {
       lbl.textContent = '–';
       lbl.style.color = '';
+      lbl.title = '';
     }
   }
   if (gameView) {
     gameView.showReaction = reactionReadout;
     gameView.reactionMs   = reactionReadout ? ms : 0;
+    gameView.reactionCovered = reactionReadout && covered;
   }
 }
 
@@ -2321,7 +2348,14 @@ function applyGreenTarget(targetMs, tick) {
   const hsSl = document.getElementById('pvc-hispeed');
   const lo = hsSl ? (+hsSl.min || 0.2) : 0.2;
   const hi = hsSl ? (+hsSl.max || 10)  : 10;
-  let hs = chart.hispeedForReactionMs(t, bpm, playbackRate);
+  // Solve against the *visible* runway so the target ms is what the chartist
+  // actually reads under an active Sudden+/Hidden+ cover (v0.0.61). With no cover
+  // the fraction is 1 and this is the exact v0.0.58 solve. Floor the fraction so
+  // a near-full cover can't blow up the inverse (divide-by-tiny).
+  const covFrac = (gameView && typeof chart.coverVisibleFraction === 'function')
+    ? Math.max(0.05, chart.coverVisibleFraction(gameView.coverSudden, gameView.coverHidden)) : 1;
+  const vt1 = (TICKS_PER_MEASURE * BEATS_PER_MEASURE) * covFrac;
+  let hs = chart.hispeedForReactionMs(t, bpm, playbackRate, vt1);
   hs = Math.max(lo, Math.min(hi, Math.round(hs * 10) / 10)); // snap to slider step (0.1)
   // Mirror to the HiSpeed slider + labels + top-menu control (same path the slider uses)
   if (hsSl) hsSl.value = hs;
@@ -9833,7 +9867,10 @@ function _initProjectionControls() {
     sudSl.addEventListener('input', () => {
       const v = +sudSl.value;
       if (sudLbl) sudLbl.textContent = Math.round(v * 100) + '%';
-      if (gameView) { gameView.coverSudden = v; if (!playing) gameView.draw(); }
+      if (gameView) { gameView.coverSudden = v; }
+      updateGreenFollow();          // hold the target green number under the new cover
+      updateReactionReadout();      // the cover shrinks the visible reaction window
+      if (gameView && !playing) gameView.draw();
     });
   }
   const hidSl  = document.getElementById('pvc-cover-hidden');
@@ -9843,7 +9880,10 @@ function _initProjectionControls() {
     hidSl.addEventListener('input', () => {
       const v = +hidSl.value;
       if (hidLbl) hidLbl.textContent = Math.round(v * 100) + '%';
-      if (gameView) { gameView.coverHidden = v; if (!playing) gameView.draw(); }
+      if (gameView) { gameView.coverHidden = v; }
+      updateGreenFollow();          // hold the target green number under the new cover
+      updateReactionReadout();      // the cover shrinks the visible reaction window
+      if (gameView && !playing) gameView.draw();
     });
   }
 

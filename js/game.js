@@ -32,6 +32,9 @@ export class GameView {
     // Render-only; never touches chart data.
     this.showReaction = true;
     this.reactionMs   = 0;
+    // v0.0.61: true when reactionMs has been shrunk by an active Sudden+/Hidden+
+    // cover, so the HUD paints the "SUD+ green number" amber with a cover glyph.
+    this.reactionCovered = false;
 
     // Projection mode: 'ortho' | 'sdvx' | 'hybrid'
     this.projMode = 'sdvx';
@@ -1650,15 +1653,19 @@ export class GameView {
       const rms   = Math.round(this.reactionMs);
       const jy    = p.judgeY ?? (p.h * this.judgeYFrac);
       const gy     = Math.max(30, jy - 26);
+      // Under a Sudden+/Hidden+ cover the number is the *visible* reaction window
+      // (v0.0.61) — paint it amber with a ▓ cover glyph so it reads as "SUD+
+      // green number", not the full-lane green number.
+      const cov = !!this.reactionCovered;
       ctx.textAlign = 'right';
       ctx.font      = 'bold 15px monospace';
-      ctx.shadowColor = '#00ff7788'; ctx.shadowBlur = 6;
-      ctx.fillStyle = '#66ff99';
-      ctx.fillText(String(rms), p.w - 14, gy);
+      ctx.shadowColor = cov ? '#ffaa0088' : '#00ff7788'; ctx.shadowBlur = 6;
+      ctx.fillStyle = cov ? '#ffcc55' : '#66ff99';
+      ctx.fillText(cov ? `▓ ${rms}` : String(rms), p.w - 14, gy);
       ctx.shadowBlur = 0;
       ctx.font      = '9px monospace';
-      ctx.fillStyle = '#4fbf7a';
-      ctx.fillText('ms react', p.w - 14, gy + 12);
+      ctx.fillStyle = cov ? '#c79a3a' : '#4fbf7a';
+      ctx.fillText(cov ? 'ms react (cover)' : 'ms react', p.w - 14, gy + 12);
     }
   }
 
