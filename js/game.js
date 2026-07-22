@@ -45,11 +45,15 @@ export class GameView {
     // Judgment line Y position as fraction of canvas height (0.73 = default)
     this.judgeYFrac = 0.73;
 
-    // Track cover (SDVX Sudden+/Hidden+). Fraction (0..0.9) of the lane runway
-    // hidden from the far/top edge (sudden) and the near/bottom edge (hidden).
-    // Render-only readability-practice overlay — never touches chart data.
+    // Track cover (SDVX Sudden+/Hidden+/LIFT). Fraction (0..0.9) of the lane
+    // runway hidden from the far/top edge (sudden) and the near/bottom edge
+    // (hidden), plus LIFT which raises the judgment line off the bottom with a
+    // solid floor (like a real IIDX/SDVX LIFT — you still see the note all the
+    // way to the raised line, unlike Hidden+). Render-only readability-practice
+    // overlay — never touches chart data.
     this.coverSudden = 0;
     this.coverHidden = 0;
+    this.coverLift   = 0;
 
     // Visual interpretation mode for readability testing
     // 'standard' | 'simplified' | 'colorblind' | 'wireframe'
@@ -1527,9 +1531,10 @@ export class GameView {
   // (Sudden+) and/or the near end by the judgment line (Hidden+) so the chartist
   // can readability-test reaction windows. Pure overlay — no chart data changes.
   _drawLaneCover(p) {
-    const sud = Math.max(0, Math.min(0.9, this.coverSudden || 0));
-    const hid = Math.max(0, Math.min(0.9, this.coverHidden || 0));
-    if (sud <= 0 && hid <= 0) return;
+    const sud  = Math.max(0, Math.min(0.9, this.coverSudden || 0));
+    const hid  = Math.max(0, Math.min(0.9, this.coverHidden || 0));
+    const lift = Math.max(0, Math.min(0.9, this.coverLift   || 0));
+    if (sud <= 0 && hid <= 0 && lift <= 0) return;
     const { ctx } = this;
     const OFF  = GameView.LASER_LANE_OFFSET;
     const top  = p.cutoffY;          // far edge (where notes appear)
@@ -1539,7 +1544,8 @@ export class GameView {
 
     // Opaque trapezoid spanning the full lane (incl. VOL side-rails) between two
     // screen-Ys, with a bright edge line on the side facing the play area.
-    const band = (yA, yB, edgeY, edgeColor) => {
+    // `fill` overrides the default dark cover fill (LIFT uses a lit stage floor).
+    const band = (yA, yB, edgeY, edgeColor, fill) => {
       const lA = this._screenX(-OFF, yA, p), rA = this._screenX(1 + OFF, yA, p);
       const lB = this._screenX(-OFF, yB, p), rB = this._screenX(1 + OFF, yB, p);
       ctx.shadowBlur = 0;
@@ -1547,7 +1553,7 @@ export class GameView {
       ctx.moveTo(lA, yA); ctx.lineTo(rA, yA);
       ctx.lineTo(rB, yB); ctx.lineTo(lB, yB);
       ctx.closePath();
-      ctx.fillStyle = 'rgba(2,3,9,0.94)';
+      ctx.fillStyle = fill || 'rgba(2,3,9,0.94)';
       ctx.fill();
       const lE = this._screenX(-OFF, edgeY, p), rE = this._screenX(1 + OFF, edgeY, p);
       ctx.beginPath();
@@ -1566,6 +1572,30 @@ export class GameView {
     if (hid > 0) {
       const yEdge = bot - span * hid;
       band(yEdge, bot, yEdge, 'rgba(255,170,90,0.85)');
+    }
+    // LIFT : raise the judgment line off the bottom. A solid stage floor fills
+    // from the true bottom up to the lifted line; unlike Hidden+ the note stays
+    // visible all the way DOWN to that line, so the floor reads as a raised deck
+    // rather than a cover. Rendered last so its lit floor sits above the covers,
+    // and stacked ABOVE any Hidden+ band (bot - span*hid) so the two don't fight.
+    if (lift > 0) {
+      const baseBot = (hid > 0) ? (bot - span * hid) : bot;
+      const yEdge   = baseBot - (span * lift);
+      if (yEdge < baseBot) {
+        band(yEdge, baseBot, yEdge, 'rgba(120,255,160,0.95)', 'rgba(10,26,16,0.97)');
+        // A brighter judgment-style line on the lifted deck edge to signal that
+        // this is where the note is now read (the effective judgment line).
+        ctx.save();
+        const lE = this._screenX(-OFF, yEdge, p), rE = this._screenX(1 + OFF, yEdge, p);
+        ctx.beginPath();
+        ctx.moveTo(lE, yEdge); ctx.lineTo(rE, yEdge);
+        ctx.strokeStyle = 'rgba(150,255,190,0.55)';
+        ctx.lineWidth = 4;
+        ctx.shadowColor = 'rgba(120,255,160,0.7)';
+        ctx.shadowBlur = 10;
+        ctx.stroke();
+        ctx.restore();
+      }
     }
   }
 
