@@ -829,20 +829,24 @@ export class ChartData {
     return vt1 / TICKS_PER_BEAT * (60 / b) * 1000 / r / t;
   }
 
-  // ── Cover-adjusted reaction window (SUD+/HID+ green number) ────────────────
+  // ── Cover-adjusted reaction window (SUD+/HID+/LIFT green number) ───────────
   // The Sudden+/Hidden+ track covers hide the far/top end (sud) and the near/
-  // bottom end (hid) of the runway, so a note is only *visible* while it crosses
-  // the uncovered strip. Because the reaction window is proportional to the
-  // distance a note is on screen, an active cover shrinks it by exactly the
-  // uncovered fraction — this is the real-world "SUD+ green number" IIDX/SDVX
-  // players read. Returns the fraction (0..1) of the runway still visible.
-  // DOM-free single source of truth shared by the green-number readout AND the
-  // target-green→HiSpeed solver, so the two never disagree under a cover. Never
-  // touches chart data.
-  coverVisibleFraction(coverSudden = 0, coverHidden = 0) {
+  // bottom end (hid) of the runway, and LIFT (v0.0.62) raises the judgment line
+  // from the bottom — all three shorten the strip a note is *visible* across, so
+  // a note is only seen while it crosses the uncovered runway. Because the
+  // reaction window is proportional to the distance a note is on screen, an
+  // active cover/lift shrinks it by exactly the uncovered fraction — this is the
+  // real-world "SUD+ green number" IIDX/SDVX players read. Hidden+ and LIFT both
+  // eat from the bottom (LIFT physically raises the line, Hidden+ blanks the strip
+  // above it), so they sum. Returns the fraction (0..1) of the runway still
+  // visible. DOM-free single source of truth shared by the green-number readout
+  // AND the target-green→HiSpeed solver, so the two never disagree under a cover.
+  // Never touches chart data.
+  coverVisibleFraction(coverSudden = 0, coverHidden = 0, coverLift = 0) {
     const s = Math.max(0, Math.min(0.9, Number(coverSudden) || 0));
     const h = Math.max(0, Math.min(0.9, Number(coverHidden) || 0));
-    return Math.max(0, Math.min(1, 1 - s - h));
+    const l = Math.max(0, Math.min(0.9, Number(coverLift)   || 0));
+    return Math.max(0, Math.min(1, 1 - s - h - l));
   }
 
   // ── Dominant BPM ───────────────────────────────────────────────────────────

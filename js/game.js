@@ -45,11 +45,15 @@ export class GameView {
     // Judgment line Y position as fraction of canvas height (0.73 = default)
     this.judgeYFrac = 0.73;
 
-    // Track cover (SDVX Sudden+/Hidden+). Fraction (0..0.9) of the lane runway
-    // hidden from the far/top edge (sudden) and the near/bottom edge (hidden).
+    // Track cover (SDVX Sudden+/Hidden+/LIFT). Fraction (0..0.9) of the lane
+    // runway hidden from the far/top edge (sudden) and the near/bottom edge
+    // (hidden). LIFT (v0.0.62) raises the judgment line from the bottom — like
+    // Hidden+ it eats the near strip, but it moves the line up rather than
+    // floating an opaque band, so the reachable field is physically shorter.
     // Render-only readability-practice overlay — never touches chart data.
     this.coverSudden = 0;
     this.coverHidden = 0;
+    this.coverLift   = 0;
 
     // Visual interpretation mode for readability testing
     // 'standard' | 'simplified' | 'colorblind' | 'wireframe'
@@ -1527,9 +1531,10 @@ export class GameView {
   // (Sudden+) and/or the near end by the judgment line (Hidden+) so the chartist
   // can readability-test reaction windows. Pure overlay — no chart data changes.
   _drawLaneCover(p) {
-    const sud = Math.max(0, Math.min(0.9, this.coverSudden || 0));
-    const hid = Math.max(0, Math.min(0.9, this.coverHidden || 0));
-    if (sud <= 0 && hid <= 0) return;
+    const sud  = Math.max(0, Math.min(0.9, this.coverSudden || 0));
+    const hid  = Math.max(0, Math.min(0.9, this.coverHidden || 0));
+    const lift = Math.max(0, Math.min(0.9, this.coverLift   || 0));
+    if (sud <= 0 && hid <= 0 && lift <= 0) return;
     const { ctx } = this;
     const OFF  = GameView.LASER_LANE_OFFSET;
     const top  = p.cutoffY;          // far edge (where notes appear)
@@ -1562,10 +1567,31 @@ export class GameView {
       const yEdge = top + span * sud;
       band(top, yEdge, yEdge, 'rgba(120,200,255,0.85)');
     }
-    // Hidden+ : cover from the near/bottom edge up; edge line at its upper border.
+    // LIFT (v0.0.62) : raise the judgment line from the very bottom. The opaque
+    // band fills the near strip [liftEdge, bot] and the RAISED judgment line is
+    // drawn at its upper border in the same white/cyan as the real judgment line
+    // (distinct from Hidden+'s floating amber cover), so it reads as the line
+    // having physically moved up rather than a strip being blanked.
+    const liftEdge = bot - span * lift;   // where the raised judgment line sits
+    if (lift > 0) {
+      band(liftEdge, bot, liftEdge, 'rgba(180,225,255,0.95)');
+      // Emphasise the raised line so it reads as a judgment line, not a cover edge.
+      const lL = this._screenX(-OFF, liftEdge, p), lR = this._screenX(1 + OFF, liftEdge, p);
+      ctx.save();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth   = 2.5;
+      ctx.shadowColor = '#bfe4ffcc';
+      ctx.shadowBlur  = 12;
+      ctx.beginPath(); ctx.moveTo(lL, liftEdge); ctx.lineTo(lR, liftEdge); ctx.stroke();
+      ctx.restore();
+    }
+    // Hidden+ : cover from the near edge up, STACKED above any LIFT band so the
+    // two never overlap and the total near-side covered strip is span*(hid+lift)
+    // — exactly the fraction chart.coverVisibleFraction removes from the green
+    // number. Edge line at its upper border.
     if (hid > 0) {
-      const yEdge = bot - span * hid;
-      band(yEdge, bot, yEdge, 'rgba(255,170,90,0.85)');
+      const yEdge = liftEdge - span * hid;
+      band(yEdge, liftEdge, yEdge, 'rgba(255,170,90,0.85)');
     }
   }
 

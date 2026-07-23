@@ -439,6 +439,15 @@
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
 
 <div class="update-entry">
+  <h4><span class="ver-tag">v0.0.62</span>LIFT &mdash; raise the judgment line</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>LIFT track modifier.</strong> A new <strong>LIFT</strong> slider joins <strong>Sudden+ / Hidden+</strong> in the preview cover row (<em>&#9881; More</em>). LIFT <strong>raises the judgment line from the bottom of the runway</strong> &mdash; the near strip fills in and the <em>raised</em> line is redrawn in bright white/cyan so it reads as the line having physically moved up (the modifier most IIDX/SDVX players actually use), <strong>distinct from Hidden+&rsquo;s floating amber cover</strong>. Drag 0&ndash;90%.</li>
+    <li><span class="tag add">add</span><strong>Feeds the green number.</strong> Like a cover, LIFT shortens the field a note is <em>visible</em> across, so the <strong>Green#</strong> readout drops to the LIFT-adjusted reaction window and the <em>&rarr;ms</em> target preset (v0.0.58) + <strong>&#8644; Hold</strong> auto-follow (v0.0.60) solve HiSpeed against it. LIFT and Hidden+ both eat the near strip, so they <strong>stack cleanly</strong> &mdash; the covered runway on screen is exactly the fraction removed from the green number.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by extending the DOM-free, unit-tested <code>chart.coverVisibleFraction(sud, hid, lift)</code> shared by the readout and the solver so they can never disagree. Only the visual field / HiSpeed change &mdash; the chart is never mutated. Persists via <strong>Save Config</strong>; i18n in all 5 locales.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
   <h4><span class="ver-tag">v0.0.61</span>Cover-Adjusted Green Number</h4>
   <ul>
     <li><span class="tag add">add</span><strong>The green number now respects your track cover.</strong> Turn on <strong>Sudden+</strong> or <strong>Hidden+</strong> (v0.0.42) and the <strong>Green#</strong> readout drops to the <em>visible</em> reaction window &mdash; the ms a note is actually on screen across the uncovered strip &mdash; the real <strong>&ldquo;SUD+ green number&rdquo;</strong> IIDX/SDVX players read. A <code>&#9619;</code> glyph and an <strong>amber</strong> tint mark the number as cover-adjusted (vs full-lane green), both in the side panel and on the play field; hover the readout for the visible-vs-full-lane breakdown.</li>
