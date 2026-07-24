@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.61 · 2026</span>
+  <span class="version">v0.0.62 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.62</span>LIFT &mdash; raise the judgment line</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>LIFT track modifier.</strong> A new <strong>LIFT</strong> slider joins <strong>Sudden+</strong> / <strong>Hidden+</strong> (v0.0.42) in the preview cover row. LIFT <strong>raises the judgment line up from the bottom</strong> of the runway &mdash; the IIDX-style modifier that shortens how far a note travels on screen. Unlike Hidden+, which just blanks a strip while the line stays put, LIFT paints the bottom as dead space and draws a <strong>bright raised judgment line</strong> at its top edge, so you read the chart to the line where you actually hit.</li>
+    <li><span class="tag add">add</span><strong>Feeds the green number and the solver.</strong> Because LIFT shortens the visible travel, the <strong>Green#</strong> reaction readout (v0.0.56) drops to the covered window and paints amber, and the <em>&rarr;ms</em> target preset (v0.0.58) + <strong>&#8644; Hold</strong> auto-follow (v0.0.60) solve HiSpeed against the raised line &mdash; exactly as they already do for Sudden+/Hidden+. Stacks with both covers.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> LIFT extends the DOM-free, unit-tested <code>chart.coverVisibleFraction(sud, hid, lift)</code> as a third term, shared by the readout and the solver so they can never disagree. Only the visual overlay / HiSpeed change &mdash; the chart is never mutated. Persists via <strong>Save Config</strong>; i18n in all 5 locales.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.61</span>Cover-Adjusted Green Number</h4>
