@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.61';
+const APP_VERSION = '0.0.62';
 const CHANGELOG = [
+  {
+    version: '0.0.62',
+    title: 'LIFT — raise the judgment line (IIDX-style reading window)',
+    entries: [
+      ['add', '<strong>LIFT track modifier.</strong> A new <strong>LIFT</strong> slider joins <strong>Sudden+</strong> / <strong>Hidden+</strong> (v0.0.42) in the preview cover row. LIFT <strong>raises the judgment line up from the bottom</strong> of the runway — the IIDX-style modifier that shortens how far a note travels on screen. Unlike Hidden+, which just blanks a strip while the line stays put, LIFT paints the bottom as dead space and draws a <strong>bright raised judgment line</strong> at its top edge, so you read the chart to the line where you actually hit.'],
+      ['add', '<strong>Feeds the green number and the solver.</strong> Because LIFT shortens the visible travel, the <strong>Green#</strong> reaction readout (v0.0.56) drops to the covered window and paints amber, and the <em>→ms</em> target preset (v0.0.58) + <strong>⇄ Hold</strong> auto-follow (v0.0.60) solve HiSpeed against the raised line — exactly as they already do for Sudden+/Hidden+. Stacks with both covers.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> LIFT extends the DOM-free, unit-tested <code>chart.coverVisibleFraction(sud, hid, lift)</code> as a third term, shared by the readout and the solver so they can never disagree. Only the visual overlay / HiSpeed change — the chart is never mutated. Persists via <strong>Save Config</strong>; i18n in all 5 locales.'],
+    ],
+  },
   {
     version: '0.0.61',
     title: 'Cover-Adjusted Green Number — your SUD+ / HID+ reading window',
@@ -2291,7 +2300,7 @@ function updateReactionReadout(tick) {
   // shrinks by that fraction — the real "SUD+ green number". Same fraction feeds
   // applyGreenTarget so the readout and the target solver always agree.
   const covFrac = (gameView && typeof chart.coverVisibleFraction === 'function')
-    ? chart.coverVisibleFraction(gameView.coverSudden, gameView.coverHidden) : 1;
+    ? chart.coverVisibleFraction(gameView.coverSudden, gameView.coverHidden, gameView.coverLift) : 1;
   const covered = covFrac < 0.999;
   const ms = chart.reactionWindowMs(vt * covFrac, bpm, playbackRate);
   if (lbl) {
@@ -2353,7 +2362,7 @@ function applyGreenTarget(targetMs, tick) {
   // the fraction is 1 and this is the exact v0.0.58 solve. Floor the fraction so
   // a near-full cover can't blow up the inverse (divide-by-tiny).
   const covFrac = (gameView && typeof chart.coverVisibleFraction === 'function')
-    ? Math.max(0.05, chart.coverVisibleFraction(gameView.coverSudden, gameView.coverHidden)) : 1;
+    ? Math.max(0.05, chart.coverVisibleFraction(gameView.coverSudden, gameView.coverHidden, gameView.coverLift)) : 1;
   const vt1 = (TICKS_PER_MEASURE * BEATS_PER_MEASURE) * covFrac;
   let hs = chart.hispeedForReactionMs(t, bpm, playbackRate, vt1);
   hs = Math.max(lo, Math.min(hi, Math.round(hs * 10) / 10)); // snap to slider step (0.1)
@@ -9886,6 +9895,21 @@ function _initProjectionControls() {
       if (gameView && !playing) gameView.draw();
     });
   }
+  // LIFT (v0.0.62) — raise the judgment line; shortens visible travel like a
+  // cover, so it feeds the same green-number engines.
+  const liftSl  = document.getElementById('pvc-cover-lift');
+  const liftLbl = document.getElementById('pvc-cover-lift-label');
+  if (liftSl && !liftSl._wired) {
+    liftSl._wired = true;
+    liftSl.addEventListener('input', () => {
+      const v = +liftSl.value;
+      if (liftLbl) liftLbl.textContent = Math.round(v * 100) + '%';
+      if (gameView) { gameView.coverLift = v; }
+      updateGreenFollow();          // hold the target green number under the raised line
+      updateReactionReadout();      // LIFT shrinks the visible reaction window
+      if (gameView && !playing) gameView.draw();
+    });
+  }
 
   // Game canvas drag to reposition judgment line
   const gc = document.getElementById('game-canvas');
@@ -9964,11 +9988,13 @@ function _initProjectionControls() {
     // Judge Y
     const jyEl = document.getElementById('pvc-judge-y');
     if (jyEl) prefs.judgeYFrac = +jyEl.value;
-    // Track cover (Sudden+ / Hidden+)
+    // Track cover (Sudden+ / Hidden+ / LIFT)
     const sudCfgEl = document.getElementById('pvc-cover-sudden');
     if (sudCfgEl) prefs.coverSudden = +sudCfgEl.value;
     const hidCfgEl = document.getElementById('pvc-cover-hidden');
     if (hidCfgEl) prefs.coverHidden = +hidCfgEl.value;
+    const liftCfgEl = document.getElementById('pvc-cover-lift');
+    if (liftCfgEl) prefs.coverLift = +liftCfgEl.value;
     // Visual interpretation mode (managed by Tools Hub → Visual Mode)
     if (gameView) prefs.interpMode = gameView.interpMode;
     // Playback Rate
@@ -10042,6 +10068,12 @@ function _initProjectionControls() {
     const lb = document.getElementById('pvc-cover-hidden-label');
     if (el) { el.value = prefs.coverHidden; if (gameView) gameView.coverHidden = prefs.coverHidden; }
     if (lb) lb.textContent = Math.round(prefs.coverHidden * 100) + '%';
+  }
+  if (prefs.coverLift != null) {
+    const el = document.getElementById('pvc-cover-lift');
+    const lb = document.getElementById('pvc-cover-lift-label');
+    if (el) { el.value = prefs.coverLift; if (gameView) gameView.coverLift = prefs.coverLift; }
+    if (lb) lb.textContent = Math.round(prefs.coverLift * 100) + '%';
   }
   if (prefs.playbackRate != null) {
     const el = document.getElementById('pvc-rate');

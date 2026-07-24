@@ -45,11 +45,15 @@ export class GameView {
     // Judgment line Y position as fraction of canvas height (0.73 = default)
     this.judgeYFrac = 0.73;
 
-    // Track cover (SDVX Sudden+/Hidden+). Fraction (0..0.9) of the lane runway
-    // hidden from the far/top edge (sudden) and the near/bottom edge (hidden).
-    // Render-only readability-practice overlay — never touches chart data.
+    // Track cover (SDVX Sudden+/Hidden+ and IIDX-style LIFT). Fraction (0..0.9)
+    // of the lane runway hidden from the far/top edge (sudden), the near/bottom
+    // edge (hidden), and — for LIFT (v0.0.62) — the height the judgment line is
+    // raised from the bottom. LIFT is distinct from Hidden+: it lifts the whole
+    // reference judgment line up (a bright raised line) rather than just blanking
+    // a strip. Render-only readability-practice overlay — never touches chart data.
     this.coverSudden = 0;
     this.coverHidden = 0;
+    this.coverLift   = 0;
 
     // Visual interpretation mode for readability testing
     // 'standard' | 'simplified' | 'colorblind' | 'wireframe'
@@ -1522,14 +1526,21 @@ export class GameView {
     this._slamFlashes = this._slamFlashes.filter(f => now - f.time < 220);
   }
 
-  // ── Sudden+ / Hidden+ track cover ─────────────────────────────────────────
+  // ── Sudden+ / Hidden+ / LIFT track cover ──────────────────────────────────
   // SDVX-style practice cover: an opaque band hides the far end of the runway
   // (Sudden+) and/or the near end by the judgment line (Hidden+) so the chartist
-  // can readability-test reaction windows. Pure overlay — no chart data changes.
+  // can readability-test reaction windows. LIFT (v0.0.62) raises the judgment
+  // line from the bottom — an IIDX-style modifier that fills the bottom strip as
+  // dead space and draws a bright *raised* judgment line at its top edge, so the
+  // note's visible travel ends higher (distinct from Hidden+, which keeps the
+  // line at the bottom and just blanks a strip). Pure overlay — no chart data
+  // changes; the reaction-window math in coverVisibleFraction stays the single
+  // source of truth.
   _drawLaneCover(p) {
-    const sud = Math.max(0, Math.min(0.9, this.coverSudden || 0));
-    const hid = Math.max(0, Math.min(0.9, this.coverHidden || 0));
-    if (sud <= 0 && hid <= 0) return;
+    const sud  = Math.max(0, Math.min(0.9, this.coverSudden || 0));
+    const hid  = Math.max(0, Math.min(0.9, this.coverHidden || 0));
+    const lift = Math.max(0, Math.min(0.9, this.coverLift   || 0));
+    if (sud <= 0 && hid <= 0 && lift <= 0) return;
     const { ctx } = this;
     const OFF  = GameView.LASER_LANE_OFFSET;
     const top  = p.cutoffY;          // far edge (where notes appear)
@@ -1566,6 +1577,27 @@ export class GameView {
     if (hid > 0) {
       const yEdge = bot - span * hid;
       band(yEdge, bot, yEdge, 'rgba(255,170,90,0.85)');
+    }
+    // LIFT : raise the judgment line. Fill the strip from just above the Hidden+
+    // cover (or the bottom, if no Hidden+) up by `lift`, as dead space, then draw
+    // a bright RAISED judgment line at its top edge so it reads as the line having
+    // moved up — the IIDX-style hallmark that sets it apart from Hidden+.
+    if (lift > 0) {
+      const yBase = bot - span * hid;            // top of any Hidden+ band, else `bot`
+      const yEdge = bot - span * (hid + lift);   // where the raised judgment line sits
+      band(yEdge, yBase, yEdge, 'rgba(120,255,180,0.35)');
+      // Emphasised raised judgment line (thicker + glow) so it stands out from
+      // the thin cover edges above.
+      const lE = this._screenX(-OFF, yEdge, p), rE = this._screenX(1 + OFF, yEdge, p);
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(lE, yEdge); ctx.lineTo(rE, yEdge);
+      ctx.strokeStyle = 'rgba(140,255,190,0.95)';
+      ctx.shadowColor = 'rgba(120,255,180,0.9)';
+      ctx.shadowBlur  = 8;
+      ctx.lineWidth   = 3;
+      ctx.stroke();
+      ctx.restore();
     }
   }
 
