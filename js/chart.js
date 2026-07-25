@@ -850,6 +850,38 @@ export class ChartData {
     return Math.max(0, Math.min(1, 1 - s - h - l));
   }
 
+  // ── Reaction-window range across the whole chart (soflan spread) ────────────
+  // The green number (reactionWindowMs) is a SINGLE point — the reading window at
+  // the tempo under the playhead. On a soflan chart that window is different in
+  // every tempo section: at a fixed HiSpeed (constant `visibleTicks`) the window
+  // is inversely proportional to BPM, so the FASTEST section has the TIGHTEST
+  // (smallest-ms, hardest-to-read) window and the SLOWEST section the loosest.
+  // This method scans every tempo the chart actually plays and returns that whole
+  // spread — the worst-case reading window a chartist has to survive — without
+  // scrubbing the playhead across the chart. It reuses reactionWindowMs as the
+  // single source of truth, so the range endpoints always agree with the live
+  // readout when the playhead sits on the matching tempo. `visibleTicks` is the
+  // same GameView.VISIBLE_TICKS the point readout uses (a function of HiSpeed);
+  // `rate` is the practice playback rate. Returns { minMs, maxMs, minBpm, maxBpm,
+  // flat } where minMs is the window at maxBpm (tightest) and maxMs at minBpm
+  // (loosest); `flat` is true when the chart has a single tempo (no spread).
+  // DOM-free; never touches chart data.
+  reactionWindowRange(visibleTicks, rate = 1) {
+    const evs = (Array.isArray(this.bpmEvents) && this.bpmEvents.length)
+              ? this.bpmEvents : [{ y: 0, bpm: 120 }];
+    let minBpm = Infinity, maxBpm = -Infinity;
+    for (const ev of evs) {
+      const b = Math.max(1, Number(ev && ev.bpm) || 120);
+      if (b < minBpm) minBpm = b;
+      if (b > maxBpm) maxBpm = b;
+    }
+    if (!Number.isFinite(minBpm)) { minBpm = maxBpm = 120; }
+    // Tightest window = fastest tempo; loosest window = slowest tempo.
+    const minMs = this.reactionWindowMs(visibleTicks, maxBpm, rate);
+    const maxMs = this.reactionWindowMs(visibleTicks, minBpm, rate);
+    return { minMs, maxMs, minBpm, maxBpm, flat: Math.abs(maxBpm - minBpm) < 1e-6 };
+  }
+
   // ── Dominant BPM ───────────────────────────────────────────────────────────
   // Returns the tempo (BPM) that plays for the greatest total time across the
   // whole chart — the natural reference for C-Mode so the bulk of a soflan
