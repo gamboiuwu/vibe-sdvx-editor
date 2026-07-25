@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.62';
+const APP_VERSION = '0.0.63';
 const CHANGELOG = [
+  {
+    version: '0.0.63',
+    title: 'Green Number Range — your whole-chart soflan reading-window spread',
+    entries: [
+      ['add', '<strong>The green number now shows its full range.</strong> Next to the point <strong>Green#</strong> readout, a new <strong>⇕ range</strong> shows the <em>tightest → loosest</em> reaction window across the <strong>whole chart</strong> (e.g. <code>⇕ 267–533 ms</code>). The point number only tells you the window at the tempo under the playhead; on a <strong>soflan</strong> chart every section reads differently, so this surfaces the <strong>worst-case reading window</strong> — the fastest section — without scrubbing the playhead there.'],
+      ['add', '<strong>Only when it matters.</strong> The range hides on single-tempo charts (no spread) and in <strong>C-mode</strong>, where the constant scroll speed fixes the window. It is <strong>cover-adjusted</strong> by the same Sudden+/Hidden+/LIFT fraction (v0.0.61–62) as the point readout and follows the <strong>practice rate</strong>, so it always reflects what you actually read; hover it for the exact ms @ BPM at each end.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Backed by a DOM-free, unit-tested <code>chart.reactionWindowRange(visibleTicks, rate)</code> that reuses <code>reactionWindowMs</code>, so each endpoint matches the live point readout when the playhead sits on the matching tempo. Only the readout changes — the chart is never mutated. i18n in all 5 locales.'],
+    ],
+  },
   {
     version: '0.0.62',
     title: 'LIFT — raise the judgment line (IIDX-style reading window)',
@@ -2327,6 +2336,35 @@ function updateReactionReadout(tick) {
     gameView.reactionMs   = reactionReadout ? ms : 0;
     gameView.reactionCovered = reactionReadout && covered;
   }
+  updateReactionRange(vt, covFrac);
+}
+
+// Green-Number Range (v0.0.63) — the tightest→loosest reading window across the
+// WHOLE chart. The point readout above shows only the window at the playhead's
+// tempo; on a soflan chart every tempo section reads differently, so this shows
+// the full spread (worst-case at the fastest section) from chart.reactionWindowRange
+// — the DOM-free single source of truth, so its endpoints match the point readout
+// when the playhead sits on the matching tempo. Only meaningful in M-mode where
+// the window varies with BPM; in C-mode the constant scroll speed fixes the window
+// so there is no spread and the readout is hidden. Cover-adjusted with the same
+// covFrac as the point readout. Render-only — never touches chart data.
+function updateReactionRange(visibleTicks, covFrac) {
+  const el = document.getElementById('pvc-reaction-range');
+  if (!el) return;
+  const show = reactionReadout
+            && chart && typeof chart.reactionWindowRange === 'function'
+            && previewScrollMode !== 'cmode';
+  if (!show) { el.textContent = ''; return; }
+  const frac = (covFrac != null) ? covFrac : 1;
+  const r = chart.reactionWindowRange(visibleTicks * frac, playbackRate);
+  if (!r || r.flat) { el.textContent = ''; return; }  // single-tempo chart → no spread
+  const covered = frac < 0.999;
+  el.textContent = `⇕ ${Math.round(r.minMs)}–${Math.round(r.maxMs)} ms`;
+  el.style.color = covered ? '#ffcc55' : '#8fd0ff';
+  const cap = (typeof t === 'function' ? t('preview.reactionRange') : '') || 'Green-number range across the chart';
+  el.title = `${cap}: ${Math.round(r.minMs)} ms @ ${Math.round(r.maxBpm)} BPM (tightest) → `
+           + `${Math.round(r.maxMs)} ms @ ${Math.round(r.minBpm)} BPM (loosest)`
+           + (covered ? ` · cover-adjusted (${Math.round(frac * 100)}%)` : '');
 }
 
 // Toggle the green-number readout on/off; refresh HUD and redraw when paused.
