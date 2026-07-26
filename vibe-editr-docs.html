@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.62 · 2026</span>
+  <span class="version">v0.0.63 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.63</span>Runway Beat Grid</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Beat / measure grid on the game-preview runway.</strong> A new <strong>&#9636; Beat Grid</strong> toggle in the preview <em>Scroll</em> row draws faint horizontal lines across the lane on <strong>every beat</strong>, brighter on the <strong>downbeat</strong> (with the measure number labelled), scrolling down the runway with the chart. The 2D editor always had a beat grid; the game preview never did &mdash; now you can judge note timing and spacing by eye during playback.</li>
+    <li><span class="tag add">add</span><strong>Same engine as the metronome.</strong> Beat positions come from the DOM-free, unit-tested <code>beatGridCrossings()</code> in <code>chart.js</code> &mdash; the single source of truth shared with the audible metronome (v0.0.51) and beat-flash (v0.0.53) &mdash; so the grid honours the chart's <strong>BPM map</strong> <em>and</em> <strong>time-signature changes</strong>. Each line rides the same <code>_effDt</code> / <code>_screenY</code> projection as the notes, so it works in both <strong>M-mode</strong> and <strong>C-mode</strong>, honouring tilt and perspective.</li>
+    <li><span class="tag add">add</span><strong>Render-only.</strong> Chart data is never touched &mdash; the grid reads the BPM / time-signature map only. Lines fade in as they approach the judgment line and are culled to the visible runway. The toggle persists via <strong>Save Config</strong>; i18n label in all 5 locales.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.62</span>LIFT &mdash; raise the judgment line</h4>
