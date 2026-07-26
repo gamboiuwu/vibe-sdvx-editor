@@ -1,4 +1,4 @@
-import { ChartData, TICKS_PER_BEAT, TICKS_PER_MEASURE, BEATS_PER_MEASURE, previewModMaps } from './chart.js';
+import { ChartData, TICKS_PER_BEAT, TICKS_PER_MEASURE, BEATS_PER_MEASURE, previewModMaps, beatGridCrossings } from './chart.js';
 import { GLLaneRenderer } from './gl-lane.js';
 import { laserOpacity, laserColors } from './renderer.js';
 
@@ -1222,6 +1222,11 @@ export class GameView {
     // on the same _effDt projection as the notes). Render-only overlay.
     this._drawSoflanMarkers(p, chart);
 
+    // Beat / measure grid overlay — draws faint horizontal lines across the runway
+    // at each beat (brighter on the downbeat), riding the same _effDt projection as
+    // the notes. Render-only; a reading aid for timing/spacing during preview.
+    this._drawBeatGrid(p, chart);
+
     // Edit-mode ghost cursor (rendered inside tilt context so it aligns with the lane)
     if (this._editGhost) this._drawEditGhost(p);
 
@@ -1768,6 +1773,80 @@ export class GameView {
       ctx.fillText(txt, rx + 7, sy);
     }
 
+    ctx.restore();
+  }
+
+  // ── Beat / measure grid overlay ───────────────────────────────────────────
+  // Faint horizontal lines across the runway at each beat, brighter on the
+  // downbeat (first beat of a measure), with the measure number labelled on the
+  // downbeat. Beat positions come from beatGridCrossings() — the SAME single
+  // source of truth as the audible metronome (v0.0.51) and beat-flash (v0.0.53)
+  // — so the grid honours the chart's BPM map AND time-signature changes.
+  // Each line is placed through _effDt / _screenY, so it rides the lane exactly
+  // like the notes in both M-mode and C-mode. Render-only — chart never mutated.
+  _drawBeatGrid(p, chart) {
+    if (!window.prefs?.beatGrid) return;
+    if (!chart || typeof beatGridCrossings !== 'function') return;
+    const ctx = this.ctx;
+    const VT  = this.VISIBLE_TICKS;
+    const playTick = this.playTick;
+    // Generate crossings over a generous forward chart-tick window; the loop
+    // below culls by _effDt (monotonic in tick) and breaks once past the runway,
+    // so an over-large window costs nothing. 6× covers soflan tempo ratios where
+    // the local tempo runs faster than the C-mode reference.
+    const to = playTick + VT * 6 + TICKS_PER_MEASURE;
+    let crossings;
+    try { crossings = beatGridCrossings(chart, playTick - 1, to, 1); }
+    catch { return; }
+    if (!crossings || !crossings.length) return;
+
+    // Track the measure index so the downbeat can be labelled (M n). We count
+    // downbeats from the first measure boundary at/after the playhead; an exact
+    // absolute measure number would require re-deriving the time-sig map, so we
+    // label relative measures with the chart's measure helper when available.
+    ctx.save();
+    ctx.textBaseline = 'middle';
+    ctx.font = '9px monospace';
+    ctx.lineWidth = 1;
+
+    let drawn = 0;
+    const MAX_LINES = 512; // hard cap, safety against pathological charts
+    for (const c of crossings) {
+      const dt = this._effDt(c.tick);
+      if (dt < 0) continue;
+      if (dt > VT) break;                 // crossings ascending → nothing further visible
+      const sy = this._screenY(dt, p);
+      if (sy < p.cutoffY || sy > p.judgeY) continue;
+      const lx = this._screenX(0, sy, p);
+      const rx = this._screenX(1, sy, p);
+
+      const prox = 1 - Math.max(0, Math.min(1, dt / VT)); // 0 far → 1 at judge
+      const down = c.isDownbeat;
+      // Downbeats brighter/solid; off-beats fainter/dashed.
+      const alpha = (down ? 0.30 : 0.12) + prox * (down ? 0.45 : 0.22);
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = down ? '#9fd8ff' : '#5f7590';
+      if (down) ctx.setLineDash([]); else ctx.setLineDash([2, 5]);
+      ctx.beginPath();
+      ctx.moveTo(lx, sy);
+      ctx.lineTo(rx, sy);
+      ctx.stroke();
+
+      // Measure number on the downbeat, left of the lane.
+      if (down && typeof chart.tickToMeasure === 'function') {
+        const m = chart.tickToMeasure(c.tick);
+        if (Number.isFinite(m)) {
+          const txt = 'M' + (m + 1);
+          ctx.setLineDash([]);
+          ctx.textAlign = 'right';
+          ctx.globalAlpha = Math.min(1, alpha + 0.25);
+          ctx.fillStyle = '#9fd8ff';
+          ctx.fillText(txt, lx - 4, sy);
+        }
+      }
+      if (++drawn >= MAX_LINES) break;
+    }
+    ctx.setLineDash([]);
     ctx.restore();
   }
 

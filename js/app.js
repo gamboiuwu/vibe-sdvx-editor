@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.62';
+const APP_VERSION = '0.0.63';
 const CHANGELOG = [
+  {
+    version: '0.0.63',
+    title: 'Runway Beat Grid — read timing & spacing on the preview lane',
+    entries: [
+      ['add', '<strong>Beat / measure grid on the game-preview runway.</strong> A new <strong>&#9636; Beat Grid</strong> toggle in the preview <em>Scroll</em> row draws faint horizontal lines across the lane on <strong>every beat</strong>, brighter on the <strong>downbeat</strong> (with the measure number labelled), scrolling down the runway with the chart. The 2D editor always had a beat grid; the game preview never did — now you can judge note timing and spacing by eye during playback, not just in the editor.'],
+      ['add', '<strong>Same engine as the metronome.</strong> Beat positions come from the DOM-free, unit-tested <code>beatGridCrossings()</code> in <code>chart.js</code> — the single source of truth shared with the audible metronome (v0.0.51) and beat-flash (v0.0.53) — so the grid honours the chart\'s <strong>BPM map</strong> <em>and</em> <strong>time-signature changes</strong>. Each line is placed through the same <code>_effDt</code> / <code>_screenY</code> projection as the notes, so it rides the lane in both <strong>M-mode</strong> and <strong>C-mode</strong>, honouring tilt and perspective.'],
+      ['add', '<strong>Render-only.</strong> Chart data is never touched — the grid reads the BPM / time-signature map only. Lines fade in as they approach the judgment line and are culled to the visible runway (hard-capped for pathological charts). The toggle persists via <strong>Save Config</strong>; i18n label in all 5 locales.'],
+    ],
+  },
   {
     version: '0.0.62',
     title: 'LIFT — raise the judgment line (IIDX-style reading window)',
@@ -8660,6 +8669,7 @@ const prefs = {
   fxAutoVis:        false,
   minimapVisible:   false,
   soflanMarkers:    false,
+  beatGrid:         false,
 };
 let _autosaveTimer = null;
 
@@ -9678,6 +9688,27 @@ function _initProjectionControls() {
       window.prefs = window.prefs || {};
       window.prefs.soflanMarkers = prefs.soflanMarkers;
       soflanBtn.classList.toggle('active', prefs.soflanMarkers);
+      savePrefsToLocalStorage();
+      if (gameView && !playing) gameView.draw();
+      render();
+    });
+  }
+
+  // Beat / measure grid runway overlay (v0.0.63). Same window.prefs render-gate
+  // pattern as the soflan markers above: the module pref (persisted) mirrors the
+  // render gate so every live view — including multi-chart panes reading the same
+  // window.prefs — stays in sync.
+  const beatGridBtn = document.getElementById('pvc-beatgrid-toggle');
+  if (beatGridBtn && !beatGridBtn._wired) {
+    beatGridBtn._wired = true;
+    window.prefs = window.prefs || {};
+    window.prefs.beatGrid = !!prefs.beatGrid;
+    beatGridBtn.classList.toggle('active', !!prefs.beatGrid);
+    beatGridBtn.addEventListener('click', () => {
+      prefs.beatGrid = !prefs.beatGrid;
+      window.prefs = window.prefs || {};
+      window.prefs.beatGrid = prefs.beatGrid;
+      beatGridBtn.classList.toggle('active', prefs.beatGrid);
       savePrefsToLocalStorage();
       if (gameView && !playing) gameView.draw();
       render();
