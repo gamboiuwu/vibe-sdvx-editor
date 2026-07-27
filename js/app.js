@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.62';
+const APP_VERSION = '0.0.63';
 const CHANGELOG = [
+  {
+    version: '0.0.63',
+    title: 'Event-Step Navigation — jump the playhead note-by-note',
+    entries: [
+      ['add', '<strong>Jump to the next / previous note.</strong> Press <kbd>.</kbd> to snap the playhead to the <strong>next</strong> chart event and <kbd>,</kbd> for the <strong>previous</strong> one — a BT/FX note head or a laser-section start. Skips straight across empty space so you can hop between events in sparse sections without hunting, and lands you exactly on the event tick. A brief toast confirms the landing measure/beat (or tells you when there is nothing further in that direction).'],
+      ['add', '<strong>Every kind of event counts, once.</strong> BT-A…D and FX-L/R note heads (a hold counts at its head) and laser-L/R section starts are all navigable; simultaneous events at the same tick are visited as one stop. Playback stops on a jump so you land cleanly, just like <kbd>Home</kbd> / <kbd>End</kbd>.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.eventTicks()</code> / <code>chart.nextEventTick(fromTick, dir)</code> so the shortcut can never disagree with what counts as an event. Only the playhead moves — the chart is never mutated.'],
+    ],
+  },
   {
     version: '0.0.62',
     title: 'LIFT — raise the judgment line (IIDX-style reading window)',
@@ -7403,6 +7412,15 @@ function onKeyDown(e) {
       renderer.scrollCol = Math.min(renderer.totalCols() - 1, renderer.scrollCol + renderer.numCols);
       render(); break;
 
+    // Event-step navigation (v0.0.63): jump playhead to the next / previous
+    // chart event (note head or laser start). '.' = next, ',' = previous.
+    case '.':
+    case '>':
+      e.preventDefault(); stepToEvent(1); break;
+    case ',':
+    case '<':
+      e.preventDefault(); stepToEvent(-1); break;
+
     case '[':
       { const i = SNAP_VALUES.findIndex(v => Math.abs(v - snap) < 0.001);
         if (i < SNAP_VALUES.length - 1) {
@@ -7557,6 +7575,45 @@ function showSnapDisplay(oldSnap, newSnap, direction) {
     display.style.display = 'none';
     [prev, curr, next].forEach(el => { el.style.transition = 'none'; });
   }, 500);
+}
+
+// ── Event-step navigation (v0.0.63) ──────────────────────────────────────────
+// Jump the playhead to the next / previous chart event (BT/FX note head or
+// laser-section start) via chart.nextEventTick — the DOM-free single source of
+// truth. Bound to '.' (next) and ',' (previous). Read-only: never mutates the
+// chart, just moves the playhead like Home/End. A brief toast confirms the
+// landing measure/beat and the remaining events in that direction.
+let _navToastTimeout = null;
+function flashNavToast(msg) {
+  let t = document.getElementById('nav-step-toast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'nav-step-toast';
+    t.style.cssText = 'position:fixed;bottom:48px;left:50%;transform:translateX(-50%);' +
+      'background:#16162a;border:1px solid #00cfff;color:#00cfff;padding:6px 14px;' +
+      'border-radius:6px;font-size:12px;font-weight:600;z-index:9999;letter-spacing:.02em;' +
+      'box-shadow:0 4px 16px #00000099;opacity:0;transition:opacity .18s;pointer-events:none';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.opacity = '1';
+  if (_navToastTimeout) clearTimeout(_navToastTimeout);
+  _navToastTimeout = setTimeout(() => { t.style.opacity = '0'; }, 1200);
+}
+function stepToEvent(dir) {
+  if (!chart || !renderer) return;
+  const from = renderer.playTick | 0;
+  const target = (typeof chart.nextEventTick === 'function')
+    ? chart.nextEventTick(from, dir) : null;
+  if (target === null || target === undefined) {
+    flashNavToast(dir > 0 ? 'No more notes ahead' : 'No notes before');
+    return;
+  }
+  if (playing) stopPlay();
+  _seekTo(target);
+  const m = Math.floor(target / TICKS_PER_MEASURE) + 1;
+  const b = Math.floor((target % TICKS_PER_MEASURE) / TICKS_PER_BEAT) + 1;
+  flashNavToast(`${dir > 0 ? '▶' : '◀'} note @ m${m}:b${b}`);
 }
 
 function openGotoBeatModal() {
