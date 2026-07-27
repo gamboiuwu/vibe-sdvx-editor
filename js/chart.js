@@ -873,6 +873,48 @@ export class ChartData {
     return Math.max(1, best);
   }
 
+  // ── Event-step navigation (v0.0.63) ──────────────────────────────────────
+  // Returns a sorted, de-duplicated array of every playable-event ONSET tick in
+  // the chart: BT + FX note heads and laser-section starts. This is the single
+  // source of truth for "jump to next / previous note" navigation so the
+  // keyboard shortcut and any UI can never disagree on what counts as an event.
+  // Read-only: the chart is never mutated. Ticks are integers, ascending.
+  eventTicks() {
+    const set = new Set();
+    const push = (v) => {
+      const t = Math.round(Number(v));
+      if (Number.isFinite(t) && t >= 0) set.add(t);
+    };
+    // BT-A..D and FX-L/R note heads (a hold counts once, at its head — matching
+    // how a player taps it and how the editor selects it).
+    if (Array.isArray(this.bt)) {
+      for (const lane of this.bt) if (Array.isArray(lane)) for (const n of lane) push(n?.y);
+    }
+    if (Array.isArray(this.fx)) {
+      for (const lane of this.fx) if (Array.isArray(lane)) for (const n of lane) push(n?.y);
+    }
+    // Laser-L/R section starts.
+    if (Array.isArray(this.lasers)) {
+      for (const side of this.lasers) if (Array.isArray(side)) for (const sec of side) push(sec?.y);
+    }
+    return Array.from(set).sort((a, b) => a - b);
+  }
+
+  // The nearest event onset strictly after (dir>0) or before (dir<0) fromTick.
+  // Returns null when there is no such event (e.g. already past the last note),
+  // so the caller can leave the playhead where it is. Read-only.
+  nextEventTick(fromTick, dir = 1) {
+    const from = Math.round(Number(fromTick) || 0);
+    const ticks = this.eventTicks();
+    if (!ticks.length) return null;
+    if (dir >= 0) {
+      for (let i = 0; i < ticks.length; i++) if (ticks[i] > from) return ticks[i];
+      return null;
+    }
+    for (let i = ticks.length - 1; i >= 0; i--) if (ticks[i] < from) return ticks[i];
+    return null;
+  }
+
   addBtNote(laneIdx, y, len = 0) {
     const arr = this.bt[laneIdx];
     this._removeOverlap(arr, y, len);

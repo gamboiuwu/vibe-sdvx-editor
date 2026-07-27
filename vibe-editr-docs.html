@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.62 · 2026</span>
+  <span class="version">v0.0.63 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.63</span>Event-Step Navigation &mdash; jump the playhead note-by-note</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Jump to the next / previous note.</strong> Press <kbd>.</kbd> to snap the playhead to the <strong>next</strong> chart event and <kbd>,</kbd> for the <strong>previous</strong> one &mdash; a BT/FX note head or a laser-section start. It skips straight across empty space, so you can hop between events in sparse sections without hunting, and lands exactly on the event tick. A brief toast confirms the landing measure/beat, or tells you when nothing lies further in that direction.</li>
+    <li><span class="tag add">add</span><strong>Every kind of event counts, once.</strong> BT-A&hellip;D and FX-L/R note heads (a hold counts at its head) and laser-L/R section starts are all navigable; simultaneous events on the same tick are one stop. Playback stops on a jump so you land cleanly, just like <kbd>Home</kbd>&nbsp;/&nbsp;<kbd>End</kbd>.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.eventTicks()</code> / <code>chart.nextEventTick(fromTick, dir)</code> so the shortcut can never disagree with what counts as an event. Only the playhead moves &mdash; the chart is never mutated.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.62</span>LIFT &mdash; raise the judgment line</h4>
