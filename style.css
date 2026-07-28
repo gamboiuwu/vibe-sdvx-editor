@@ -3114,6 +3114,9 @@ kbd {
 .cs-row { display: flex; justify-content: space-between; }
 .cs-row .cs-key { color: #9090b0; }
 .cs-row .cs-val { color: #f0f0ff; font-family: monospace; }
+/* Off-grid integrity rows are clickable — seek the playhead to the note. */
+.cs-row.cs-offgrid { cursor: pointer; border-radius: 3px; padding: 1px 4px; margin: 0 -4px; transition: background .1s; }
+.cs-row.cs-offgrid:hover { background: rgba(255,180,84,0.14); }
 
 /* ── Bookmarks floating panel ─────────────────────────────────────────── */
 .floating-panel {
