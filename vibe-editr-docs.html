@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.62 · 2026</span>
+  <span class="version">v0.0.63 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.63</span>Off-Grid Note Check &mdash; chart integrity lint</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Off-Grid Note Check.</strong> The <strong>Chart Statistics</strong> panel gains an <strong>Integrity</strong> section reporting how many <strong>BT/FX note onsets sit off the grid</strong> &mdash; at a sub-grid tick no standard snap (1/4 &hellip; 1/64, including triplets) would ever produce. These are the classic artefact of <strong>KSM&rarr;KSON import</strong> and freehand placement, and they read as tiny timing errors in gameplay.</li>
+    <li><span class="tag add">add</span><strong>Inspect, don't auto-fix.</strong> Where the <em>Quantize</em> tool silently <em>moves</em> notes to the grid, this only <em>reports</em> them: each off-grid note is listed with its <strong>lane and measure:beat +offset</strong>, and <strong>clicking it seeks the editor playhead straight to the note</strong> so you can judge whether it belongs. A clean chart shows <strong>0 &#10003;</strong>.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a DOM-free, unit-tested <code>chart.findOffGridNotes()</code> (with <code>tickAlignsToGrid()</code>) &mdash; the chart is never mutated. Absolute-tick checking is exact for every standard time signature.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.62</span>LIFT &mdash; raise the judgment line</h4>

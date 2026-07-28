@@ -1,4 +1,4 @@
-import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, beatGridCrossings, countInGrid, beatFlashIntensity } from './chart.js';
+import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, findOffGridNotes, beatGridCrossings, countInGrid, beatFlashIntensity } from './chart.js';
 import { Renderer, C, laserColors, laserOpacity, laserWideMode, LASER_PRESETS, applyLaserPreset, setLaserColorCustom, buildLaneHeader, setLaserOpacity, setLaserWideMode } from './renderer.js';
 import { GameView } from './game.js';
 import { exportKsh, importKsh, downloadText } from './ksh.js';
@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.62';
+const APP_VERSION = '0.0.63';
 const CHANGELOG = [
+  {
+    version: '0.0.63',
+    title: 'Off-Grid Note Check — chart integrity lint',
+    entries: [
+      ['add', '<strong>Off-Grid Note Check.</strong> The <strong>Chart Statistics</strong> panel gains an <strong>Integrity</strong> section that reports how many <strong>BT/FX note onsets sit off the grid</strong> — at a sub-grid tick no standard snap (1/4 … 1/64, including triplets) would ever produce. These are the classic artefact of <strong>KSM→KSON import</strong> and freehand placement, and they read as tiny timing errors in gameplay.'],
+      ['add', '<strong>Inspect, don\'t auto-fix.</strong> Where the <em>Quantize</em> tool silently <em>moves</em> notes to the grid, this only <em>reports</em> them: each off-grid note is listed with its <strong>lane and measure:beat +offset</strong>, and <strong>clicking it seeks the editor playhead straight to the note</strong> so you can judge whether it belongs there. A clean chart shows <strong>0 &#10003;</strong>.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Backed by a DOM-free, unit-tested <code>chart.findOffGridNotes()</code> (with <code>tickAlignsToGrid()</code>) — the chart is never mutated. Absolute-tick checking is exact for every standard time signature.'],
+    ],
+  },
   {
     version: '0.0.62',
     title: 'LIFT — raise the judgment line (IIDX-style reading window)',
@@ -10646,6 +10655,26 @@ const DisclaimerGate = (function() {
     if (!s) { grid.innerHTML = '<div class="cs-row"><span>No chart loaded.</span></div>'; return; }
     const title = (chart.meta?.title || 'Untitled') + (chart.meta?.artist ? ' — ' + chart.meta.artist : '');
     sub.textContent = title;
+
+    // Off-grid note integrity check — read-only lint (chart.js single source of truth).
+    const og = findOffGridNotes(chart);
+    const integrityRows = [
+      section('Integrity'),
+      row('Off-grid notes', og.count > 0
+        ? `<strong style="color:#ffb454">${og.count}</strong>`
+        : `<span style="color:#5fd66f">0 &#10003;</span>`),
+    ];
+    if (og.count > 0) {
+      const shown = og.items.slice(0, 30);
+      integrityRows.push(...shown.map(it =>
+        `<div class="cs-row cs-offgrid" data-tick="${it.tick}" title="Jump the playhead to this note">` +
+          `<span class="cs-key">${it.kind} ${it.lane}</span>` +
+          `<span class="cs-val">m${it.measure}:b${it.beat} <span style="color:#ffb454">+${it.subtick}t</span></span>` +
+        `</div>`));
+      const rest = og.count - shown.length;
+      if (rest > 0) integrityRows.push(row('', `<em style="color:#6668a0">…and ${rest} more</em>`));
+    }
+
     grid.innerHTML = [
       section('Notes'),
       row('BT chips',     s.btChip),
@@ -10664,7 +10693,17 @@ const DisclaimerGate = (function() {
       section('Density'),
       row('Peak (notes/measure)', `${s.peak} @ m${s.peakMeas + 1}`),
       row('Avg over active measures', s.avgDens.toFixed(1)),
+      ...integrityRows,
     ].join('');
+
+    // Clicking an off-grid entry seeks the editor playhead straight to it.
+    grid.querySelectorAll('.cs-offgrid').forEach(el => {
+      el.addEventListener('click', () => {
+        const t = parseInt(el.dataset.tick, 10);
+        if (Number.isFinite(t) && typeof _seekTo === 'function') _seekTo(t);
+        close();
+      });
+    });
   }
 
   function open()  { render(); modal.style.display = 'flex'; }

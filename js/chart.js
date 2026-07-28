@@ -114,6 +114,63 @@ export function computeChartStats(chart) {
   };
 }
 
+// ── Chart integrity: off-grid note detector ──────────────────────────────────
+// Read-only QA lint. A note ONSET is "off-grid" when its tick aligns to NONE of
+// the accepted note divisions — i.e. it sits at a sub-grid position no standard
+// snap (1/4 … 1/64, incl. triplets) would ever produce. Off-grid onsets are the
+// classic artefact of KSM→KSON import and freehand placement, and they read as
+// tiny timing errors in gameplay. Unlike the Quantize tool (which silently
+// *moves* notes to the grid), this only *reports* them, so the chartist can
+// inspect each one and decide. DOM-free single source of truth, unit-tested.
+//
+// Division D means a 1/D note = TICKS_PER_MEASURE/D ticks (a whole note = one 4/4
+// measure = 192 ticks). Every standard time signature keeps each measure boundary
+// on a multiple of the coarsest accepted step, so checking absolute ticks is exact
+// for them (den ∈ {4,8,16} → measure length is always a multiple of 3 and 4).
+export const OFFGRID_DIVISIONS = [4, 8, 16, 32, 12, 24, 48, 64];
+
+// True when `tick` sits on at least one of the accepted division grids.
+export function tickAlignsToGrid(tick, divisions = OFFGRID_DIVISIONS) {
+  const t = Math.round(Number(tick) || 0);
+  for (const d of divisions) {
+    const step = TICKS_PER_MEASURE / d;
+    if (step > 0 && Number.isInteger(step) && t % step === 0) return true;
+  }
+  return false;
+}
+
+// Scan every BT/FX onset and return the ones that align to no accepted grid.
+// Result: { count, items:[{tick,kind,lane,measure,beat,subtick}], divisions, truncated }.
+// Items are sorted by tick (then kind, then lane) and capped at `cap` for display;
+// `count` is the true total and `truncated` flags when the list was clipped.
+export function findOffGridNotes(chart, divisions = OFFGRID_DIVISIONS, cap = 200) {
+  const empty = { count: 0, items: [], divisions: divisions.slice(), truncated: false };
+  if (!chart) return empty;
+  const TPM = TICKS_PER_MEASURE, TPB = TICKS_PER_BEAT;
+  const btName = ['A', 'B', 'C', 'D'];
+  const out = [];
+  const push = (y, kind, lane) => {
+    const t = Math.round(Number(y) || 0);
+    if (t < 0) return;
+    if (tickAlignsToGrid(t, divisions)) return;
+    out.push({
+      tick: t, kind, lane,
+      measure: Math.floor(t / TPM) + 1,        // 1-based, matches bookmarks / status bar
+      beat:    Math.floor((t % TPM) / TPB) + 1,
+      subtick: t % TPB,                         // ticks past the beat (the offending offset)
+    });
+  };
+  (chart.bt || []).forEach((laneArr, li) => { for (const n of (laneArr || [])) push(n.y, 'BT', btName[li] || String(li + 1)); });
+  (chart.fx || []).forEach((laneArr, li) => { for (const n of (laneArr || [])) push(n.y, 'FX', li === 0 ? 'L' : 'R'); });
+  out.sort((a, b) => {
+    if (a.tick !== b.tick) return a.tick - b.tick;
+    if (a.kind !== b.kind) return a.kind < b.kind ? -1 : 1;
+    return a.lane < b.lane ? -1 : (a.lane > b.lane ? 1 : 0);
+  });
+  const truncated = out.length > cap;
+  return { count: out.length, items: truncated ? out.slice(0, cap) : out, divisions: divisions.slice(), truncated };
+}
+
 // ── Quantize / Nudge engine ──────────────────────────────────────────────────
 // Shared, side-effect-isolated tick math used by the Tools Hub "Quantize" tool.
 // Kept here (not in tools.js) so it can be unit-tested without a DOM, and so any
