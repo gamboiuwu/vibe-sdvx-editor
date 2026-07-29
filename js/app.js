@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.62';
+const APP_VERSION = '0.0.63';
 const CHANGELOG = [
+  {
+    version: '0.0.63',
+    title: 'Cover → Target Green Number — dial your reading window by cover, not speed',
+    entries: [
+      ['add', '<strong>Solve a cover for a target green number.</strong> A new <strong>Cover →ms</strong> control in the preview cover row is the <em>reciprocal</em> of the <em>→ms</em> HiSpeed solver (v0.0.58): keep your <strong>HiSpeed fixed</strong> and type the reaction window (ms) you want — the editor solves the <strong>Sudden+</strong> (or <strong>LIFT</strong>) cover fraction that produces it. Dial your reading window by cover instead of scroll speed, the way a player comfortable at one speed tunes their <strong>SUD+ green number</strong>.'],
+      ['add', '<strong>Pick the channel.</strong> A dropdown drives the solve through <strong>Sudden+</strong> or <strong>LIFT</strong>; changing it re-solves live. Any cover already set on the other channels is kept and only the chosen one moves to make the total match, so the solve is non-destructive. The <strong>Green#</strong> readout (v0.0.56/61) then shows the achieved visible window — amber with the <code>▓</code> glyph — reflecting any clamp against the 0–90% cover range.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Backed by a DOM-free, unit-tested <code>chart.coverForReactionMs(target, fullLaneMs)</code> — the exact inverse of <code>chart.coverVisibleFraction</code> — so the readout and the solver can never disagree. Only the visual cover changes; the chart is never mutated. i18n in all 5 locales.'],
+    ],
+  },
   {
     version: '0.0.62',
     title: 'LIFT — raise the judgment line (IIDX-style reading window)',
@@ -2377,6 +2386,50 @@ function applyGreenTarget(targetMs, tick) {
   if (gameView) gameView.hispeed = hs;
   updateReactionReadout();
   if (gameView && !playing) gameView.draw();
+}
+
+// ── Solve cover for a target green number (v0.0.63) ───────────────────────────
+// Render-only. The reciprocal of applyGreenTarget: instead of solving HiSpeed to
+// hit a target reaction window, keep HiSpeed FIXED and solve the track-cover
+// fraction (Sudden+ or LIFT) that shrinks the VISIBLE green number to the target.
+// The full-lane window is measured at the current HiSpeed / reference BPM /
+// practice rate (VISIBLE_TICKS already folds in the live HiSpeed), then
+// chart.coverForReactionMs — the DOM-free single source of truth, the exact
+// inverse of coverVisibleFraction — returns the TOTAL covered fraction needed.
+// We keep any cover already set on the OTHER two channels and only move the chosen
+// one to make the total match, so the solve is non-destructive and, with no other
+// cover active, reduces to the recommended covered = 1 − target/fullLane. Clamped
+// to the slider range; the readout then reflects any clamp. Never touches chart data.
+function applyCoverTarget(targetMs, which) {
+  if (!chart || !gameView || typeof chart.coverForReactionMs !== 'function') return;
+  const t = Number(targetMs);
+  if (!Number.isFinite(t) || t <= 0) return;
+  const ch  = (which === 'lift') ? 'lift' : 'sudden';
+  const at  = renderer ? renderer.playTick : 0;
+  const bpm = (previewScrollMode === 'cmode' && typeof chart.dominantBpm === 'function')
+            ? cModeRefBpmResolved()
+            : chart.getBpmAt(Math.floor(at));
+  // Full-lane green number at the CURRENT HiSpeed (cover removed). VISIBLE_TICKS
+  // already reflects the live HiSpeed, so this is the window we're shrinking.
+  const fullLaneMs = chart.reactionWindowMs(gameView.VISIBLE_TICKS, bpm, playbackRate);
+  const totalCov   = chart.coverForReactionMs(t, fullLaneMs);
+  // Distribute: keep the other two covers, set the chosen channel so the total
+  // covered fraction equals totalCov. Clamp to the slider's [0, 0.9].
+  const sud  = +(gameView.coverSudden || 0);
+  const hid  = +(gameView.coverHidden || 0);
+  const lift = +(gameView.coverLift   || 0);
+  const others = (ch === 'lift') ? (sud + hid) : (hid + lift);
+  const chosen = Math.max(0, Math.min(0.9, totalCov - others));
+  if (ch === 'lift') gameView.coverLift = chosen; else gameView.coverSudden = chosen;
+  // Mirror the solved value onto the matching slider + label.
+  const slId  = (ch === 'lift') ? 'pvc-cover-lift'       : 'pvc-cover-sudden';
+  const lblId = (ch === 'lift') ? 'pvc-cover-lift-label' : 'pvc-cover-sudden-label';
+  const sl  = document.getElementById(slId);
+  const lbl = document.getElementById(lblId);
+  if (sl)  sl.value = chosen;
+  if (lbl) lbl.textContent = Math.round(chosen * 100) + '%';
+  updateReactionReadout();     // show the achieved visible window (reflects any clamp)
+  if (!playing) gameView.draw();
 }
 
 // ── Green-Number Auto-Follow (v0.0.60) ────────────────────────────────────────
@@ -9908,6 +9961,29 @@ function _initProjectionControls() {
       updateGreenFollow();          // hold the target green number under the raised line
       updateReactionReadout();      // LIFT shrinks the visible reaction window
       if (gameView && !playing) gameView.draw();
+    });
+  }
+
+  // Solve-cover-for-target (v0.0.63) — the reciprocal of the →ms HiSpeed solver:
+  // hold HiSpeed fixed and solve the Sudden+/LIFT cover fraction for a target
+  // green number. Render-only.
+  const covTgt   = document.getElementById('pvc-cover-target');
+  const covWhich = document.getElementById('pvc-cover-target-which');
+  const covApply = document.getElementById('pvc-cover-target-apply');
+  if (covTgt && !covTgt._wired) {
+    covTgt._wired = true;
+    const applyCov = () => {
+      const v = String(covTgt.value).trim();
+      if (v === '') return;
+      applyCoverTarget(+v, covWhich ? covWhich.value : 'sudden');
+    };
+    covTgt.addEventListener('change', applyCov);
+    covTgt.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); applyCov(); covTgt.blur(); } });
+    if (covApply) covApply.addEventListener('click', applyCov);
+    // Re-solve when the target cover channel changes, if a target is already set.
+    if (covWhich) covWhich.addEventListener('change', () => {
+      const v = String(covTgt.value).trim();
+      if (v !== '') applyCoverTarget(+v, covWhich.value);
     });
   }
 

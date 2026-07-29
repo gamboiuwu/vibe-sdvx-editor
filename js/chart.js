@@ -850,6 +850,28 @@ export class ChartData {
     return Math.max(0, Math.min(1, 1 - s - h - l));
   }
 
+  // ── Solve cover for a target green number (v0.0.63) ────────────────────────
+  // Inverse of coverVisibleFraction for the green number. Given the FULL-LANE
+  // reaction window (ms a note is on screen at the CURRENT HiSpeed, no cover) and
+  // a TARGET visible green number (ms), return the TOTAL covered fraction (0..0.9)
+  // that shrinks the window to the target: visible = fullLaneMs × (1 − covered),
+  // so covered = 1 − target / fullLaneMs. This is the reciprocal move to the
+  // v0.0.58 target→HiSpeed solver — instead of changing scroll speed you dial the
+  // reading window by cover (Sudden+ / LIFT) at a FIXED HiSpeed, the way an
+  // IIDX/SDVX player who's comfortable at one speed tunes their SUD+ green number.
+  // A cover can only SHORTEN the window, so a target ≥ the full-lane window needs
+  // no cover (returns 0 — you'd lower HiSpeed instead). Capped at 0.9 to match the
+  // slider clamps and coverVisibleFraction. DOM-free single source of truth,
+  // unit-tested, and an exact round-trip with coverVisibleFraction:
+  // coverVisibleFraction(coverForReactionMs(t, full)) × full === t whenever the
+  // target is reachable (t within [0.1·full, full]). Never touches chart data.
+  coverForReactionMs(targetMs, fullLaneMs) {
+    const t    = Math.max(0,    Number(targetMs)  || 0);
+    const full = Math.max(1e-6, Number(fullLaneMs) || 0);
+    if (t >= full) return 0;                       // can't lengthen the window by covering
+    return Math.max(0, Math.min(0.9, 1 - t / full));
+  }
+
   // ── Dominant BPM ───────────────────────────────────────────────────────────
   // Returns the tempo (BPM) that plays for the greatest total time across the
   // whole chart — the natural reference for C-Mode so the bulk of a soflan
