@@ -1,4 +1,4 @@
-import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, beatGridCrossings, countInGrid, beatFlashIntensity } from './chart.js';
+import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, analyzeJacks, beatGridCrossings, countInGrid, beatFlashIntensity } from './chart.js';
 import { Renderer, C, laserColors, laserOpacity, laserWideMode, LASER_PRESETS, applyLaserPreset, setLaserColorCustom, buildLaneHeader, setLaserOpacity, setLaserWideMode } from './renderer.js';
 import { GameView } from './game.js';
 import { exportKsh, importKsh, downloadText } from './ksh.js';
@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.63';
+const APP_VERSION = '0.0.64';
 const CHANGELOG = [
+  {
+    version: '0.0.64',
+    title: 'Jack Analysis — find and jump to the hardest same-lane repeats',
+    entries: [
+      ['add', '<strong>Jack Analysis in Chart Statistics.</strong> A new <strong>Jacks</strong> section reports every <em>jack</em> — a rapid <strong>same-button repeat</strong> (two or more consecutive onsets in the same BT-A…D or FX-L/R lane hammered close together). It counts the total jack notes, calls out the single <strong>fastest jack</strong> (its gap in ms and taps/sec), and lists each cluster <strong>tightest first</strong>. A clean chart shows <code>0 ✓</code>.'],
+      ['add', '<strong>Click a jack to jump to it.</strong> Every listed cluster shows its <strong>lane</strong>, <strong>measure:beat</strong>, note count and tightest gap, and <strong>clicking it seeks the playhead straight there</strong> and closes the panel — so you can audit the hardest hammering in a chart instead of hunting for it.'],
+      ['add', '<strong>BPM-aware &amp; render-only.</strong> "Fast" is measured in real time (via <code>tickToSeconds</code>), so it honours <strong>soflan</strong> — a 1/4 repeat that is gentle at 120 BPM is flagged at 300. Backed by a DOM-free, unit-tested <code>chart.analyzeJacks()</code>; the chart is never mutated. This extends the edit-canvas anomaly overlay (BT-only, passive) into a quantified, FX-aware, navigable report.'],
+    ],
+  },
   {
     version: '0.0.63',
     title: 'Cover → Target Green Number — dial your reading window by cover, not speed',
@@ -10717,6 +10726,40 @@ const DisclaimerGate = (function() {
   // chart.js computeChartStats() — single source of truth.
   const compute = () => computeChartStats(chart);
 
+  // Jack Analysis (v0.0.64) — a jack is a rapid same-lane onset repeat. Shared
+  // DOM-free source of truth chart.analyzeJacks(); rows are click-to-seek.
+  function jackLabel(tick) {
+    const TPM = TICKS_PER_MEASURE, TPB = TICKS_PER_BEAT;
+    const m = Math.floor(tick / TPM) + 1;
+    const b = Math.floor((tick % TPM) / TPB) + 1;
+    const off = Math.round(tick % TPB);
+    return `m${m}:b${b}${off ? '+' + off : ''}`;
+  }
+  function jackSection() {
+    const j = analyzeJacks(chart);
+    let html = section('Jacks (same-lane rapid repeats)');
+    if (!j.total) {
+      html += row('Jack notes', '<span style="color:#5fd08a">0 ✓</span>');
+      return html;
+    }
+    html += row('Jack notes', `<strong>${j.total}</strong> in ${j.clusterCount} run${j.clusterCount === 1 ? '' : 's'}`);
+    if (j.fastest) {
+      html += row('Fastest',
+        `${j.fastest.tightestGapMs.toFixed(0)} ms · ${j.fastest.tapsPerSec.toFixed(1)}/s (${j.fastest.lane})`);
+    }
+    j.clusters.forEach(c => {
+      html += `<div class="cs-jack" data-tick="${c.tick}" title="Jump to this jack">` +
+        `<span class="cs-jack-lane">${c.lane}</span>` +
+        `<span class="cs-jack-pos">${jackLabel(c.tick)}</span>` +
+        `<span class="cs-jack-meta">×${c.count} · ${c.tightestGapMs.toFixed(0)}ms</span>` +
+        `</div>`;
+    });
+    if (j.truncated) {
+      html += `<div class="cs-row"><span class="cs-key">…</span><span class="cs-val">${j.clusterCount - j.clusters.length} more</span></div>`;
+    }
+    return html;
+  }
+
   function render() {
     const s = compute();
     if (!s) { grid.innerHTML = '<div class="cs-row"><span>No chart loaded.</span></div>'; return; }
@@ -10740,7 +10783,15 @@ const DisclaimerGate = (function() {
       section('Density'),
       row('Peak (notes/measure)', `${s.peak} @ m${s.peakMeas + 1}`),
       row('Avg over active measures', s.avgDens.toFixed(1)),
+      jackSection(),
     ].join('');
+    // Wire click-to-seek on jack rows
+    grid.querySelectorAll('.cs-jack').forEach(el => {
+      el.addEventListener('click', () => {
+        const t = Number(el.dataset.tick);
+        if (Number.isFinite(t) && typeof _seekTo === 'function') { _seekTo(t); close(); }
+      });
+    });
   }
 
   function open()  { render(); modal.style.display = 'flex'; }

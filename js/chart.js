@@ -114,6 +114,83 @@ export function computeChartStats(chart) {
   };
 }
 
+// ── Jack Analysis ─────────────────────────────────────────────────────────────
+// A "jack" is a rapid same-lane repeat: two or more consecutive note ONSETS in
+// the same button lane (BT-A…D or FX-L/R) whose onset-to-onset gap is at or
+// below a millisecond threshold. This is the hand-fatiguing "hammer the same
+// button" pattern chartists want to audit — the harder-than-it-looks part of a
+// chart. It is BPM-aware (gaps measured in real time via tickToSeconds, so it
+// honours soflan) and deliberately distinct from:
+//   • the edit-canvas anomaly overlay (renderer._drawColAnomalies), which only
+//     highlights near-STACKED notes (< 6 ticks) on BT lanes as a passive mark —
+//     no FX coverage, no count, no navigation; and
+//   • note density (computeChartStats / heatmap), which counts across ALL lanes
+//     and says nothing about same-lane repetition.
+// DOM-free single source of truth so it can be unit-tested and shared by the
+// Chart Statistics panel and any future caller — mirrors computeChartStats.
+//
+// Returns clusters sorted tightest-gap first (capped for display), the total
+// jack-note count, cluster count, and the single fastest cluster. Holds count
+// once, at their onset (matching the rest of the app). A gentle 1/4-note repeat
+// at a slow tempo is NOT a jack; the ms threshold makes "fast" tempo-relative.
+export const JACK_MAX_GAP_MS = 150; // ≈ 1/8 notes at 200 BPM — tighter = a jack
+
+export function analyzeJacks(chart, opts = {}) {
+  const maxGapMs = Number.isFinite(opts.maxGapMs) ? opts.maxGapMs : JACK_MAX_GAP_MS;
+  const cap = Number.isFinite(opts.cap) ? opts.cap : 200;
+  const out = { total: 0, clusterCount: 0, clusters: [], truncated: false, fastest: null, maxGapMs };
+  if (!chart || typeof chart.tickToSeconds !== 'function') return out;
+
+  const LANES = [
+    ['BT-A', chart.bt?.[0]], ['BT-B', chart.bt?.[1]],
+    ['BT-C', chart.bt?.[2]], ['BT-D', chart.bt?.[3]],
+    ['FX-L', chart.fx?.[0]], ['FX-R', chart.fx?.[1]],
+  ];
+
+  const clusters = [];
+  for (const [laneName, laneNotes] of LANES) {
+    if (!Array.isArray(laneNotes) || laneNotes.length < 2) continue;
+    // Sort by onset; onsets are the note `.y`. A hold contributes only its onset.
+    const notes = laneNotes.slice().sort((a, b) => a.y - b.y);
+    let i = 0;
+    while (i < notes.length - 1) {
+      let j = i;                 // j = last index confirmed in the current run
+      let tightestGapMs = Infinity;
+      while (j < notes.length - 1) {
+        const aY = notes[j].y, bY = notes[j + 1].y;
+        if (bY <= aY) { j++; continue; } // ignore duplicate/stacked onsets
+        const gapMs = (chart.tickToSeconds(bY) - chart.tickToSeconds(aY)) * 1000;
+        if (gapMs <= maxGapMs + 1e-6) { tightestGapMs = Math.min(tightestGapMs, gapMs); j++; }
+        else break;
+      }
+      const runLen = j - i + 1;
+      if (runLen >= 2 && Number.isFinite(tightestGapMs)) {
+        clusters.push({
+          lane: laneName,
+          tick: notes[i].y,
+          endTick: notes[j].y,
+          count: runLen,
+          tightestGapMs,
+          tapsPerSec: tightestGapMs > 0 ? 1000 / tightestGapMs : 0,
+        });
+        i = j + 1;
+      } else {
+        i++;
+      }
+    }
+  }
+
+  out.total = clusters.reduce((n, c) => n + c.count, 0);
+  out.clusterCount = clusters.length;
+  for (const c of clusters) {
+    if (!out.fastest || c.tightestGapMs < out.fastest.tightestGapMs) out.fastest = c;
+  }
+  clusters.sort((a, b) => (a.tightestGapMs - b.tightestGapMs) || (a.tick - b.tick));
+  out.truncated = clusters.length > cap;
+  out.clusters = clusters.slice(0, cap);
+  return out;
+}
+
 // ── Quantize / Nudge engine ──────────────────────────────────────────────────
 // Shared, side-effect-isolated tick math used by the Tools Hub "Quantize" tool.
 // Kept here (not in tools.js) so it can be unit-tested without a DOM, and so any
