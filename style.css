@@ -3115,6 +3115,23 @@ kbd {
 .cs-row .cs-key { color: #9090b0; }
 .cs-row .cs-val { color: #f0f0ff; font-family: monospace; }
 
+/* Jack Analysis rows (v0.0.64) — clickable, seek to the jack */
+.cs-jack {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background .12s;
+}
+.cs-jack:hover { background: rgba(255, 80, 80, 0.14); }
+.cs-jack .cs-jack-lane { color: #ff8a8a; font-family: monospace; font-weight: 600; min-width: 42px; }
+.cs-jack .cs-jack-pos  { color: #c0c0e0; font-family: monospace; }
+.cs-jack .cs-jack-meta { color: #9090b0; font-family: monospace; margin-left: auto; }
+
 /* ── Bookmarks floating panel ─────────────────────────────────────────── */
 .floating-panel {
   position: fixed;

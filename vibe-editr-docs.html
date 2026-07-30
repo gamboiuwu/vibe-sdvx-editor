@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.62 · 2026</span>
+  <span class="version">v0.0.64 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,24 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.64</span>Jack Analysis &mdash; find and jump to the hardest same-lane repeats</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Jack Analysis in Chart Statistics.</strong> A new <strong>Jacks</strong> section reports every <em>jack</em> &mdash; a rapid <strong>same-button repeat</strong> (two or more consecutive onsets in the same BT-A&hellip;D or FX-L/R lane hammered close together). It counts the total jack notes, calls out the single <strong>fastest jack</strong> (its gap in ms and taps/sec), and lists each run <strong>tightest first</strong>. A clean chart shows <code>0 &#10003;</code>.</li>
+    <li><span class="tag add">add</span><strong>Click a jack to jump to it.</strong> Each listed run shows its <strong>lane</strong>, <strong>measure:beat</strong>, note count and tightest gap, and <strong>clicking it seeks the playhead straight there</strong> and closes the panel &mdash; so you can audit the hardest hammering instead of hunting for it.</li>
+    <li><span class="tag add">add</span><strong>BPM-aware &amp; render-only.</strong> &ldquo;Fast&rdquo; is measured in real time (via <code>tickToSeconds</code>), so it honours <strong>soflan</strong> &mdash; a 1/4 repeat that is gentle at 120&nbsp;BPM is flagged at 300. Backed by a DOM-free, unit-tested <code>chart.analyzeJacks()</code>; the chart is never mutated. Extends the edit-canvas anomaly overlay (BT-only, passive) into a quantified, FX-aware, navigable report.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.63</span>Cover &rarr; Target Green Number</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Solve a cover for a target green number.</strong> A new <strong>Cover &rarr;ms</strong> control in the preview cover row is the <em>reciprocal</em> of the <em>&rarr;ms</em> HiSpeed solver (v0.0.58): keep your <strong>HiSpeed fixed</strong> and type the reaction window (ms) you want &mdash; the editor solves the <strong>Sudden+</strong> (or <strong>LIFT</strong>) cover fraction that produces it. Dial your reading window by cover instead of scroll speed.</li>
+    <li><span class="tag add">add</span><strong>Pick the channel.</strong> A dropdown drives the solve through <strong>Sudden+</strong> or <strong>LIFT</strong>; changing it re-solves live. Any cover already set on the other channels is kept and only the chosen one moves, so the solve is non-destructive. The <strong>Green#</strong> readout then shows the achieved visible window &mdash; amber with the <code>&#9619;</code> glyph.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a DOM-free, unit-tested <code>chart.coverForReactionMs(target, fullLaneMs)</code> &mdash; the exact inverse of <code>chart.coverVisibleFraction</code> &mdash; so the readout and the solver can never disagree. Only the visual cover changes; the chart is never mutated. i18n in all 5 locales.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.62</span>LIFT &mdash; raise the judgment line</h4>
