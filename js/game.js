@@ -1715,27 +1715,46 @@ export class GameView {
     if (!window.prefs?.soflanMarkers) return;
     const evs = chart?.bpmEvents;
     if (!Array.isArray(evs) || evs.length < 2) return;   // no soflan → nothing
-    const sorted = [...evs].sort((a, b) => a.y - b.y);
+
+    // ── Density filter (v0.0.64) ──────────────────────────────────────────
+    // 'all'  → every change (v0.0.59 behaviour)
+    // 'thin' → keep every change but skip any drawn within MIN_GAP_PX of the
+    //          last DRAWN marker on screen (perspective-aware culling)
+    // 'net'  → collapse tempo bursts to their net delta in data space (drops
+    //          stutters that return to base), then thin the survivors too.
+    const mode      = window.prefs?.soflanDensity || 'all';
+    const MIN_GAP_PX = 14;
+    const mergeGap   = (mode === 'net') ? TICKS_PER_BEAT : 0;
+    const trans = (typeof chart.soflanTransitions === 'function')
+      ? chart.soflanTransitions(evs, mergeGap)
+      : [];
+    if (!trans.length) return;
+
     const ctx = this.ctx;
     const VT  = this.VISIBLE_TICKS;
     const fmt = b => { const r = Math.round(b * 10) / 10;
                        return Number.isInteger(r) ? String(r) : r.toFixed(1); };
+    const thin = (mode === 'thin' || mode === 'net');
+    let lastDrawnSy = null;   // screen Y of the previous drawn marker (for culling)
 
     ctx.save();
     ctx.textBaseline = 'middle';
     ctx.font = '9px monospace';
 
-    let prevBpm = sorted[0].bpm;
-    for (let i = 1; i < sorted.length; i++) {
-      const nb = sorted[i].bpm;
-      if (Math.abs(nb - prevBpm) <= 1e-3) continue;    // no real tempo change
-      const from = prevBpm;
-      prevBpm = nb;
+    for (let i = 0; i < trans.length; i++) {
+      const from = trans[i].from;
+      const nb   = trans[i].to;
 
-      const dt = this._effDt(sorted[i].y);
+      const dt = this._effDt(trans[i].y);
       if (dt < 0 || dt > VT) continue;                 // outside the runway
       const sy = this._screenY(dt, p);
       if (sy < p.cutoffY || sy > p.judgeY) continue;
+
+      // Perspective-aware density cull: skip a marker that would land within
+      // MIN_GAP_PX of the previous one drawn (markers are ordered near→far in
+      // tick space; smaller dt = nearer the judge line = larger sy).
+      if (thin && lastDrawnSy !== null && Math.abs(sy - lastDrawnSy) < MIN_GAP_PX) continue;
+      lastDrawnSy = sy;
 
       const lx = this._screenX(0, sy, p);
       const rx = this._screenX(1, sy, p);

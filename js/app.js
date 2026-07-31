@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.63';
+const APP_VERSION = '0.0.64';
 const CHANGELOG = [
+  {
+    version: '0.0.64',
+    title: 'Soflan Marker Density Filter — keep tempo-gimmick charts legible',
+    entries: [
+      ['add', '<strong>Thin out crowded soflan markers.</strong> A new <strong>density selector</strong> next to the <strong>☰ Soflan</strong> toggle (v0.0.59) controls how the on-lane tempo-change markers are drawn on gimmick charts with many closely-spaced BPM changes. <strong>All</strong> keeps the original behaviour (every change); <strong>Thin</strong> skips any marker that would overlap the previous one on screen; <strong>Net</strong> collapses a <em>burst</em> of rapid changes into a single label showing the <strong>net tempo delta</strong> — and drops a stutter that returns to its own starting tempo (e.g. <code>120→240→120</code>) entirely.'],
+      ['add', '<strong>Perspective-aware.</strong> The <em>Thin</em> cull measures the real on-screen gap between markers <em>after</em> the runway projection, so it stays legible under any tilt / perspective strength and at every HiSpeed — closely-spaced changes near the far end are thinned where they crowd, the ones near the judgment line are kept.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Backed by a DOM-free, unit-tested <code>chart.soflanTransitions(bpmEvents, mergeTickGap)</code> that reduces <code>bpmEvents</code> to real tempo changes and, with a merge gap, collapses bursts to their net delta. The chart is never mutated. Persists via <strong>Save Config</strong>; i18n in all 5 locales.'],
+    ],
+  },
   {
     version: '0.0.63',
     title: 'Cover → Target Green Number — dial your reading window by cover, not speed',
@@ -8713,6 +8722,7 @@ const prefs = {
   fxAutoVis:        false,
   minimapVisible:   false,
   soflanMarkers:    false,
+  soflanDensity:    'all',
 };
 let _autosaveTimer = null;
 
@@ -9731,6 +9741,28 @@ function _initProjectionControls() {
       window.prefs = window.prefs || {};
       window.prefs.soflanMarkers = prefs.soflanMarkers;
       soflanBtn.classList.toggle('active', prefs.soflanMarkers);
+      savePrefsToLocalStorage();
+      if (gameView && !playing) gameView.draw();
+      render();
+    });
+  }
+
+  // Soflan marker DENSITY filter (v0.0.64) — All / Thin / Net. Render-only,
+  // reads through window.prefs like the toggle above so the game renderer's
+  // _drawSoflanMarkers picks it up. Persists via prefs / Save Config.
+  const soflanDensity = document.getElementById('pvc-soflan-density');
+  if (soflanDensity && !soflanDensity._wired) {
+    soflanDensity._wired = true;
+    window.prefs = window.prefs || {};
+    const mode0 = ['all', 'thin', 'net'].includes(prefs.soflanDensity) ? prefs.soflanDensity : 'all';
+    prefs.soflanDensity = mode0;
+    window.prefs.soflanDensity = mode0;
+    soflanDensity.value = mode0;
+    soflanDensity.addEventListener('change', () => {
+      const m = ['all', 'thin', 'net'].includes(soflanDensity.value) ? soflanDensity.value : 'all';
+      prefs.soflanDensity = m;
+      window.prefs = window.prefs || {};
+      window.prefs.soflanDensity = m;
       savePrefsToLocalStorage();
       if (gameView && !playing) gameView.draw();
       render();
