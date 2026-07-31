@@ -439,6 +439,24 @@
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
 
 <div class="update-entry">
+  <h4><span class="ver-tag">v0.0.64</span>Soflan Marker Density Filter</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Thin out crowded soflan markers.</strong> A new <strong>density selector</strong> next to the <strong>&#9776; Soflan</strong> toggle (v0.0.59) controls how the on-lane tempo-change markers draw on gimmick charts with many closely-spaced BPM changes. <strong>All</strong> keeps the original behaviour (every change); <strong>Thin</strong> skips any marker that would overlap the previous one on screen; <strong>Net</strong> collapses a <em>burst</em> of rapid changes into a single label showing the <strong>net tempo delta</strong> &mdash; and drops a stutter that returns to its own starting tempo (e.g. <code>120&rarr;240&rarr;120</code>) entirely.</li>
+    <li><span class="tag add">add</span><strong>Perspective-aware.</strong> The <em>Thin</em> cull measures the real on-screen gap between markers <em>after</em> the runway projection, so it stays legible under any tilt / perspective strength and at every HiSpeed &mdash; closely-spaced changes near the far end are thinned where they crowd, the ones near the judgment line are kept.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a DOM-free, unit-tested <code>chart.soflanTransitions(bpmEvents, mergeTickGap)</code> that reduces <code>bpmEvents</code> to real tempo changes and, with a merge gap, collapses bursts to their net delta. The chart is never mutated. Persists via <strong>Save Config</strong>; i18n in all 5 locales.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.63</span>Cover &rarr; Target Green Number</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Solve a cover for a target green number.</strong> A new <strong>Cover &rarr;ms</strong> control in the preview cover row is the <em>reciprocal</em> of the <em>&rarr;ms</em> HiSpeed solver (v0.0.58): keep your <strong>HiSpeed fixed</strong> and type the reaction window (ms) you want &mdash; the editor solves the <strong>Sudden+</strong> (or <strong>LIFT</strong>) cover fraction that produces it. Dial your reading window by cover instead of scroll speed, the way a player comfortable at one speed tunes their <strong>SUD+ green number</strong>.</li>
+    <li><span class="tag add">add</span><strong>Pick the channel.</strong> A dropdown drives the solve through <strong>Sudden+</strong> or <strong>LIFT</strong>; changing it re-solves live. Any cover already set on the other channels is kept and only the chosen one moves to make the total match, so the solve is non-destructive. The <strong>Green#</strong> readout (v0.0.56/61) then shows the achieved visible window &mdash; amber with the <code>&#9619;</code> glyph &mdash; reflecting any clamp against the 0&ndash;90% cover range.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a DOM-free, unit-tested <code>chart.coverForReactionMs(target, fullLaneMs)</code> &mdash; the exact inverse of <code>chart.coverVisibleFraction</code> &mdash; so the readout and the solver can never disagree. Only the visual cover changes; the chart is never mutated. i18n in all 5 locales.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
   <h4><span class="ver-tag">v0.0.62</span>LIFT &mdash; raise the judgment line</h4>
   <ul>
     <li><span class="tag add">add</span><strong>LIFT track modifier.</strong> A new <strong>LIFT</strong> slider joins <strong>Sudden+</strong> / <strong>Hidden+</strong> (v0.0.42) in the preview cover row. LIFT <strong>raises the judgment line up from the bottom</strong> of the runway &mdash; the IIDX-style modifier that shortens how far a note travels on screen. Unlike Hidden+, which just blanks a strip while the line stays put, LIFT paints the bottom as dead space and draws a <strong>bright raised judgment line</strong> at its top edge, so you read the chart to the line where you actually hit.</li>

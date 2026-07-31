@@ -895,6 +895,49 @@ export class ChartData {
     return Math.max(1, best);
   }
 
+  // ── Soflan transition list (v0.0.64) ───────────────────────────────────────
+  // DOM-free single source of truth for the Soflan Runway Markers (v0.0.59):
+  // reduces bpmEvents to the list of REAL tempo changes { y, from, to }. With
+  // `mergeTickGap` > 0 it also collapses a BURST of changes — consecutive
+  // transitions each within mergeTickGap ticks of the previous kept change —
+  // into ONE "net change" transition (from = the burst's starting tempo, to =
+  // the burst's final tempo, y = the last change's tick), so dense soflan
+  // gimmicks (stutters, machine-gun tempo bursts) don't crowd the runway with
+  // overlapping labels. A burst that returns to its own starting tempo (e.g. a
+  // 120→240→120 stutter) collapses to a net delta of zero and is DROPPED. With
+  // mergeTickGap = 0 (default) every individual change is returned unchanged —
+  // the exact v0.0.59 behaviour. Never touches chart data; unit-tested.
+  soflanTransitions(bpmEvents, mergeTickGap = 0) {
+    const evs = Array.isArray(bpmEvents) ? bpmEvents : this.bpmEvents;
+    if (!Array.isArray(evs) || evs.length < 2) return [];
+    const sorted = [...evs].sort((a, b) => a.y - b.y);
+    const raw = [];
+    let prev = sorted[0].bpm;
+    for (let i = 1; i < sorted.length; i++) {
+      const nb = sorted[i].bpm;
+      if (Math.abs(nb - prev) <= 1e-3) continue;   // no real tempo change
+      raw.push({ y: sorted[i].y, from: prev, to: nb });
+      prev = nb;
+    }
+    const gap = Math.max(0, Number(mergeTickGap) || 0);
+    if (gap <= 0 || raw.length < 2) return raw;
+    // Collapse bursts: merge any change whose tick is within `gap` of the
+    // previous kept change into a running net transition.
+    const out = [];
+    let cur = { ...raw[0] };
+    for (let i = 1; i < raw.length; i++) {
+      if (raw[i].y - cur.y <= gap) {
+        cur.to = raw[i].to;   // extend the net change to the burst's latest tempo
+        cur.y  = raw[i].y;    // ride the last change in the burst
+      } else {
+        if (Math.abs(cur.to - cur.from) > 1e-3) out.push(cur);
+        cur = { ...raw[i] };
+      }
+    }
+    if (Math.abs(cur.to - cur.from) > 1e-3) out.push(cur);
+    return out;
+  }
+
   addBtNote(laneIdx, y, len = 0) {
     const arr = this.bt[laneIdx];
     this._removeOverlap(arr, y, len);
