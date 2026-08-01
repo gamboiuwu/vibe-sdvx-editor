@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.63';
+const APP_VERSION = '0.0.64';
 const CHANGELOG = [
+  {
+    version: '0.0.64',
+    title: 'Cover →ms Unreachable-Target Cue — no more silent clamps',
+    entries: [
+      ['add', '<strong>The Cover →ms solver now tells you when a target can’t be reached.</strong> The reciprocal solver (v0.0.63) caps each cover at 90%, so a target below <em>10% of the full-lane window</em> can’t be hit by cover alone, and a target <em>longer than the full lane</em> can’t be hit at all (a cover only shortens the window). Before, the field just clamped and looked “solved”. Now the <strong>Cover →ms</strong> field tints amber and a badge shows the achieved bound — <code>⚠ ≥ 333 ms</code> (raise HiSpeed too) or <code>⚠ ≤ 5333 ms</code> (lower HiSpeed instead).'],
+      ['add', '<strong>Clears itself.</strong> A reachable solve, an emptied field, or a manual move of any cover slider clears the cue, so it only ever flags a live clamp. This is the cover analogue of the target-green readout’s amber tint.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.coverForReactionReport(target, fullLaneMs, otherCover)</code> — a companion to <code>chart.coverForReactionMs</code> — so the applied fraction and the reachability verdict can never disagree. Only the visual cover / cue change; the chart is never mutated. i18n in all 5 locales.'],
+    ],
+  },
   {
     version: '0.0.63',
     title: 'Cover → Target Green Number — dial your reading window by cover, not speed',
@@ -2412,14 +2421,15 @@ function applyCoverTarget(targetMs, which) {
   // Full-lane green number at the CURRENT HiSpeed (cover removed). VISIBLE_TICKS
   // already reflects the live HiSpeed, so this is the window we're shrinking.
   const fullLaneMs = chart.reactionWindowMs(gameView.VISIBLE_TICKS, bpm, playbackRate);
-  const totalCov   = chart.coverForReactionMs(t, fullLaneMs);
   // Distribute: keep the other two covers, set the chosen channel so the total
-  // covered fraction equals totalCov. Clamp to the slider's [0, 0.9].
+  // covered fraction matches. The report (v0.0.64) is the single source of truth
+  // for the applied fraction AND whether the target is reachable by cover alone.
   const sud  = +(gameView.coverSudden || 0);
   const hid  = +(gameView.coverHidden || 0);
   const lift = +(gameView.coverLift   || 0);
   const others = (ch === 'lift') ? (sud + hid) : (hid + lift);
-  const chosen = Math.max(0, Math.min(0.9, totalCov - others));
+  const report = chart.coverForReactionReport(t, fullLaneMs, others);
+  const chosen = report.chosen;
   if (ch === 'lift') gameView.coverLift = chosen; else gameView.coverSudden = chosen;
   // Mirror the solved value onto the matching slider + label.
   const slId  = (ch === 'lift') ? 'pvc-cover-lift'       : 'pvc-cover-sudden';
@@ -2428,8 +2438,42 @@ function applyCoverTarget(targetMs, which) {
   const lbl = document.getElementById(lblId);
   if (sl)  sl.value = chosen;
   if (lbl) lbl.textContent = Math.round(chosen * 100) + '%';
+  // v0.0.64 — unreachable-target cue: tint the field and show achieved-vs-target
+  // when the cover clamps (target below the 0.9 cap, or above the full-lane window).
+  setCoverTargetCue(report);
   updateReactionReadout();     // show the achieved visible window (reflects any clamp)
   if (!playing) gameView.draw();
+}
+
+// ── Cover →ms unreachable-target cue (v0.0.64) ────────────────────────────────
+// Render-only UX for the v0.0.63 solver. When chart.coverForReactionReport says a
+// target can't be met by cover alone ('too-small' — below the 0.9 per-channel cap,
+// so raise HiSpeed too) or can't be met at all ('above-lane' — a cover only
+// shortens the window, so lower HiSpeed instead), tint the Cover →ms field and
+// show the achieved bound with a ≥ / ≤ prefix so the clamp is never silent. A
+// reachable ('ok') solve clears both. Never touches chart data.
+function setCoverTargetCue(report) {
+  const field = document.getElementById('pvc-cover-target');
+  const cue   = document.getElementById('pvc-cover-target-cue');
+  if (!report || report.reachable) { clearCoverTargetCue(); return; }
+  const achieved = Math.round(report.achievedMs);
+  const prefix   = (report.status === 'above-lane') ? '≤' : '≥';
+  if (field) field.classList.add('pvc-unreachable');
+  if (cue) {
+    cue.textContent = `⚠ ${prefix} ${achieved} ms`;
+    const tmpl = (typeof t === 'function' ? t('preview.coverUnreachable') : '') ||
+      'Cover alone reaches {ms} ms — {hint}';
+    const hint = (report.status === 'above-lane')
+      ? 'target is longer than the full lane; lower HiSpeed instead'
+      : 'target is below 10% of the full lane; raise HiSpeed too';
+    cue.title = tmpl.replace('{ms}', `${prefix} ${achieved}`).replace('{hint}', hint);
+  }
+}
+function clearCoverTargetCue() {
+  const field = document.getElementById('pvc-cover-target');
+  const cue   = document.getElementById('pvc-cover-target-cue');
+  if (field) field.classList.remove('pvc-unreachable');
+  if (cue) { cue.textContent = ''; cue.title = ''; }
 }
 
 // ── Green-Number Auto-Follow (v0.0.60) ────────────────────────────────────────
@@ -9930,6 +9974,7 @@ function _initProjectionControls() {
       const v = +sudSl.value;
       if (sudLbl) sudLbl.textContent = Math.round(v * 100) + '%';
       if (gameView) { gameView.coverSudden = v; }
+      clearCoverTargetCue();        // manual move invalidates a solved cover cue (v0.0.64)
       updateGreenFollow();          // hold the target green number under the new cover
       updateReactionReadout();      // the cover shrinks the visible reaction window
       if (gameView && !playing) gameView.draw();
@@ -9943,6 +9988,7 @@ function _initProjectionControls() {
       const v = +hidSl.value;
       if (hidLbl) hidLbl.textContent = Math.round(v * 100) + '%';
       if (gameView) { gameView.coverHidden = v; }
+      clearCoverTargetCue();        // manual move invalidates a solved cover cue (v0.0.64)
       updateGreenFollow();          // hold the target green number under the new cover
       updateReactionReadout();      // the cover shrinks the visible reaction window
       if (gameView && !playing) gameView.draw();
@@ -9958,6 +10004,7 @@ function _initProjectionControls() {
       const v = +liftSl.value;
       if (liftLbl) liftLbl.textContent = Math.round(v * 100) + '%';
       if (gameView) { gameView.coverLift = v; }
+      clearCoverTargetCue();        // manual move invalidates a solved cover cue (v0.0.64)
       updateGreenFollow();          // hold the target green number under the raised line
       updateReactionReadout();      // LIFT shrinks the visible reaction window
       if (gameView && !playing) gameView.draw();
@@ -9974,7 +10021,7 @@ function _initProjectionControls() {
     covTgt._wired = true;
     const applyCov = () => {
       const v = String(covTgt.value).trim();
-      if (v === '') return;
+      if (v === '') { clearCoverTargetCue(); return; }   // v0.0.64 — clear stale cue
       applyCoverTarget(+v, covWhich ? covWhich.value : 'sudden');
     };
     covTgt.addEventListener('change', applyCov);
