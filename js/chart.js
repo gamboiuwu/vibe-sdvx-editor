@@ -872,6 +872,39 @@ export class ChartData {
     return Math.max(0, Math.min(0.9, 1 - t / full));
   }
 
+  // ── Reachability report for the Cover→target solver (v0.0.64) ───────────────
+  // The Cover →ms solver (v0.0.63) silently clamps: a cover fraction is capped at
+  // 0.9 per channel, so a target BELOW 10% of the full-lane window can't be met by
+  // cover alone, and a target ABOVE the full-lane window can't be met at all (a
+  // cover only shortens the window). This report tells the UI what the chosen
+  // channel can actually achieve so it can flag an unreachable target instead of
+  // leaving the field looking "solved". Given the target window (ms), the full-lane
+  // window (ms) and the cover already summed on the OTHER two channels (0..0.9), it
+  // returns: `chosen` — the fraction the chosen channel is set to (identical to what
+  // applyCoverTarget applies); `appliedTotal` — the effective total cover after the
+  // per-channel clamp; `achievedMs` — the visible window that actually results; and
+  // `status`: 'ok' (target met within tolerance), 'too-small' (below the 0.9 clamp —
+  // raise HiSpeed too) or 'above-lane' (≥ full lane — lower HiSpeed instead). `bound`
+  // is the ms limit to show with a ≥ (too-small) or ≤ (above-lane) prefix. DOM-free,
+  // unit-tested, an exact companion to coverForReactionMs; never touches chart data.
+  coverForReactionReport(targetMs, fullLaneMs, otherCoverFraction = 0) {
+    const t      = Math.max(0,    Number(targetMs)  || 0);
+    const full   = Math.max(1e-6, Number(fullLaneMs) || 0);
+    const others = Math.max(0, Math.min(0.9, Number(otherCoverFraction) || 0));
+    const wantTotal    = 1 - t / full;                       // unclamped ideal total cover
+    const totalCov     = this.coverForReactionMs(t, full);   // clamped [0, 0.9]
+    const chosen       = Math.max(0, Math.min(0.9, totalCov - others));
+    const appliedTotal = Math.max(0, Math.min(1, others + chosen));
+    const achievedMs   = full * (1 - appliedTotal);
+    const tol          = Math.max(0.5, t * 0.005);
+    let status;
+    if (t >= full)                       status = 'above-lane'; // can't lengthen by cover
+    else if (wantTotal > 0.9 + 1e-9)     status = 'too-small';  // hit the 0.9 clamp
+    else if (Math.abs(achievedMs - t) > tol) status = 'clamped'; // other channels over-cover
+    else                                 status = 'ok';
+    return { totalCov, chosen, appliedTotal, achievedMs, status, reachable: status === 'ok' };
+  }
+
   // ── Dominant BPM ───────────────────────────────────────────────────────────
   // Returns the tempo (BPM) that plays for the greatest total time across the
   // whole chart — the natural reference for C-Mode so the bulk of a soflan
