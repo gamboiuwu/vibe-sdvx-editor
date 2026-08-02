@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.64';
+const APP_VERSION = '0.0.65';
 const CHANGELOG = [
+  {
+    version: '0.0.65',
+    title: 'HiSpeed →ms Unreachable-Target Cue — the speed twin of the cover cue',
+    entries: [
+      ['add', '<strong>The target-green <code>→ms</code> HiSpeed solver now tells you when a target can’t be reached.</strong> The v0.0.58 solver clamps the solved HiSpeed to the slider’s range, so a target <em>shorter than the window at max HiSpeed</em> can’t be hit (the scroll can’t go fast enough) and a target <em>longer than the window at min HiSpeed</em> can’t be hit either. Before, the field just clamped and looked “solved”. Now the <strong>→ms</strong> field tints amber and a badge shows the achieved bound — <code>⚠ ≥ … ms</code> (raise the HiSpeed cap or add Sudden+ cover) or <code>⚠ ≤ … ms</code> (lower the HiSpeed minimum).'],
+      ['add', '<strong>Clears itself.</strong> A reachable solve, an emptied field, or a manual move of the HiSpeed slider clears the cue, so it only ever flags a live clamp. This is the exact HiSpeed twin of the v0.0.64 cover cue.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.hispeedForReactionReport(target, bpm, rate, visibleTicks, loHs, hiHs)</code> — a companion to <code>chart.hispeedForReactionMs</code> — so the applied HiSpeed and the reachability verdict can never disagree. Only the visual HiSpeed / cue change; the chart is never mutated. i18n in all 5 locales.'],
+    ],
+  },
   {
     version: '0.0.64',
     title: 'Cover →ms Unreachable-Target Cue — no more silent clamps',
@@ -2382,8 +2391,14 @@ function applyGreenTarget(targetMs, tick) {
   const covFrac = (gameView && typeof chart.coverVisibleFraction === 'function')
     ? Math.max(0.05, chart.coverVisibleFraction(gameView.coverSudden, gameView.coverHidden, gameView.coverLift)) : 1;
   const vt1 = (TICKS_PER_MEASURE * BEATS_PER_MEASURE) * covFrac;
-  let hs = chart.hispeedForReactionMs(t, bpm, playbackRate, vt1);
-  hs = Math.max(lo, Math.min(hi, Math.round(hs * 10) / 10)); // snap to slider step (0.1)
+  // v0.0.65 — the report is the single source of truth for BOTH the applied HiSpeed
+  // AND whether the target is reachable within the slider range, so the two can never
+  // disagree (mirrors the v0.0.64 cover report).
+  const report = (typeof chart.hispeedForReactionReport === 'function')
+    ? chart.hispeedForReactionReport(t, bpm, playbackRate, vt1, lo, hi)
+    : null;
+  let hs = report ? report.hs
+                  : Math.max(lo, Math.min(hi, Math.round(chart.hispeedForReactionMs(t, bpm, playbackRate, vt1) * 10) / 10));
   // Mirror to the HiSpeed slider + labels + top-menu control (same path the slider uses)
   if (hsSl) hsSl.value = hs;
   const hsLbl = document.getElementById('pvc-hispeed-label');
@@ -2393,8 +2408,41 @@ function applyGreenTarget(targetMs, tick) {
   if (topSl)  topSl.value = hs;
   if (topLbl) topLbl.textContent = hs.toFixed(2) + '×';
   if (gameView) gameView.hispeed = hs;
+  setGreenTargetCue(report);   // v0.0.65 — flag a clamp against the HiSpeed range
   updateReactionReadout();
   if (gameView && !playing) gameView.draw();
+}
+
+// ── Target green-number → HiSpeed unreachable cue (v0.0.65) ───────────────────
+// Render-only UX for the v0.0.58 solver, the HiSpeed twin of setCoverTargetCue
+// (v0.0.64). When chart.hispeedForReactionReport says the target can't be met inside
+// the HiSpeed slider range ('above-max' — needs a faster scroll than the max, so the
+// window can't shrink to the target; 'below-min' — needs a slower scroll than the min),
+// tint the →ms field and show the achieved bound with a ≥ / ≤ prefix so the clamp is
+// never silent. A reachable ('ok') solve, an emptied field, or a manual HiSpeed-slider
+// move clears it. Never touches chart data.
+function setGreenTargetCue(report) {
+  const field = document.getElementById('pvc-green-target');
+  const cue   = document.getElementById('pvc-green-target-cue');
+  if (!report || report.reachable) { clearGreenTargetCue(); return; }
+  const achieved = Math.round(report.achievedMs);
+  const prefix   = (report.status === 'below-min') ? '≤' : '≥';
+  if (field) field.classList.add('pvc-unreachable');
+  if (cue) {
+    cue.textContent = `⚠ ${prefix} ${achieved} ms`;
+    const tmpl = (typeof t === 'function' ? t('preview.greenUnreachable') : '') ||
+      'HiSpeed alone reaches {ms} ms — {hint}';
+    const hint = (report.status === 'below-min')
+      ? 'target is longer than the slowest HiSpeed allows; lower the HiSpeed minimum'
+      : 'target is shorter than the fastest HiSpeed allows; raise the HiSpeed maximum or add Sudden+ cover';
+    cue.title = tmpl.replace('{ms}', `${prefix} ${achieved}`).replace('{hint}', hint);
+  }
+}
+function clearGreenTargetCue() {
+  const field = document.getElementById('pvc-green-target');
+  const cue   = document.getElementById('pvc-green-target-cue');
+  if (field) field.classList.remove('pvc-unreachable');
+  if (cue) { cue.textContent = ''; cue.title = ''; }
 }
 
 // ── Solve cover for a target green number (v0.0.63) ───────────────────────────
@@ -9750,6 +9798,7 @@ function _initProjectionControls() {
     const topLbl = document.getElementById('chart-speed-label');
     if (topSl)  topSl.value  = hs;
     if (topLbl) topLbl.textContent = hs.toFixed(2) + '×';
+    clearGreenTargetCue();   // a manual HiSpeed move invalidates a solved →ms cue (v0.0.65)
     // Apply exclusively to the game view's visual rendering pipeline
     if (gameView) { gameView.hispeed = hs; updateReactionReadout(); gameView.draw(); }
   });
@@ -9788,7 +9837,7 @@ function _initProjectionControls() {
     greenTgt._wired = true;
     const apply = () => {
       const v = greenTgt.value.trim();
-      if (v === '') return;                 // blank = keep manual HiSpeed control
+      if (v === '') { clearGreenTargetCue(); return; }   // blank = keep manual HiSpeed control; clear stale cue (v0.0.65)
       const t = +v;
       applyGreenTarget(t);
       // Remember the target so the Auto-Follow hold (v0.0.60) can re-solve later.
