@@ -829,6 +829,40 @@ export class ChartData {
     return vt1 / TICKS_PER_BEAT * (60 / b) * 1000 / r / t;
   }
 
+  // ── Reachability report for the target-green→HiSpeed solver (v0.0.65) ────────
+  // The v0.0.58 solver (applyGreenTarget) silently clamps the solved HiSpeed to the
+  // slider's [lo, hi] range: a target BELOW the window reachable at max HiSpeed needs
+  // a faster scroll than the slider allows (clamped to `hi`, so the real window stays
+  // LONGER than asked), and a target ABOVE the window at min HiSpeed needs a slower
+  // scroll than allowed (clamped to `lo`, so the window comes out SHORTER). Until now
+  // the field still looked "solved". This DOM-free companion to hispeedForReactionMs
+  // reports what the clamp actually achieves so the UI can flag it — the HiSpeed twin
+  // of coverForReactionReport (v0.0.64). Given the target window (ms), the reference
+  // BPM, the practice rate, the visible ticks at 1× (already folded through any active
+  // cover by the caller) and the slider bounds, it returns: `rawHs` — the ideal
+  // unclamped HiSpeed; `hs` — the applied HiSpeed after clamp + 0.1 snap (IDENTICAL to
+  // what applyGreenTarget sets); `achievedMs` — the window that actually results; and
+  // `status`: 'ok' (reachable), 'above-max' (needs a faster scroll than the slider max,
+  // so the window can't shrink to the target — raise the HiSpeed cap or add cover) or
+  // 'below-min' (needs a slower scroll than the slider min). `reachable` is status==='ok'.
+  // The achieved bound is shown with a ≥ prefix for 'above-max' (window is at least this)
+  // and a ≤ prefix for 'below-min' (window is at most this). Unit-tested; never touches data.
+  hispeedForReactionReport(targetMs, bpm, rate = 1, visibleTicksAt1x = TICKS_PER_MEASURE * BEATS_PER_MEASURE, loHs = 0.2, hiHs = 10) {
+    const t     = Math.max(1, Number(targetMs) || 1);
+    const lo    = Math.max(0.01, Number(loHs) || 0.2);
+    const hi    = Math.max(lo,   Number(hiHs) || 10);
+    const vt1   = Math.max(1,    Number(visibleTicksAt1x) || 1);
+    const rawHs = this.hispeedForReactionMs(t, bpm, rate, vt1);
+    const hs    = Math.max(lo, Math.min(hi, Math.round(rawHs * 10) / 10)); // snap to 0.1 step
+    // achievedMs is the window the APPLIED HiSpeed yields — the exact round-trip.
+    const achievedMs = this.reactionWindowMs(vt1 / hs, bpm, rate);
+    let status;
+    if (rawHs > hi + 1e-9)      status = 'above-max'; // can't scroll fast enough → window too long
+    else if (rawHs < lo - 1e-9) status = 'below-min'; // can't scroll slow enough → window too short
+    else                        status = 'ok';
+    return { rawHs, hs, achievedMs, status, reachable: status === 'ok' };
+  }
+
   // ── Cover-adjusted reaction window (SUD+/HID+/LIFT green number) ───────────
   // The Sudden+/Hidden+ track covers hide the far/top end (sud) and the near/
   // bottom end (hid) of the runway, and LIFT (v0.0.62) raises the judgment line

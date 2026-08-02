@@ -1040,7 +1040,8 @@ kbd {
 }
 /* Cover →ms unreachable-target cue (v0.0.64): a distinct warning tint on the field
    and an amber achieved-vs-target badge when the cover solver clamps. Render-only. */
-#pvc-cover-target.pvc-unreachable {
+#pvc-cover-target.pvc-unreachable,
+#pvc-green-target.pvc-unreachable {
   border-color: #d9803a !important;
   background: #2a1c12 !important;
   color: #ffb066 !important;
