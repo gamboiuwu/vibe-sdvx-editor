@@ -439,6 +439,42 @@
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
 
 <div class="update-entry">
+  <h4><span class="ver-tag">v0.0.66</span>Soflan Marker Density Filter &mdash; keep the runway legible on gimmick charts</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>The Soflan runway markers (v0.0.59) no longer smear on dense charts.</strong> A soflan-spam or per-beat BPM-ramp chart could stack dozens of <code>&#9650;120&rarr;240</code> labels on top of one another until they were unreadable. A new <strong>&#9777; Merge</strong> toggle next to <strong>&#9776; Soflan</strong> collapses any run of tempo changes whose labels would overlap into <strong>one net-change marker</strong> &mdash; showing the total jump across the cluster (e.g. <code>&#9650;120&rarr;240</code>) with a <code>&times;N</code> count of how many changes it merged. A <code>&#9671;</code> glyph marks a cluster whose tempo wobbles back to where it started (net-zero), so a momentary gimmick still reads distinctly.</li>
+    <li><span class="tag add">add</span><strong>On by default, fully reversible.</strong> The filter is enabled out of the box so gimmick charts read cleanly with no setup; turn <strong>Merge</strong> off to show every raw tempo change (the exact v0.0.59 behaviour). It composes with C-mode, tilt, perspective and the manual C-ref lock, and works in single and multi-chart preview. Persists via <strong>Save Config</strong> / prefs.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.soflanCollapseByGap(candidates, minGapPx)</code> &mdash; the markers are projected to screen-Y by the renderer, then the pure filter clusters and nets them, so the applied markers can never disagree with the collapse logic. Only the visual markers change; the chart is never mutated. i18n in all 5 locales.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.65</span>HiSpeed &rarr;ms Unreachable-Target Cue</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>The target-green <code>&rarr;ms</code> HiSpeed solver now tells you when a target can&rsquo;t be reached.</strong> The v0.0.58 solver clamps the solved HiSpeed to the slider&rsquo;s range, so a target <em>shorter than the window at max HiSpeed</em> can&rsquo;t be hit (the scroll can&rsquo;t go fast enough) and a target <em>longer than the window at min HiSpeed</em> can&rsquo;t be hit either. Now the <strong>&rarr;ms</strong> field tints amber and a badge shows the achieved bound &mdash; <code>&#9888; &ge; &hellip; ms</code> (raise the HiSpeed cap or add Sudden+ cover) or <code>&#9888; &le; &hellip; ms</code> (lower the HiSpeed minimum).</li>
+    <li><span class="tag add">add</span><strong>Clears itself.</strong> A reachable solve, an emptied field, or a manual move of the HiSpeed slider clears the cue, so it only ever flags a live clamp. This is the exact HiSpeed twin of the v0.0.64 cover cue.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.hispeedForReactionReport(target, bpm, rate, visibleTicks, loHs, hiHs)</code> &mdash; a companion to <code>chart.hispeedForReactionMs</code> &mdash; so the applied HiSpeed and the reachability verdict can never disagree. Only the visual HiSpeed / cue change; the chart is never mutated. i18n in all 5 locales.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.64</span>Cover &rarr;ms Unreachable-Target Cue</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>The Cover &rarr;ms solver now tells you when a target can&rsquo;t be reached.</strong> The reciprocal solver (v0.0.63) caps each cover at 90%, so a target below <em>10% of the full-lane window</em> can&rsquo;t be hit by cover alone, and a target <em>longer than the full lane</em> can&rsquo;t be hit at all (a cover only shortens the window). Now the <strong>Cover &rarr;ms</strong> field tints amber and a badge shows the achieved bound &mdash; <code>&#9888; &ge; 333 ms</code> (raise HiSpeed too) or <code>&#9888; &le; 5333 ms</code> (lower HiSpeed instead).</li>
+    <li><span class="tag add">add</span><strong>Clears itself.</strong> A reachable solve, an emptied field, or a manual move of any cover slider clears the cue, so it only ever flags a live clamp. This is the cover analogue of the target-green readout&rsquo;s amber tint.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.coverForReactionReport(target, fullLaneMs, otherCover)</code> &mdash; a companion to <code>chart.coverForReactionMs</code> &mdash; so the applied fraction and the reachability verdict can never disagree. Only the visual cover / cue change; the chart is never mutated. i18n in all 5 locales.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.63</span>Cover &rarr; Target Green Number</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Solve a cover for a target green number.</strong> A new <strong>Cover &rarr;ms</strong> control in the preview cover row is the <em>reciprocal</em> of the <em>&rarr;ms</em> HiSpeed solver (v0.0.58): keep your <strong>HiSpeed fixed</strong> and type the reaction window (ms) you want &mdash; the editor solves the <strong>Sudden+</strong> (or <strong>LIFT</strong>) cover fraction that produces it. Dial your reading window by cover instead of scroll speed.</li>
+    <li><span class="tag add">add</span><strong>Pick the channel.</strong> A dropdown drives the solve through <strong>Sudden+</strong> or <strong>LIFT</strong>; changing it re-solves live. Any cover already set on the other channels is kept and only the chosen one moves, so the solve is non-destructive. The <strong>Green#</strong> readout then shows the achieved visible window &mdash; amber with the <code>&#9619;</code> glyph &mdash; reflecting any clamp against the 0&ndash;90% cover range.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a DOM-free, unit-tested <code>chart.coverForReactionMs(target, fullLaneMs)</code> &mdash; the exact inverse of <code>chart.coverVisibleFraction</code> &mdash; so the readout and the solver can never disagree. Only the visual cover changes; the chart is never mutated. i18n in all 5 locales.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
   <h4><span class="ver-tag">v0.0.62</span>LIFT &mdash; raise the judgment line</h4>
   <ul>
     <li><span class="tag add">add</span><strong>LIFT track modifier.</strong> A new <strong>LIFT</strong> slider joins <strong>Sudden+</strong> / <strong>Hidden+</strong> (v0.0.42) in the preview cover row. LIFT <strong>raises the judgment line up from the bottom</strong> of the runway &mdash; the IIDX-style modifier that shortens how far a note travels on screen. Unlike Hidden+, which just blanks a strip while the line stays put, LIFT paints the bottom as dead space and draws a <strong>bright raised judgment line</strong> at its top edge, so you read the chart to the line where you actually hit.</li>

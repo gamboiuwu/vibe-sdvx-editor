@@ -1,4 +1,4 @@
-import { ChartData, TICKS_PER_BEAT, TICKS_PER_MEASURE, BEATS_PER_MEASURE, previewModMaps } from './chart.js';
+import { ChartData, TICKS_PER_BEAT, TICKS_PER_MEASURE, BEATS_PER_MEASURE, previewModMaps, soflanCollapseByGap } from './chart.js';
 import { GLLaneRenderer } from './gl-lane.js';
 import { laserOpacity, laserColors } from './renderer.js';
 
@@ -1725,6 +1725,10 @@ export class GameView {
     ctx.textBaseline = 'middle';
     ctx.font = '9px monospace';
 
+    // ── 1. Build the on-runway tempo-change candidates (projected to screen-Y) ──
+    // Each real BPM change inside the runway becomes a candidate; the density
+    // filter (below) operates purely on these screen-Y positions.
+    const cand = [];
     let prevBpm = sorted[0].bpm;
     for (let i = 1; i < sorted.length; i++) {
       const nb = sorted[i].bpm;
@@ -1737,12 +1741,32 @@ export class GameView {
       const sy = this._screenY(dt, p);
       if (sy < p.cutoffY || sy > p.judgeY) continue;
 
+      cand.push({ sy, dt, from, to: nb });
+    }
+
+    // ── 2. Density filter (v0.0.66) — collapse overlapping labels ───────────────
+    // On dense-bpmEvent gimmick charts the labels stack illegibly. When the guard
+    // is on (default), runs whose labels would overlap collapse into ONE net-change
+    // marker via the shared chart.soflanCollapseByGap source of truth; when off,
+    // every raw change draws (the v0.0.59 behaviour). A collapsed marker carries a
+    // `merged` count (drawn as "×N") and `net`=false when the tempo wobbles back to
+    // its start (drawn with a ◇ glyph instead of ▲/▼).
+    const density = window.prefs?.soflanDensity !== false;   // default ON
+    const markers = density
+      ? soflanCollapseByGap(cand, 14)
+      : cand.map(c => ({ sy: c.sy, from: c.from, to: c.to, merged: 0, net: Math.abs(c.to - c.from) > 1e-3 }));
+
+    // ── 3. Draw ─────────────────────────────────────────────────────────────────
+    for (const m of markers) {
+      const sy = m.sy;
       const lx = this._screenX(0, sy, p);
       const rx = this._screenX(1, sy, p);
 
-      const prox   = 1 - Math.max(0, Math.min(1, dt / VT));  // 0 far → 1 at judge
-      const faster = nb > from;
-      const col    = faster ? '#ffcc66' : '#66ccff';         // warm = up, cool = down
+      const prox   = 1 - Math.max(0, Math.min(1, (p.judgeY - sy) / Math.max(1, p.judgeY - p.cutoffY))); // 0 far → 1 at judge
+      const faster = m.to > m.from;
+      const col    = !m.net   ? '#c9a0ff'                       // wobble = violet
+                   : faster   ? '#ffcc66'                       // warm = speed up
+                              : '#66ccff';                      // cool = slow down
       const alpha  = 0.22 + prox * 0.5;
 
       // Faint dashed line across the lane at the tempo-change tick
@@ -1756,8 +1780,10 @@ export class GameView {
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Label just right of the lane: "▲120→240"
-      const txt = (faster ? '▲' : '▼') + fmt(from) + '→' + fmt(nb);
+      // Label just right of the lane, e.g. "▲120→240" or a collapsed "◇120→180 ×4"
+      const glyph = !m.net ? '◇' : faster ? '▲' : '▼';
+      let txt = glyph + fmt(m.from) + '→' + fmt(m.to);
+      if (m.merged > 0) txt += ' ×' + (m.merged + 1);      // ×N total changes here
       ctx.textAlign = 'left';
       const tw = ctx.measureText(txt).width;
       ctx.globalAlpha = alpha * 0.55;
