@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.65';
+const APP_VERSION = '0.0.66';
 const CHANGELOG = [
+  {
+    version: '0.0.66',
+    title: 'Soflan Marker Density Filter — keep the runway legible on gimmick charts',
+    entries: [
+      ['add', '<strong>The Soflan runway markers (v0.0.59) no longer smear on dense charts.</strong> A soflan-spam or per-beat BPM-ramp chart could stack dozens of <code>▲120→240</code> labels on top of one another until they were unreadable. A new <strong>☱ Merge</strong> toggle next to <strong>☰ Soflan</strong> collapses any run of tempo changes whose labels would overlap into <strong>one net-change marker</strong> — showing the total jump across the cluster (e.g. <code>▲120→240</code>) with a <code>×N</code> count of how many changes it merged. A <code>◇</code> glyph marks a cluster whose tempo wobbles back to where it started (net-zero), so a momentary gimmick still reads distinctly.'],
+      ['add', '<strong>On by default, fully reversible.</strong> The filter is enabled out of the box so gimmick charts read cleanly with no setup; turn <strong>Merge</strong> off to show every raw tempo change (the exact v0.0.59 behaviour). It composes with C-mode, tilt, perspective and the manual C-ref lock, and works in single and multi-chart preview. Persists via <strong>Save Config</strong> / prefs.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.soflanCollapseByGap(candidates, minGapPx)</code> — the markers are projected to screen-Y by the renderer, then the pure filter clusters and nets them, so the applied markers can never disagree with the collapse logic. Only the visual markers change; the chart is never mutated. i18n in all 5 locales.'],
+    ],
+  },
   {
     version: '0.0.65',
     title: 'HiSpeed →ms Unreachable-Target Cue — the speed twin of the cover cue',
@@ -8805,6 +8814,7 @@ const prefs = {
   fxAutoVis:        false,
   minimapVisible:   false,
   soflanMarkers:    false,
+  soflanDensity:    true,   // collapse overlapping soflan labels (v0.0.66); on by default
 };
 let _autosaveTimer = null;
 
@@ -9824,6 +9834,27 @@ function _initProjectionControls() {
       window.prefs = window.prefs || {};
       window.prefs.soflanMarkers = prefs.soflanMarkers;
       soflanBtn.classList.toggle('active', prefs.soflanMarkers);
+      savePrefsToLocalStorage();
+      if (gameView && !playing) gameView.draw();
+      render();
+    });
+  }
+
+  // Soflan marker density filter (v0.0.66) — collapse overlapping labels on
+  // dense-bpmEvent charts into one net-change marker. Render-only; same
+  // prefs + window.prefs bridge pattern as the soflan toggle above. Defaults ON
+  // so gimmick charts read legibly out of the box; turn off to see every change.
+  const soflanDenBtn = document.getElementById('pvc-soflan-density');
+  if (soflanDenBtn && !soflanDenBtn._wired) {
+    soflanDenBtn._wired = true;
+    window.prefs = window.prefs || {};
+    window.prefs.soflanDensity = prefs.soflanDensity !== false;
+    soflanDenBtn.classList.toggle('active', prefs.soflanDensity !== false);
+    soflanDenBtn.addEventListener('click', () => {
+      prefs.soflanDensity = !(prefs.soflanDensity !== false);
+      window.prefs = window.prefs || {};
+      window.prefs.soflanDensity = prefs.soflanDensity;
+      soflanDenBtn.classList.toggle('active', prefs.soflanDensity);
       savePrefsToLocalStorage();
       if (gameView && !playing) gameView.draw();
       render();

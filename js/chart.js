@@ -510,6 +510,60 @@ export function beatFlashIntensity(secondsSinceBeat, decaySec) {
   return u * u;            // ease-out (quadratic) tail
 }
 
+// ── Soflan Marker Density Filter (v0.0.66) ────────────────────────────────────
+// The v0.0.59 Soflan Runway Markers draw a labelled dashed line at EVERY tempo
+// change inside the runway. On a dense-bpmEvent gimmick chart (soflan spam,
+// per-beat BPM ramps) those labels stack on top of one another and become an
+// unreadable smear — the legibility guard flagged as a follow-up from Point 41c
+// through 47b but never built. This is the single DOM-free, unit-tested source of
+// truth for that guard: given the tempo-change candidates ALREADY projected to
+// screen-Y by the caller (so the maths stays render-agnostic here), it collapses
+// any run of changes whose labels would overlap into ONE net-change marker.
+//
+// A "cluster" is a maximal run of candidates each within `minGapPx` screen pixels
+// of the previous one (walking from the top of the runway toward the judgment
+// line). Each cluster emits a single marker showing the NET tempo change across
+// it — `from` = the first change's start BPM, `to` = the last change's end BPM —
+// drawn at the cluster's NEAREST-to-judge position (max sy) so the label sits on
+// the most imminent change. `merged` is how many extra changes were folded in
+// (0 = a lone marker, unchanged from raw behaviour); `net` is false when the
+// tempo returns to where it started across the cluster (a momentary wobble), so
+// the drawer can pick a distinct glyph. Pure; never touches chart data.
+//
+//   candidates : [{ sy:Number, from:Number, to:Number }]  (order-independent)
+//   minGapPx   : minimum vertical pixel gap between kept markers (default 14)
+//   → [{ sy, from, to, merged, net }] sorted by sy ascending (top → judge)
+export function soflanCollapseByGap(candidates, minGapPx = 14) {
+  const gap = Math.max(0, Number(minGapPx) || 0);
+  const cand = (Array.isArray(candidates) ? candidates : [])
+    .filter(c => c && Number.isFinite(c.sy) && Number.isFinite(c.from) && Number.isFinite(c.to))
+    .sort((a, b) => a.sy - b.sy);
+  if (cand.length === 0) return [];
+
+  const out = [];
+  let cluster = [cand[0]];
+  const flush = () => {
+    const first = cluster[0];
+    const last  = cluster[cluster.length - 1];     // nearest the judge line (max sy)
+    out.push({
+      sy:     last.sy,
+      from:   first.from,
+      to:     last.to,
+      merged: cluster.length - 1,
+      net:    Math.abs(last.to - first.from) > 1e-3,
+    });
+  };
+  for (let i = 1; i < cand.length; i++) {
+    // Compare to the last cluster member so a long gentle ramp keeps collapsing
+    // as long as each step is within the gap, matching how the labels actually
+    // stack on screen.
+    if (cand[i].sy - cluster[cluster.length - 1].sy <= gap) cluster.push(cand[i]);
+    else { flush(); cluster = [cand[i]]; }
+  }
+  flush();
+  return out;
+}
+
 // ── Preview Gameplay Modifiers (non-destructive MODs) ─────────────────────────
 // Pure, DOM-free lane-remap descriptors for the Game-Preview MOD system — the
 // render-only equivalent of arcade SDVX play options (MIRROR / RANDOM / S-RANDOM).
