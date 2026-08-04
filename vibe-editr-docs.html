@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.62 · 2026</span>
+  <span class="version">v0.0.66 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,42 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.66</span>Laser Workload Analysis</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>The Chart Statistics panel now measures the knobs.</strong> A new <strong>Laser Workload</strong> section reports total <strong>knob travel</strong> (in <em>sweeps</em> &mdash; 1.0 = one full left&rarr;right traversal), the number of <strong>direction reversals</strong> (same-knob flips &mdash; the laser counterpart of a same-lane BT/FX jack), and slams, all split L / R. A plain note count or density never captured this: a chart can be sparse in notes yet brutal on the wrists.</li>
+    <li><span class="tag add">add</span><strong>Jump to the wrist-breakers.</strong> The tightest reversals are listed <em>fastest-first</em> as clickable rows (side, <code>m:b</code>, a <code>&#9889;</code> if a slam is involved, and the real-time gap in ms); clicking one <strong>seeks the playhead</strong> to that reversal and closes the panel. The ms gap is measured through the chart&rsquo;s BPM map, so it is <strong>soflan-aware</strong> &mdash; the same spacing reads faster at a higher local tempo.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.analyzeLasers(chart)</code> (travel = &Sigma;|&Delta;v|, a reversal = a movement sign-flip past a small jitter floor). The chart is never mutated; no KSON / data-format risk. i18n in all 5 locales.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.65</span>HiSpeed &rarr;ms Unreachable-Target Cue</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>The target-green <code>&rarr;ms</code> HiSpeed solver now tells you when a target can&rsquo;t be reached.</strong> The v0.0.58 solver clamps the solved HiSpeed to the slider&rsquo;s range, so a target <em>shorter than the window at max HiSpeed</em> or <em>longer than the window at min HiSpeed</em> can&rsquo;t be hit. The <strong>&rarr;ms</strong> field now tints amber and a badge shows the achieved bound &mdash; <code>&#8805; &hellip; ms</code> (raise the HiSpeed cap or add cover) or <code>&#8804; &hellip; ms</code> (lower the HiSpeed minimum).</li>
+    <li><span class="tag add">add</span><strong>Clears itself.</strong> A reachable solve, an emptied field, or a manual HiSpeed move clears the cue &mdash; the exact HiSpeed twin of the v0.0.64 cover cue.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a DOM-free, unit-tested <code>chart.hispeedForReactionReport(&hellip;)</code> so the applied HiSpeed and the reachability verdict can never disagree. The chart is never mutated. i18n in all 5 locales.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.64</span>Cover &rarr;ms Unreachable-Target Cue</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>The Cover &rarr;ms solver now tells you when a target can&rsquo;t be reached.</strong> The reciprocal solver (v0.0.63) caps each cover at 90%, so a target below <em>10% of the full-lane window</em> can&rsquo;t be hit by cover alone, and a target <em>longer than the full lane</em> can&rsquo;t be hit at all. The <strong>Cover &rarr;ms</strong> field tints amber and a badge shows the achieved bound &mdash; <code>&#8805; 333 ms</code> or <code>&#8804; 5333 ms</code>.</li>
+    <li><span class="tag add">add</span><strong>Clears itself.</strong> A reachable solve, an emptied field, or a manual move of any cover slider clears the cue.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a DOM-free, unit-tested <code>chart.coverForReactionReport(&hellip;)</code> so the applied fraction and the reachability verdict can never disagree. The chart is never mutated. i18n in all 5 locales.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.63</span>Cover &rarr; Target Green Number</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Solve a cover for a target green number.</strong> A new <strong>Cover &rarr;ms</strong> control is the <em>reciprocal</em> of the <em>&rarr;ms</em> HiSpeed solver (v0.0.58): keep HiSpeed fixed and type the reaction window you want &mdash; the editor solves the <strong>Sudden+</strong> (or <strong>LIFT</strong>) cover fraction that produces it. Dial your reading window by cover instead of speed.</li>
+    <li><span class="tag add">add</span><strong>Pick the channel.</strong> A dropdown drives the solve through <strong>Sudden+</strong> or <strong>LIFT</strong>; changing it re-solves live. Cover on the other channels is kept and only the chosen one moves, so the solve is non-destructive. The <strong>Green#</strong> readout then shows the achieved visible window.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a DOM-free, unit-tested <code>chart.coverForReactionMs(&hellip;)</code> &mdash; the exact inverse of <code>chart.coverVisibleFraction</code>. The chart is never mutated. i18n in all 5 locales.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.62</span>LIFT &mdash; raise the judgment line</h4>

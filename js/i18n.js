@@ -139,6 +139,13 @@ export const I18N = {
     'preview.soflan':     'Soflan',
     'preview.greenFollow': 'Hold',
     'preview.reactionCover': 'Cover-adjusted reaction window',
+    'stats.laserWorkload': 'Laser Workload',
+    'stats.knobTravel':    'Knob travel',
+    'stats.sweeps':        'sweeps',
+    'stats.reversals':     'Direction reversals',
+    'stats.slams':         'Slams L / R',
+    'stats.fastestReversal': 'Fastest reversal',
+    'stats.seekReversal':  'Seek to this reversal',
     'preview.sudden':     'Sudden+',
     'preview.hidden':     'Hidden+',
     'preview.lift':       'LIFT',
@@ -428,6 +435,13 @@ export const I18N = {
     'preview.soflan':     'Soflan',
     'preview.greenFollow': 'Hold',
     'preview.reactionCover': 'Ventana de reacción ajustada por cubierta',
+    'stats.laserWorkload': 'Carga de láser',
+    'stats.knobTravel':    'Recorrido del dial',
+    'stats.sweeps':        'barridos',
+    'stats.reversals':     'Cambios de dirección',
+    'stats.slams':         'Slams I / D',
+    'stats.fastestReversal': 'Reversión más rápida',
+    'stats.seekReversal':  'Ir a esta reversión',
     'preview.sudden':     'Sudden+',
     'preview.hidden':     'Hidden+',
     'preview.lift':       'LIFT',
@@ -604,7 +618,7 @@ export const I18N = {
 
     'preview.projection': 'Projection', 'preview.perspective': 'Perspective',
     'preview.hispeed': 'Vitesse', 'preview.btWidth': 'Largeur BT',
-    'preview.rate': 'Cadence', 'preview.judgeY': 'Ligne Y', 'preview.loop': 'Boucle', 'preview.metronome': 'Métronome', 'preview.scroll': 'Défilement', 'preview.mods': 'Mods', 'preview.reaction': 'Green#', 'preview.greenTarget': '→ms', 'preview.greenTargetPh': 'régl', 'preview.crefBpm': 'auto', 'preview.soflan': 'Soflan', 'preview.greenFollow': 'Hold', 'preview.reactionCover': 'Fenêtre de réaction ajustée au cache', 'preview.sudden': 'Sudden+', 'preview.hidden': 'Hidden+', 'preview.lift': 'LIFT', 'preview.coverTarget': 'Cache →ms', 'preview.coverSolve': 'Résoudre', 'preview.coverUnreachable': 'Le cache seul atteint {ms} ms — {hint}', 'preview.greenUnreachable': 'La vitesse seule atteint {ms} ms — {hint}', 'preview.multiChart': 'Multi-graphique', 'preview.more': 'Plus',
+    'preview.rate': 'Cadence', 'preview.judgeY': 'Ligne Y', 'preview.loop': 'Boucle', 'preview.metronome': 'Métronome', 'preview.scroll': 'Défilement', 'preview.mods': 'Mods', 'preview.reaction': 'Green#', 'preview.greenTarget': '→ms', 'preview.greenTargetPh': 'régl', 'preview.crefBpm': 'auto', 'preview.soflan': 'Soflan', 'preview.greenFollow': 'Hold', 'preview.reactionCover': 'Fenêtre de réaction ajustée au cache', 'stats.laserWorkload': 'Charge laser', 'stats.knobTravel': 'Course du bouton', 'stats.sweeps': 'balayages', 'stats.reversals': 'Changements de direction', 'stats.slams': 'Slams G / D', 'stats.fastestReversal': 'Changement le plus rapide', 'stats.seekReversal': 'Aller à ce changement', 'preview.sudden': 'Sudden+', 'preview.hidden': 'Hidden+', 'preview.lift': 'LIFT', 'preview.coverTarget': 'Cache →ms', 'preview.coverSolve': 'Résoudre', 'preview.coverUnreachable': 'Le cache seul atteint {ms} ms — {hint}', 'preview.greenUnreachable': 'La vitesse seule atteint {ms} ms — {hint}', 'preview.multiChart': 'Multi-graphique', 'preview.more': 'Plus',
     'preview.ortho': 'Ortho', 'preview.sdvx': 'SDVX', 'preview.hybrid': 'Hybride',
 
     'tool.desc.bpm-sync':       'Calcule les temps en ms et en ticks pour tout BPM et subdivision. Utile pour vérifier la synchro audio.',
@@ -767,7 +781,7 @@ export const I18N = {
 
     'preview.projection': '投影', 'preview.perspective': '遠近',
     'preview.hispeed': 'ハイスピード', 'preview.btWidth': 'BT 幅',
-    'preview.rate': '再生速度', 'preview.judgeY': '判定Y', 'preview.loop': 'ループ', 'preview.metronome': 'メトロノーム', 'preview.scroll': 'スクロール', 'preview.mods': 'モッド', 'preview.reaction': '緑数字', 'preview.greenTarget': '→ms', 'preview.greenTargetPh': '設定', 'preview.crefBpm': '自動', 'preview.soflan': 'ソフラン', 'preview.greenFollow': '固定', 'preview.reactionCover': 'カバー適用時の反応ウィンドウ', 'preview.sudden': 'サドン+', 'preview.hidden': 'ヒドゥン+', 'preview.lift': 'リフト', 'preview.coverTarget': 'カバー →ms', 'preview.coverSolve': '計算', 'preview.coverUnreachable': 'カバーのみでは {ms} ms まで — {hint}', 'preview.greenUnreachable': 'ハイスピードのみでは {ms} ms まで — {hint}', 'preview.multiChart': 'マルチ譜面', 'preview.more': '詳細',
+    'preview.rate': '再生速度', 'preview.judgeY': '判定Y', 'preview.loop': 'ループ', 'preview.metronome': 'メトロノーム', 'preview.scroll': 'スクロール', 'preview.mods': 'モッド', 'preview.reaction': '緑数字', 'preview.greenTarget': '→ms', 'preview.greenTargetPh': '設定', 'preview.crefBpm': '自動', 'preview.soflan': 'ソフラン', 'preview.greenFollow': '固定', 'preview.reactionCover': 'カバー適用時の反応ウィンドウ', 'stats.laserWorkload': 'レーザー負荷', 'stats.knobTravel': 'ツマミ移動量', 'stats.sweeps': '往復', 'stats.reversals': '方向転換', 'stats.slams': 'スラム 左/右', 'stats.fastestReversal': '最速の方向転換', 'stats.seekReversal': 'この方向転換へ移動', 'preview.sudden': 'サドン+', 'preview.hidden': 'ヒドゥン+', 'preview.lift': 'リフト', 'preview.coverTarget': 'カバー →ms', 'preview.coverSolve': '計算', 'preview.coverUnreachable': 'カバーのみでは {ms} ms まで — {hint}', 'preview.greenUnreachable': 'ハイスピードのみでは {ms} ms まで — {hint}', 'preview.multiChart': 'マルチ譜面', 'preview.more': '詳細',
     'preview.ortho': '正射', 'preview.sdvx': 'SDVX', 'preview.hybrid': 'ハイブリッド',
 
     'tool.desc.bpm-sync':       '任意のBPMと細分でのノートタイミング（ms・tick）を計算します。オーディオ同期の確認や配置計画に便利。',
@@ -930,7 +944,7 @@ export const I18N = {
 
     'preview.projection': '投影', 'preview.perspective': '透视',
     'preview.hispeed': '速度', 'preview.btWidth': 'BT 宽度',
-    'preview.rate': '倍速', 'preview.judgeY': '判定线Y', 'preview.loop': '循环', 'preview.metronome': '节拍器', 'preview.scroll': '滚动', 'preview.mods': '修改器', 'preview.reaction': '绿数字', 'preview.greenTarget': '→ms', 'preview.greenTargetPh': '设置', 'preview.crefBpm': '自动', 'preview.soflan': '变速', 'preview.greenFollow': '锁定', 'preview.reactionCover': '遮罩后的反应窗口', 'preview.sudden': '顶部遮罩', 'preview.hidden': '底部遮罩', 'preview.lift': '判定线上移', 'preview.coverTarget': '遮罩 →ms', 'preview.coverSolve': '求解', 'preview.coverUnreachable': '仅靠遮罩只能达到 {ms} ms — {hint}', 'preview.greenUnreachable': '仅靠速度只能达到 {ms} ms — {hint}', 'preview.multiChart': '多谱面', 'preview.more': '更多',
+    'preview.rate': '倍速', 'preview.judgeY': '判定线Y', 'preview.loop': '循环', 'preview.metronome': '节拍器', 'preview.scroll': '滚动', 'preview.mods': '修改器', 'preview.reaction': '绿数字', 'preview.greenTarget': '→ms', 'preview.greenTargetPh': '设置', 'preview.crefBpm': '自动', 'preview.soflan': '变速', 'preview.greenFollow': '锁定', 'preview.reactionCover': '遮罩后的反应窗口', 'stats.laserWorkload': '旋钮负荷', 'stats.knobTravel': '旋钮行程', 'stats.sweeps': '次全程', 'stats.reversals': '方向反转', 'stats.slams': '猛击 左/右', 'stats.fastestReversal': '最快反转', 'stats.seekReversal': '跳转到此反转', 'preview.sudden': '顶部遮罩', 'preview.hidden': '底部遮罩', 'preview.lift': '判定线上移', 'preview.coverTarget': '遮罩 →ms', 'preview.coverSolve': '求解', 'preview.coverUnreachable': '仅靠遮罩只能达到 {ms} ms — {hint}', 'preview.greenUnreachable': '仅靠速度只能达到 {ms} ms — {hint}', 'preview.multiChart': '多谱面', 'preview.more': '更多',
     'preview.ortho': '正交', 'preview.sdvx': 'SDVX', 'preview.hybrid': '混合',
 
     'tool.desc.bpm-sync':       '计算任意 BPM 和细分下的音符时值（ms 和 tick）。用于验证音频同步或规划精确放置。',
