@@ -3130,6 +3130,11 @@ kbd {
 .cs-row { display: flex; justify-content: space-between; }
 .cs-row .cs-key { color: #9090b0; }
 .cs-row .cs-val { color: #f0f0ff; font-family: monospace; }
+.cs-dim { color: #7a7a98; font-size: 0.85em; }
+/* v0.0.66 — clickable "wrist-breaker" laser reversal rows in Chart Statistics */
+.cs-row.cs-laser { cursor: pointer; border-radius: 3px; padding: 1px 4px; margin: 0 -4px; transition: background 0.1s; }
+.cs-row.cs-laser:hover { background: rgba(204, 68, 255, 0.16); }
+.cs-row.cs-laser .cs-key { color: #cc88ff; }
 
 /* ── Bookmarks floating panel ─────────────────────────────────────────── */
 .floating-panel {

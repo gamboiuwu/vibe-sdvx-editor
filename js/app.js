@@ -1,4 +1,4 @@
-import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, beatGridCrossings, countInGrid, beatFlashIntensity } from './chart.js';
+import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, analyzeLasers, beatGridCrossings, countInGrid, beatFlashIntensity } from './chart.js';
 import { Renderer, C, laserColors, laserOpacity, laserWideMode, LASER_PRESETS, applyLaserPreset, setLaserColorCustom, buildLaneHeader, setLaserOpacity, setLaserWideMode } from './renderer.js';
 import { GameView } from './game.js';
 import { exportKsh, importKsh, downloadText } from './ksh.js';
@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.65';
+const APP_VERSION = '0.0.66';
 const CHANGELOG = [
+  {
+    version: '0.0.66',
+    title: 'Laser Workload Analysis — quantify (and jump to) the knob workload',
+    entries: [
+      ['add', '<strong>The Chart Statistics panel now measures the knobs.</strong> A new <strong>Laser Workload</strong> section reports the total <strong>knob travel</strong> (in <em>sweeps</em> — 1.0 = one full left→right traversal), the number of <strong>direction reversals</strong> (same-knob flips — the laser counterpart of a same-lane BT/FX jack), and slams, all split L / R. Note count and density never captured this: a chart can be sparse yet brutal on the wrists, and this is the number a chartist tunes that by.'],
+      ['add', '<strong>Jump to the wrist-breakers.</strong> The tightest reversals are listed <em>fastest-first</em> as clickable rows — each shows the side, <code>m:b</code>, a <code>⚡</code> if a slam is involved, and the real-time gap in ms — and clicking one <strong>seeks the playhead</strong> straight to that reversal and closes the panel. The “fastest reversal” is called out at the top. The ms gap is measured through the chart’s BPM map, so it is <strong>soflan-aware</strong> — the same spacing reads faster at a higher local tempo.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.analyzeLasers(chart)</code> that walks each laser section’s point path (travel = Σ|Δv|, a reversal = a movement sign-flip past a small jitter floor). The chart is never mutated; no KSON / data-format risk. i18n in all 5 locales.'],
+    ],
+  },
   {
     version: '0.0.65',
     title: 'HiSpeed →ms Unreachable-Target Cue — the speed twin of the cover cue',
@@ -10813,11 +10822,57 @@ const DisclaimerGate = (function() {
   // chart.js computeChartStats() — single source of truth.
   const compute = () => computeChartStats(chart);
 
+  // v0.0.66 — Laser Workload Analysis. Quantifies the knob workload (SDVX's
+  // signature difficulty axis) that a note count / density never captures, and
+  // lists the tightest direction reversals ("wrist-breakers") as clickable rows
+  // that seek the playhead. Math is the shared source of truth chart.analyzeLasers().
+  function tickMB(tick) {
+    const m = Math.floor(tick / TICKS_PER_MEASURE) + 1;
+    const b = Math.floor((tick % TICKS_PER_MEASURE) / TICKS_PER_BEAT) + 1;
+    return `m${m}:b${b}`;
+  }
+  function laserSection() {
+    const la = analyzeLasers(chart);
+    const L = (k, d) => { const v = t(k); return (v && v !== k) ? v : d; };
+    const out = [ section(L('stats.laserWorkload', 'Laser Workload')) ];
+    if (la.sections === 0) {
+      out.push(row(L('stats.knobTravel', 'Knob travel'), '0 ✓'));
+      return { html: out.join(''), revs: [] };
+    }
+    const sweeps = (n) => `${n.toFixed(1)} ${L('stats.sweeps', 'sweeps')}`;
+    out.push(row(L('stats.knobTravel', 'Knob travel'),
+      `<strong>${sweeps(la.travelTotal)}</strong> <span class="cs-dim">(L ${sweeps(la.travelL)} · R ${sweeps(la.travelR)})</span>`));
+    out.push(row(L('stats.reversals', 'Direction reversals'),
+      `<strong>${la.reversalsTotal}</strong> <span class="cs-dim">(L ${la.reversalsL} · R ${la.reversalsR})</span>`));
+    out.push(row(L('stats.slams', 'Slams L / R'), `${la.slamL} / ${la.slamR}`));
+    if (la.fastest) {
+      const side = la.fastest.side === 0 ? 'L' : 'R';
+      out.push(row(L('stats.fastestReversal', 'Fastest reversal'),
+        `${Math.round(la.fastest.gapMs)} ms · ${side} · ${tickMB(la.fastest.tick)}`));
+      // Clickable list of the tightest reversals (jump-to-playhead), tightest first.
+      const shown = la.reversalList.slice(0, 12);
+      shown.forEach((r, i) => {
+        const side2 = r.side === 0 ? 'L' : 'R';
+        const slam = r.slam ? ' ⚡' : '';
+        out.push(
+          `<div class="cs-row cs-laser" data-tick="${r.tick}" title="${L('stats.seekReversal', 'Seek to this reversal')}">` +
+          `<span class="cs-key">${side2} · ${tickMB(r.tick)}${slam}</span>` +
+          `<span class="cs-val">${Math.round(r.gapMs)} ms</span></div>`
+        );
+      });
+      if (la.reversalList.length > shown.length) {
+        out.push(row('', `<span class="cs-dim">+${la.reversalList.length - shown.length} more…</span>`));
+      }
+    }
+    return { html: out.join(''), revs: la.reversalList };
+  }
+
   function render() {
     const s = compute();
     if (!s) { grid.innerHTML = '<div class="cs-row"><span>No chart loaded.</span></div>'; return; }
     const title = (chart.meta?.title || 'Untitled') + (chart.meta?.artist ? ' — ' + chart.meta.artist : '');
     sub.textContent = title;
+    const laser = laserSection();
     grid.innerHTML = [
       section('Notes'),
       row('BT chips',     s.btChip),
@@ -10829,6 +10884,7 @@ const DisclaimerGate = (function() {
       row('L segments',   `${s.segL} (${s.pointsL} pts)`),
       row('R segments',   `${s.segR} (${s.pointsR} pts)`),
       row('Slams L / R',  `${s.slamL} / ${s.slamR}`),
+      laser.html,
       section('Timing'),
       row('Duration',     s.durStr),
       row('Total measures', s.totalMeas),
@@ -10837,6 +10893,14 @@ const DisclaimerGate = (function() {
       row('Peak (notes/measure)', `${s.peak} @ m${s.peakMeas + 1}`),
       row('Avg over active measures', s.avgDens.toFixed(1)),
     ].join('');
+    // Wire the clickable reversal rows to seek the playhead (mirrors Bookmarks).
+    grid.querySelectorAll('.cs-laser').forEach(el => {
+      el.addEventListener('click', () => {
+        const tick = +el.dataset.tick;
+        if (typeof _seekTo === 'function') _seekTo(tick);
+        close();
+      });
+    });
   }
 
   function open()  { render(); modal.style.display = 'flex'; }

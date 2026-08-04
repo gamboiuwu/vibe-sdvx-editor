@@ -114,6 +114,94 @@ export function computeChartStats(chart) {
   };
 }
 
+// ── VOL Laser Workload Analysis (v0.0.66) ─────────────────────────────────────
+// DOM-free, unit-tested single source of truth for the "Laser Workload" section
+// of the Chart Statistics panel. The knobs are SDVX's signature mechanic and the
+// dominant difficulty factor a plain note count / density (computeChartStats,
+// heatmap) never captures: a chart can be sparse in notes yet brutal on the
+// wrists. The Pattern Radar's TSUMAMI axis gives an aggregate 0-200 rating; this
+// gives the concrete, NAVIGABLE numbers a chartist tunes by — total knob travel,
+// direction reversals, slams — plus a jump-to list of the tightest ("wrist-
+// breaker") reversals. It is the laser counterpart to a BT/FX jack analysis:
+// where a jack is a same-lane onset repeat, a laser reversal is a same-knob
+// direction flip, and both are the "harder than it looks" part of a chart.
+//
+// Model: chart.lasers[side] is a list of sections { y (absolute start tick),
+// points:[{ry (tick relative to y), v (knob pos 0..1), slam, ...}] }. A point's
+// absolute tick is y + ry. Travel is summed |Δv| across consecutive points in a
+// section (units: "sweeps", 1.0 = one full 0→1 knob traversal). A reversal is a
+// pivot point where the movement sign flips (both adjacent segments moving more
+// than LASER_MOVE_EPS); its speed is the real-time gap across the pivot (prev →
+// next point) measured through chart.tickToSeconds, so it is soflan-aware — the
+// same spacing is "faster" at a higher local BPM, exactly like the jack analysis.
+// Sections are analysed independently (a gap between sections = knob released, so
+// no continuous reversal spans it). Render-only — the chart is never mutated.
+export const LASER_MOVE_EPS = 0.02; // ignore sub-step jitter (positions quantise to ~1/50)
+
+export function analyzeLasers(chart, opts = {}) {
+  const empty = {
+    travelL: 0, travelR: 0, travelTotal: 0,
+    reversalsL: 0, reversalsR: 0, reversalsTotal: 0,
+    slamL: 0, slamR: 0, slamTotal: 0,
+    sections: 0, reversalList: [], fastest: null, truncated: false,
+  };
+  if (!chart || !chart.lasers) return empty;
+  const cap = Number.isFinite(opts.cap) ? opts.cap : 200;
+  const eps = Number.isFinite(opts.moveEps) ? opts.moveEps : LASER_MOVE_EPS;
+  const t2s = (typeof chart.tickToSeconds === 'function')
+    ? (tick) => chart.tickToSeconds(tick) : null;
+
+  const per = [0, 1].map((side) => {
+    const sections = chart.lasers[side] || [];
+    let travel = 0, reversals = 0, slams = 0;
+    const revs = [];
+    for (const sec of sections) {
+      const pts = sec.points || [];
+      const y0 = Number(sec.y) || 0;
+      // travel + slams across the whole section
+      for (let i = 0; i < pts.length; i++) {
+        if (pts[i].slam) slams++;
+        if (i > 0) travel += Math.abs((pts[i].v ?? 0) - (pts[i - 1].v ?? 0));
+      }
+      // reversals: sign flip between the incoming and outgoing segment at a pivot
+      for (let i = 1; i < pts.length - 1; i++) {
+        const dPrev = (pts[i].v ?? 0) - (pts[i - 1].v ?? 0);
+        const dNext = (pts[i + 1].v ?? 0) - (pts[i].v ?? 0);
+        if (Math.abs(dPrev) < eps || Math.abs(dNext) < eps) continue;
+        if (Math.sign(dPrev) === Math.sign(dNext)) continue; // same direction, no flip
+        reversals++;
+        const prevTick = y0 + (pts[i - 1].ry || 0);
+        const nextTick = y0 + (pts[i + 1].ry || 0);
+        const gapMs = t2s ? Math.max(0, (t2s(nextTick) - t2s(prevTick)) * 1000) : 0;
+        revs.push({
+          side,
+          tick: y0 + (pts[i].ry || 0),
+          gapMs,
+          slam: !!(pts[i].slam || pts[i + 1].slam),
+        });
+      }
+    }
+    return { travel, reversals, slams, revs };
+  });
+
+  const allRevs = [...per[0].revs, ...per[1].revs]
+    .sort((a, b) => a.gapMs - b.gapMs);
+  const truncated = allRevs.length > cap;
+
+  return {
+    travelL: per[0].travel, travelR: per[1].travel,
+    travelTotal: per[0].travel + per[1].travel,
+    reversalsL: per[0].reversals, reversalsR: per[1].reversals,
+    reversalsTotal: per[0].reversals + per[1].reversals,
+    slamL: per[0].slams, slamR: per[1].slams,
+    slamTotal: per[0].slams + per[1].slams,
+    sections: (chart.lasers[0] || []).length + (chart.lasers[1] || []).length,
+    reversalList: allRevs.slice(0, cap),
+    fastest: allRevs.length ? allRevs[0] : null,
+    truncated,
+  };
+}
+
 // ── Quantize / Nudge engine ──────────────────────────────────────────────────
 // Shared, side-effect-isolated tick math used by the Tools Hub "Quantize" tool.
 // Kept here (not in tools.js) so it can be unit-tested without a DOM, and so any
