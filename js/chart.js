@@ -939,6 +939,27 @@ export class ChartData {
     return { totalCov, chosen, appliedTotal, achievedMs, status, reachable: status === 'ok' };
   }
 
+  // ── Nearest reachable target for a clamped →ms solve (v0.0.66) ──────────────
+  // Both →ms solvers (v0.0.64 cover, v0.0.65 HiSpeed) clamp against a hard bound
+  // and report the window the clamp actually achieves (`achievedMs`). This turns
+  // that bound into the nearest TARGET ms a re-solve reports as 'ok', so the UI
+  // can offer a one-tap "Fit to range" that accepts the clamp. The achievable
+  // side depends on the direction of the clamp: an "at least" bound ('≥': the
+  // window can't get shorter than achievedMs — 'above-max' / 'too-small' / a
+  // 'clamped' over-cover) rounds UP into the reachable region; an "at most" bound
+  // ('≤': the window can't get longer — 'below-min') rounds DOWN. 'above-lane'
+  // (target ≥ the whole lane, cover only shortens) must land STRICTLY under the
+  // full lane, so it steps one ms below achievedMs. Returns null for a reachable
+  // report or a non-finite achieved window. DOM-free; never touches chart data.
+  fitReachableMs(report) {
+    if (!report || report.reachable) return null;
+    const a = Number(report.achievedMs);
+    if (!Number.isFinite(a)) return null;
+    if (report.status === 'above-lane') return Math.max(1, Math.floor(a) - 1);
+    if (report.status === 'below-min')  return Math.floor(a);
+    return Math.ceil(a);   // above-max / too-small / clamped ('≥' bound)
+  }
+
   // ── Dominant BPM ───────────────────────────────────────────────────────────
   // Returns the tempo (BPM) that plays for the greatest total time across the
   // whole chart — the natural reference for C-Mode so the bulk of a soflan

@@ -536,6 +536,7 @@
       <span class="pvc-label" data-i18n="preview.greenTarget" title="Target green number: type the reaction window (ms) you want and press Enter — the editor solves for the HiSpeed that yields it at the current reference BPM and practice rate, the way an IIDX/SDVX player picks a float hi-speed. Honours the C-mode manual lock. Render-only — never changes the saved chart.">→ms</span>
       <input type="number" id="pvc-green-target" class="pvc-num" min="50" max="20000" step="10" placeholder="set" data-i18n-attr="placeholder:preview.greenTargetPh" title="Type a target green number (ms) and press Enter to auto-set HiSpeed. Leave blank to keep manual HiSpeed control. Render-only." style="width:52px;background:#141821;color:#66ff99;border:1px solid #2a3550;border-radius:4px;padding:2px 4px;font-size:10px" />
       <span id="pvc-green-target-cue" class="pvc-val pvc-cover-cue" title=""></span>
+      <button id="pvc-green-target-fit" class="pvc-loop-btn pvc-fit-btn" style="display:none" title="Set the target to the nearest reachable reading window and re-solve">&#10530; <span data-i18n="preview.fitToRange">Fit</span></button>
       <button id="pvc-green-follow" class="pvc-loop-btn toggle" title="Hold green number: keep the reaction window locked at your →ms target. When on, the editor auto-re-solves HiSpeed whenever the reference BPM changes — switching charts, editing the C-ref, changing scroll mode or practice rate, or crossing a soflan boundary in M-mode — so the reading window stays fixed at the chosen ms without re-typing. Render-only — never changes the saved chart.">&#8644; <span data-i18n="preview.greenFollow">Hold</span></button>
     </div>
     <div class="pvc-section" id="pvc-scroll-section">
@@ -636,6 +637,7 @@
         </select>
         <button id="pvc-cover-target-apply" class="pvc-loop-btn" title="Solve &amp; apply the cover fraction for the target green number">&#8615; <span data-i18n="preview.coverSolve">Solve</span></button>
         <span id="pvc-cover-target-cue" class="pvc-val pvc-cover-cue" title=""></span>
+        <button id="pvc-cover-target-fit" class="pvc-loop-btn pvc-fit-btn" style="display:none" title="Set the target to the nearest reachable reading window and re-solve">&#10530; <span data-i18n="preview.fitToRange">Fit</span></button>
       </div>
       <div class="pvc-section">
         <button id="pvc-save-config" title="Save current Projection, HiSpeed, BT Width, Judge Y and Track Cover as defaults" style="background:#1e3a5f;color:#88c8ff;border:1px solid #3a6aaa;border-radius:5px;padding:4px 8px;font-size:10px;cursor:pointer;letter-spacing:0.04em">&#9632; Save Config</button>
