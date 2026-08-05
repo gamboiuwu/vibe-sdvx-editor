@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.65';
+const APP_VERSION = '0.0.66';
 const CHANGELOG = [
+  {
+    version: '0.0.66',
+    title: 'Fit to Range — one-tap accept-the-clamp for the →ms solvers',
+    entries: [
+      ['add', '<strong>When a <code>→ms</code> target can’t be reached, one tap accepts the closest window.</strong> Both the <strong>HiSpeed →ms</strong> (v0.0.58) and <strong>Cover →ms</strong> (v0.0.63) solvers clamp against a hard limit, and since v0.0.64/65 they show an amber <code>⚠ ≥/≤ … ms</code> badge with the window the clamp actually gives you. Now a small <strong>⤢ Fit</strong> button appears beside that badge: click it to drop the target onto the nearest reachable reading window and re-solve — the badge clears because the target is now reachable, no manual retyping.'],
+      ['add', '<strong>Lands exactly on the reachable side.</strong> A ≥ bound (the window can’t get shorter — too-fast HiSpeed or the 90% cover cap) rounds the fit <em>up</em>; a ≤ bound (the window can’t get longer — too-slow HiSpeed, or a target past the whole lane for cover) rounds it <em>down</em>, stepping strictly under the full lane where needed, so a re-solve always reports “ok”.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.fitReachableMs(report)</code> that turns any unreachable solver report into the nearest reachable target, and a shared <code>setUnreachableCue</code> that now paints both cues (and their Fit buttons) so they can never drift. Only the visual target / speed / cover changes — the chart is never mutated. i18n in all 5 locales.'],
+    ],
+  },
   {
     version: '0.0.65',
     title: 'HiSpeed →ms Unreachable-Target Cue — the speed twin of the cover cue',
@@ -2421,28 +2430,62 @@ function applyGreenTarget(targetMs, tick) {
 // tint the →ms field and show the achieved bound with a ≥ / ≤ prefix so the clamp is
 // never silent. A reachable ('ok') solve, an emptied field, or a manual HiSpeed-slider
 // move clears it. Never touches chart data.
-function setGreenTargetCue(report) {
-  const field = document.getElementById('pvc-green-target');
-  const cue   = document.getElementById('pvc-green-target-cue');
-  if (!report || report.reachable) { clearGreenTargetCue(); return; }
+// ── Shared unreachable-target cue renderer (v0.0.66) ──────────────────────────
+// The single place that paints an unreachable →ms cue for BOTH the HiSpeed solver
+// (v0.0.65) and the Cover solver (v0.0.64) — factored out so the two can never
+// drift apart and any future solver gets the badge for free. It tints the field,
+// writes the achieved-bound badge with a ≥/≤ prefix, and reveals the one-tap "Fit"
+// button carrying the nearest reachable target (chart.fitReachableMs, v0.0.66) in
+// its dataset. `opts.upper(status)` picks the ≤ (window-is-at-most) statuses; the
+// rest use ≥. Render-only — the chart is never mutated.
+function setUnreachableCue(fieldId, cueId, fitId, report, opts) {
+  const field = document.getElementById(fieldId);
+  const cue   = document.getElementById(cueId);
+  const fit   = document.getElementById(fitId);
+  if (!report || report.reachable) { clearUnreachableCue(fieldId, cueId, fitId); return; }
   const achieved = Math.round(report.achievedMs);
-  const prefix   = (report.status === 'below-min') ? '≤' : '≥';
+  const prefix   = opts.upper(report.status) ? '≤' : '≥';
   if (field) field.classList.add('pvc-unreachable');
   if (cue) {
     cue.textContent = `⚠ ${prefix} ${achieved} ms`;
-    const tmpl = (typeof t === 'function' ? t('preview.greenUnreachable') : '') ||
-      'HiSpeed alone reaches {ms} ms — {hint}';
-    const hint = (report.status === 'below-min')
-      ? 'target is longer than the slowest HiSpeed allows; lower the HiSpeed minimum'
-      : 'target is shorter than the fastest HiSpeed allows; raise the HiSpeed maximum or add Sudden+ cover';
-    cue.title = tmpl.replace('{ms}', `${prefix} ${achieved}`).replace('{hint}', hint);
+    const tmpl = (typeof t === 'function' ? t(opts.tmplKey) : '') || opts.tmplFallback;
+    cue.title = tmpl.replace('{ms}', `${prefix} ${achieved}`).replace('{hint}', opts.hint(report.status));
+  }
+  if (fit) {
+    const fitMs = (chart && typeof chart.fitReachableMs === 'function') ? chart.fitReachableMs(report) : null;
+    if (fitMs != null && Number.isFinite(fitMs)) {
+      fit.dataset.fitMs = String(fitMs);
+      const ftmpl = (typeof t === 'function' ? t('preview.fitToRangeTitle') : '') ||
+        'Set the target to {ms} ms — the nearest reachable reading window — and re-solve';
+      fit.title = ftmpl.replace('{ms}', String(fitMs));
+      fit.style.display = '';
+    } else {
+      fit.style.display = 'none';
+      delete fit.dataset.fitMs;
+    }
   }
 }
-function clearGreenTargetCue() {
-  const field = document.getElementById('pvc-green-target');
-  const cue   = document.getElementById('pvc-green-target-cue');
+function clearUnreachableCue(fieldId, cueId, fitId) {
+  const field = document.getElementById(fieldId);
+  const cue   = document.getElementById(cueId);
+  const fit   = document.getElementById(fitId);
   if (field) field.classList.remove('pvc-unreachable');
   if (cue) { cue.textContent = ''; cue.title = ''; }
+  if (fit) { fit.style.display = 'none'; delete fit.dataset.fitMs; }
+}
+
+function setGreenTargetCue(report) {
+  setUnreachableCue('pvc-green-target', 'pvc-green-target-cue', 'pvc-green-target-fit', report, {
+    upper:   s => s === 'below-min',
+    tmplKey: 'preview.greenUnreachable',
+    tmplFallback: 'HiSpeed alone reaches {ms} ms — {hint}',
+    hint: s => (s === 'below-min')
+      ? 'target is longer than the slowest HiSpeed allows; lower the HiSpeed minimum'
+      : 'target is shorter than the fastest HiSpeed allows; raise the HiSpeed maximum or add Sudden+ cover',
+  });
+}
+function clearGreenTargetCue() {
+  clearUnreachableCue('pvc-green-target', 'pvc-green-target-cue', 'pvc-green-target-fit');
 }
 
 // ── Solve cover for a target green number (v0.0.63) ───────────────────────────
@@ -2501,27 +2544,17 @@ function applyCoverTarget(targetMs, which) {
 // show the achieved bound with a ≥ / ≤ prefix so the clamp is never silent. A
 // reachable ('ok') solve clears both. Never touches chart data.
 function setCoverTargetCue(report) {
-  const field = document.getElementById('pvc-cover-target');
-  const cue   = document.getElementById('pvc-cover-target-cue');
-  if (!report || report.reachable) { clearCoverTargetCue(); return; }
-  const achieved = Math.round(report.achievedMs);
-  const prefix   = (report.status === 'above-lane') ? '≤' : '≥';
-  if (field) field.classList.add('pvc-unreachable');
-  if (cue) {
-    cue.textContent = `⚠ ${prefix} ${achieved} ms`;
-    const tmpl = (typeof t === 'function' ? t('preview.coverUnreachable') : '') ||
-      'Cover alone reaches {ms} ms — {hint}';
-    const hint = (report.status === 'above-lane')
+  setUnreachableCue('pvc-cover-target', 'pvc-cover-target-cue', 'pvc-cover-target-fit', report, {
+    upper:   s => s === 'above-lane',
+    tmplKey: 'preview.coverUnreachable',
+    tmplFallback: 'Cover alone reaches {ms} ms — {hint}',
+    hint: s => (s === 'above-lane')
       ? 'target is longer than the full lane; lower HiSpeed instead'
-      : 'target is below 10% of the full lane; raise HiSpeed too';
-    cue.title = tmpl.replace('{ms}', `${prefix} ${achieved}`).replace('{hint}', hint);
-  }
+      : 'target is below 10% of the full lane; raise HiSpeed too',
+  });
 }
 function clearCoverTargetCue() {
-  const field = document.getElementById('pvc-cover-target');
-  const cue   = document.getElementById('pvc-cover-target-cue');
-  if (field) field.classList.remove('pvc-unreachable');
-  if (cue) { cue.textContent = ''; cue.title = ''; }
+  clearUnreachableCue('pvc-cover-target', 'pvc-cover-target-cue', 'pvc-cover-target-fit');
 }
 
 // ── Green-Number Auto-Follow (v0.0.60) ────────────────────────────────────────
@@ -9851,6 +9884,24 @@ function _initProjectionControls() {
     greenTgt.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); apply(); greenTgt.blur(); } });
   }
 
+  // Fit-to-range (v0.0.66): when the →ms HiSpeed cue flags an unreachable target,
+  // one tap writes the nearest reachable ms (carried in the button dataset by
+  // setUnreachableCue) into the field and re-solves — landing exactly on the clamp
+  // bound so the cue clears itself. The target is also remembered for Hold. Render-only.
+  const greenFitBtn = document.getElementById('pvc-green-target-fit');
+  if (greenFitBtn && !greenFitBtn._wired) {
+    greenFitBtn._wired = true;
+    greenFitBtn.addEventListener('click', () => {
+      const fitMs = +greenFitBtn.dataset.fitMs;
+      if (!Number.isFinite(fitMs) || fitMs <= 0) return;
+      if (greenTgt) greenTgt.value = String(fitMs);
+      applyGreenTarget(fitMs);
+      greenFollowTarget = fitMs;
+      prefs.greenFollowTarget = fitMs;
+      savePrefsToLocalStorage();
+    });
+  }
+
   // Green-Number Auto-Follow hold toggle (v0.0.60) — keep the reaction window
   // pinned to the target ms by auto-re-solving HiSpeed on every ref-BPM change.
   const greenFollowBtn = document.getElementById('pvc-green-follow');
@@ -10081,6 +10132,19 @@ function _initProjectionControls() {
       const v = String(covTgt.value).trim();
       if (v !== '') applyCoverTarget(+v, covWhich.value);
     });
+    // Fit-to-range (v0.0.66): accept the cover clamp in one tap — write the nearest
+    // reachable ms (from the button dataset) into the field and re-solve on the
+    // selected channel, clearing the cue. Render-only.
+    const covFitBtn = document.getElementById('pvc-cover-target-fit');
+    if (covFitBtn && !covFitBtn._wired) {
+      covFitBtn._wired = true;
+      covFitBtn.addEventListener('click', () => {
+        const fitMs = +covFitBtn.dataset.fitMs;
+        if (!Number.isFinite(fitMs) || fitMs <= 0) return;
+        covTgt.value = String(fitMs);
+        applyCoverTarget(fitMs, covWhich ? covWhich.value : 'sudden');
+      });
+    }
   }
 
   // Game canvas drag to reposition judgment line
