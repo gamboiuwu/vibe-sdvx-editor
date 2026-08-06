@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.66';
+const APP_VERSION = '0.0.67';
 const CHANGELOG = [
+  {
+    version: '0.0.67',
+    title: 'Cover-Stack Legibility Guard — a warning before Sudden+/Hidden+/LIFT blank the lane',
+    entries: [
+      ['add', '<strong>A warning when your track covers stack too high.</strong> <strong>Sudden+</strong>, <strong>Hidden+</strong> and <strong>LIFT</strong> are each capped at 90%, but they <em>stack</em> — dial two or three up together and the visible reading strip can shrink to almost nothing with no feedback. Now a badge in the cover row shows <code>⚠ NN% lane visible</code> when the stack leaves a cramped strip (amber) or an effectively blank one (red), so you notice before the lane becomes unreadable.'],
+      ['add', '<strong>Reflects the covers you’ve already set — it never changes them.</strong> The badge appears whenever you move a Sudden+/Hidden+/LIFT slider, when the <strong>Cover →ms</strong> solver moves a cover for you, and on load from your saved config; it clears itself the moment the visible lane returns to a comfortable size.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.coverStackReport(sud, hid, lift)</code> that reuses <code>coverVisibleFraction</code> and returns the visible fraction plus an <code>ok / tight / blank</code> verdict, so the badge and the reading-window engines can never disagree. The chart is never mutated. i18n in all 5 locales.'],
+    ],
+  },
   {
     version: '0.0.66',
     title: 'Fit to Range — one-tap accept-the-clamp for the →ms solvers',
@@ -2533,6 +2542,7 @@ function applyCoverTarget(targetMs, which) {
   // when the cover clamps (target below the 0.9 cap, or above the full-lane window).
   setCoverTargetCue(report);
   updateReactionReadout();     // show the achieved visible window (reflects any clamp)
+  updateCoverGuard();          // the solved cover may push the stack into near-blank (v0.0.67)
   if (!playing) gameView.draw();
 }
 
@@ -2555,6 +2565,35 @@ function setCoverTargetCue(report) {
 }
 function clearCoverTargetCue() {
   clearUnreachableCue('pvc-cover-target', 'pvc-cover-target-cue', 'pvc-cover-target-fit');
+}
+
+// ── Cover-stack legibility guard (v0.0.67) ────────────────────────────────────
+// Sudden+, Hidden+ and LIFT each cap at 90% individually but STACK, so together
+// they can shrink the visible reading strip to near-zero — an unreadable lane —
+// with no feedback. This reads the three live cover fractions off gameView (the
+// same values the sliders write), asks chart.coverStackReport for a legibility
+// verdict, and surfaces it in the #pvc-cover-guard badge: hidden when the lane is
+// comfortably readable, an amber "⚠ NN% lane visible" when the strip is cramped
+// ('tight'), and a red one when it's effectively blank ('blank'). Render-only —
+// it only reflects the covers already applied; it never changes them or the chart.
+function updateCoverGuard() {
+  const el = document.getElementById('pvc-cover-guard');
+  if (!el) return;
+  if (!gameView || typeof chart.coverStackReport !== 'function') { el.style.display = 'none'; return; }
+  const rep = chart.coverStackReport(gameView.coverSudden, gameView.coverHidden, gameView.coverLift);
+  el.classList.remove('tight', 'blank');
+  if (rep.status === 'ok') { el.style.display = 'none'; el.textContent = ''; el.title = ''; return; }
+  el.classList.add(rep.status);
+  const tmpl = (typeof t === 'function') ? t('preview.coverGuard') : '';
+  const body = (tmpl && tmpl !== 'preview.coverGuard')
+    ? tmpl.replace('{pct}', rep.visiblePct)
+    : (rep.visiblePct + '% lane visible');
+  el.textContent = '⚠ ' + body;
+  const ttl = (typeof t === 'function') ? t('preview.coverGuardTitle') : '';
+  el.title = (ttl && ttl !== 'preview.coverGuardTitle')
+    ? ttl.replace('{pct}', rep.visiblePct).replace('{total}', Math.round(rep.total * 100))
+    : `Sudden+/Hidden+/LIFT together leave only ${rep.visiblePct}% of the lane visible — the reading strip is very small`;
+  el.style.display = '';
 }
 
 // ── Green-Number Auto-Follow (v0.0.60) ────────────────────────────────────────
@@ -10077,6 +10116,7 @@ function _initProjectionControls() {
       clearCoverTargetCue();        // manual move invalidates a solved cover cue (v0.0.64)
       updateGreenFollow();          // hold the target green number under the new cover
       updateReactionReadout();      // the cover shrinks the visible reaction window
+      updateCoverGuard();           // warn if the cover stack leaves a near-blank lane (v0.0.67)
       if (gameView && !playing) gameView.draw();
     });
   }
@@ -10091,6 +10131,7 @@ function _initProjectionControls() {
       clearCoverTargetCue();        // manual move invalidates a solved cover cue (v0.0.64)
       updateGreenFollow();          // hold the target green number under the new cover
       updateReactionReadout();      // the cover shrinks the visible reaction window
+      updateCoverGuard();           // warn if the cover stack leaves a near-blank lane (v0.0.67)
       if (gameView && !playing) gameView.draw();
     });
   }
@@ -10107,6 +10148,7 @@ function _initProjectionControls() {
       clearCoverTargetCue();        // manual move invalidates a solved cover cue (v0.0.64)
       updateGreenFollow();          // hold the target green number under the raised line
       updateReactionReadout();      // LIFT shrinks the visible reaction window
+      updateCoverGuard();           // warn if the cover stack leaves a near-blank lane (v0.0.67)
       if (gameView && !playing) gameView.draw();
     });
   }
@@ -10359,6 +10401,8 @@ function _initProjectionControls() {
 
   // Restore saved interpretation mode directly onto gameView (Visual Mode is now in Tools Hub)
   if (prefs.interpMode && gameView) gameView.interpMode = prefs.interpMode;
+
+  updateCoverGuard();   // reflect any restored Sudden+/Hidden+/LIFT stack (v0.0.67)
 }
 
 // ── Donation modal ────────────────────────────────────────────────────────────
