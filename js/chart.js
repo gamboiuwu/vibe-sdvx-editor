@@ -884,6 +884,33 @@ export class ChartData {
     return Math.max(0, Math.min(1, 1 - s - h - l));
   }
 
+  // ── Cover-stack legibility guard (v0.0.67) ─────────────────────────────────
+  // Sudden+, Hidden+ and LIFT are each individually capped at 0.9, but they
+  // STACK: coverVisibleFraction(sud,hid,lift) = clamp(1 − sud − hid − lift) can
+  // fall to near zero when two or three are dialled up together, leaving an
+  // unreadable near-blank reading strip with no feedback. This DOM-free source of
+  // truth turns the three cover fractions into a legibility verdict the UI can
+  // surface: `visible` (0..1, the coverVisibleFraction), `total` (clamped sum of
+  // the three, 0..1), and a `status` of 'ok' (visible ≥ WARN), 'tight' (BLANK ≤
+  // visible < WARN — legible but cramped) or 'blank' (visible < BLANK — the lane
+  // is effectively unreadable). `visiblePct` is the rounded percentage for the
+  // badge. Thresholds are shared constants so the engine and any test agree.
+  // Render-only; never touches chart data.
+  coverStackReport(coverSudden = 0, coverHidden = 0, coverLift = 0) {
+    const WARN  = 0.25;   // below this the reading strip is cramped
+    const BLANK = 0.08;   // below this the lane is effectively unreadable
+    const s = Math.max(0, Math.min(0.9, Number(coverSudden) || 0));
+    const h = Math.max(0, Math.min(0.9, Number(coverHidden) || 0));
+    const l = Math.max(0, Math.min(0.9, Number(coverLift)   || 0));
+    const visible = this.coverVisibleFraction(s, h, l);
+    const total   = Math.max(0, Math.min(1, s + h + l));
+    let status;
+    if (visible < BLANK)     status = 'blank';
+    else if (visible < WARN) status = 'tight';
+    else                     status = 'ok';
+    return { visible, total, status, visiblePct: Math.round(visible * 100), warn: WARN, blank: BLANK };
+  }
+
   // ── Solve cover for a target green number (v0.0.63) ────────────────────────
   // Inverse of coverVisibleFraction for the green number. Given the FULL-LANE
   // reaction window (ms a note is on screen at the CURRENT HiSpeed, no cover) and
