@@ -3153,6 +3153,11 @@ kbd {
 .cs-row { display: flex; justify-content: space-between; }
 .cs-row .cs-key { color: #9090b0; }
 .cs-row .cs-val { color: #f0f0ff; font-family: monospace; }
+.cs-dim { color: #6a6a88; font-style: italic; }
+/* Clickable trill rows (v0.0.68) — seek the playhead to the trill on click. */
+.cs-trill { cursor: pointer; border-radius: 4px; padding: 1px 4px; margin: 0 -4px; transition: background 0.1s; }
+.cs-trill:hover { background: rgba(120, 90, 200, 0.22); }
+.cs-trill:hover .cs-key { color: #cbb8ff; }
 
 /* ── Bookmarks floating panel ─────────────────────────────────────────── */
 .floating-panel {

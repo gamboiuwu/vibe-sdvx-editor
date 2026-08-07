@@ -114,6 +114,96 @@ export function computeChartStats(chart) {
   };
 }
 
+// ── Trill analysis (chart-QA) ─────────────────────────────────────────────────
+// A TRILL is a rapid run of button onsets that strictly ALTERNATE between exactly
+// two lanes (A B A B …) — the hand-tiring "which button was that again?" pattern.
+// It is distinct from a JACK (same-lane repeat) and from a CHORD (same-tick stack):
+// a trill needs two DIFFERENT lanes hit in alternation, each landing a fresh onset.
+// radar.js already folds a trill *score* into its aggregate difficulty axes, but the
+// editor had no user-facing count or way to navigate to the tightest ones — this
+// promotes that concept into a navigable Chart-Statistics report. DOM-free single
+// source of truth so the panel and any future caller can never disagree. Render-only:
+// the chart is never mutated. "Fast" is measured in REAL time via chart.tickToSeconds,
+// so a 1/8 alternation that is gentle at 120 BPM is correctly flagged at 240 (soflan-aware).
+export const TRILL_MAX_GAP_MS = 150; // consecutive onsets within this real-time gap
+export const TRILL_MIN_NOTES  = 3;   // a trill needs at least this many alternating onsets
+const TRILL_LANE_LABELS = ['BT-A', 'BT-B', 'BT-C', 'BT-D', 'FX-L', 'FX-R'];
+
+export function analyzeTrills(chart, opts = {}) {
+  const maxGapMs = opts.maxGapMs ?? TRILL_MAX_GAP_MS;
+  const minNotes = Math.max(3, opts.minNotes ?? TRILL_MIN_NOTES);
+  const cap      = opts.cap ?? 200;
+  const empty = { runs: [], trillNotes: 0, runCount: 0, fastest: null, truncated: false };
+  if (!chart || !Array.isArray(chart.bt) || !Array.isArray(chart.fx)) return empty;
+
+  // Unified onset list across the six button lanes (holds count once, at their head).
+  // key: BT-A..D → 0..3, FX-L/R → 4..5.
+  const onsets = [];
+  chart.bt.forEach((lane, i) => { for (const n of lane) onsets.push({ y: n.y, key: i }); });
+  chart.fx.forEach((lane, j) => { for (const n of lane) onsets.push({ y: n.y, key: 4 + j }); });
+  if (onsets.length < minNotes) return empty;
+  onsets.sort((a, b) => a.y - b.y || a.key - b.key);
+
+  const t = (y) => chart.tickToSeconds(y); // soflan-aware real-time mapping
+  const N = onsets.length;
+  const runs = [];
+  let i = 0;
+
+  while (i < N - 1) {
+    // Greedily grow the longest strictly-alternating two-lane run starting at i.
+    const laneA = onsets[i].key;
+    let laneB = null;
+    let runEnd = i;
+    let minGapMs = Infinity;
+    for (let k = i + 1; k < N; k++) {
+      const dy = onsets[k].y - onsets[k - 1].y;
+      if (dy <= 0) break;                                   // same tick = chord, not a trill step
+      const gapMs = (t(onsets[k].y) - t(onsets[k - 1].y)) * 1000;
+      if (gapMs > maxGapMs) break;                          // too slow to read as a trill
+      const cur = onsets[k].key, prev = onsets[k - 1].key;
+      if (cur === prev) break;                              // same lane = jack, not a trill
+      if (laneB === null) {
+        laneB = cur;                                        // the second lane defines the pair
+      } else if (cur !== onsets[k - 2].key) {
+        break;                                              // must alternate back to the lane two steps prior
+      }
+      runEnd = k;
+      if (gapMs < minGapMs) minGapMs = gapMs;
+    }
+    const notes = runEnd - i + 1;
+    if (laneB !== null && notes >= minNotes) {
+      const startTick = onsets[i].y;
+      const lo = Math.min(laneA, laneB), hi = Math.max(laneA, laneB);
+      runs.push({
+        startTick,
+        endTick: onsets[runEnd].y,
+        laneA: lo, laneB: hi,
+        labelA: TRILL_LANE_LABELS[lo], labelB: TRILL_LANE_LABELS[hi],
+        notes,
+        gapMs: minGapMs,
+        measure: Math.floor(startTick / TICKS_PER_MEASURE) + 1,
+        beat:    Math.floor((startTick % TICKS_PER_MEASURE) / TICKS_PER_BEAT) + 1,
+      });
+      i = runEnd;                                           // continue past the run (guaranteed progress: runEnd > i)
+    } else {
+      i++;
+    }
+  }
+
+  const runCount   = runs.length;
+  const trillNotes = runs.reduce((s, r) => s + r.notes, 0);
+  const fastest    = runCount ? runs.reduce((a, b) => (b.gapMs < a.gapMs ? b : a)) : null;
+  // Tightest-gap first (then earliest) so the hardest trills lead the list.
+  runs.sort((a, b) => a.gapMs - b.gapMs || a.startTick - b.startTick);
+  return {
+    runs: runs.slice(0, cap),
+    trillNotes,
+    runCount,
+    fastest,
+    truncated: runCount > cap,
+  };
+}
+
 // ── Quantize / Nudge engine ──────────────────────────────────────────────────
 // Shared, side-effect-isolated tick math used by the Tools Hub "Quantize" tool.
 // Kept here (not in tools.js) so it can be unit-tested without a DOM, and so any

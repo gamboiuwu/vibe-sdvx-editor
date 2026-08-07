@@ -1,4 +1,4 @@
-import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, beatGridCrossings, countInGrid, beatFlashIntensity } from './chart.js';
+import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, analyzeTrills, beatGridCrossings, countInGrid, beatFlashIntensity } from './chart.js';
 import { Renderer, C, laserColors, laserOpacity, laserWideMode, LASER_PRESETS, applyLaserPreset, setLaserColorCustom, buildLaneHeader, setLaserOpacity, setLaserWideMode } from './renderer.js';
 import { GameView } from './game.js';
 import { exportKsh, importKsh, downloadText } from './ksh.js';
@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.67';
+const APP_VERSION = '0.0.68';
 const CHANGELOG = [
+  {
+    version: '0.0.68',
+    title: 'Trill Analysis — find and jump to the hardest alternating bursts',
+    entries: [
+      ['add', '<strong>A navigable trill report in Chart Statistics.</strong> A <strong>trill</strong> is a rapid run of onsets that <em>alternate</em> between two buttons (A B A B …) — the hand-tiring pattern that is neither a <em>jack</em> (same-lane repeat) nor a <em>chord</em> (same-tick stack). The <strong>Window → Chart Statistics</strong> panel now lists every trill: total trill notes, run count, the single <strong>fastest</strong> one, and a tightest-first list of clickable rows showing the lane pair, <code>m:b</code>, note count and real-time gap. Click any row to <strong>seek the playhead</strong> straight to that trill.'],
+      ['add', '<strong>Soflan-aware “fast”.</strong> The gap is measured in real milliseconds through <code>chart.tickToSeconds</code>, so an alternation that reads gently at 120 BPM is correctly flagged where the same spacing runs at 240 — exactly like the tempo-aware jack/laser reasoning. A clean chart shows <code>0 ✓</code>.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.analyzeTrills(chart, opts)</code> that walks a unified onset list and grows the longest strictly-two-lane alternating run under a gap threshold. It promotes the trill concept already used inside the Pattern Radar’s difficulty score into a real, navigable readout. The chart is never mutated.'],
+    ],
+  },
   {
     version: '0.0.67',
     title: 'Cover-Stack Legibility Guard — a warning before Sudden+/Hidden+/LIFT blank the lane',
@@ -10921,11 +10930,43 @@ const DisclaimerGate = (function() {
   // chart.js computeChartStats() — single source of truth.
   const compute = () => computeChartStats(chart);
 
+  // Clickable per-run trill row: seeks the editor playhead to the trill and closes.
+  // data-tick carries the seek target; wired after innerHTML is set (mirrors Bookmarks).
+  function trillRow(r) {
+    const pair = `${r.labelA}↔${r.labelB}`;           // A↔B
+    return `<div class="cs-row cs-trill" data-tick="${r.startTick}" title="Seek to this trill">` +
+             `<span class="cs-key">${pair} · m${r.measure}:b${r.beat}</span>` +
+             `<span class="cs-val">×${r.notes} · ${Math.round(r.gapMs)} ms</span>` +
+           `</div>`;
+  }
+
+  // How many clickable trill rows to list before collapsing to a "+N more" note.
+  const TRILL_ROW_LIMIT = 16;
+
   function render() {
     const s = compute();
     if (!s) { grid.innerHTML = '<div class="cs-row"><span>No chart loaded.</span></div>'; return; }
     const title = (chart.meta?.title || 'Untitled') + (chart.meta?.artist ? ' — ' + chart.meta.artist : '');
     sub.textContent = title;
+
+    // Trill analysis (chart QA) — alternating two-lane bursts, tightest-first.
+    const tr = analyzeTrills(chart);
+    const trillRows = [section('Trills')];
+    if (tr.runCount === 0) {
+      trillRows.push(row('Trills', '0 ✓'));
+    } else {
+      trillRows.push(row('Trill notes', `<strong>${tr.trillNotes}</strong>`));
+      trillRows.push(row('Runs', tr.runCount));
+      if (tr.fastest) {
+        trillRows.push(row('Fastest',
+          `${tr.fastest.labelA}↔${tr.fastest.labelB} · ${Math.round(tr.fastest.gapMs)} ms`));
+      }
+      const shown = tr.runs.slice(0, TRILL_ROW_LIMIT);
+      shown.forEach(r => trillRows.push(trillRow(r)));
+      const hidden = tr.runCount - shown.length;
+      if (hidden > 0) trillRows.push(row('', `<span class="cs-dim">+${hidden} more…</span>`));
+    }
+
     grid.innerHTML = [
       section('Notes'),
       row('BT chips',     s.btChip),
@@ -10944,7 +10985,17 @@ const DisclaimerGate = (function() {
       section('Density'),
       row('Peak (notes/measure)', `${s.peak} @ m${s.peakMeas + 1}`),
       row('Avg over active measures', s.avgDens.toFixed(1)),
+      ...trillRows,
     ].join('');
+
+    // Wire the clickable trill rows: seek the playhead and close the modal.
+    grid.querySelectorAll('.cs-trill').forEach(el => {
+      el.addEventListener('click', () => {
+        const tick = +el.dataset.tick;
+        if (Number.isFinite(tick) && typeof _seekTo === 'function') _seekTo(tick);
+        close();
+      });
+    });
   }
 
   function open()  { render(); modal.style.display = 'flex'; }
