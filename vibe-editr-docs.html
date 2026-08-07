@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.62 · 2026</span>
+  <span class="version">v0.0.68 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,60 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.68</span>Trill Analysis &mdash; find and jump to the hardest alternating bursts</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>A navigable trill report in Chart Statistics.</strong> A <strong>trill</strong> is a rapid run of onsets that <em>alternate</em> between two buttons (A&#8596;B&#8596;A&#8596;B&hellip;) &mdash; the hand-tiring pattern that is neither a <em>jack</em> (same-lane repeat) nor a <em>chord</em> (same-tick stack). The <strong>Window &rarr; Chart Statistics</strong> panel now lists total trill notes, run count, the single <strong>fastest</strong> trill, and a tightest-first list of clickable rows showing the lane pair, <code>m:b</code>, note count and real-time gap. Click any row to <strong>seek the playhead</strong> straight to that trill; a clean chart shows <code>0 &#10003;</code>.</li>
+    <li><span class="tag add">add</span><strong>Soflan-aware &ldquo;fast&rdquo;.</strong> The gap is measured in real milliseconds through <code>chart.tickToSeconds</code>, so an alternation that reads gently at 120&nbsp;BPM is correctly flagged where the same spacing runs at 240 &mdash; the same tempo-aware reasoning the reading-window tools use.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.analyzeTrills(chart, opts)</code> that grows the longest strictly-two-lane alternating run under a gap threshold, promoting the trill concept already inside the Pattern Radar difficulty score into a real navigable readout. The chart is never mutated.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.67</span>Cover-Stack Legibility Guard</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>A warning when your track covers stack too high.</strong> <strong>Sudden+</strong>, <strong>Hidden+</strong> and <strong>LIFT</strong> are each capped at 90%, but they <em>stack</em> &mdash; dial two or three up together and the visible reading strip can shrink to almost nothing with no feedback. A badge in the cover row now shows <code>&#9888; NN% lane visible</code> when the stack leaves a cramped strip (amber) or an effectively blank one (red).</li>
+    <li><span class="tag add">add</span><strong>Reflects the covers you already set &mdash; it never changes them.</strong> The badge appears whenever you move a Sudden+/Hidden+/LIFT slider, when the <strong>Cover &rarr;ms</strong> solver moves a cover for you, and on load from your saved config; it clears the moment the visible lane returns to a comfortable size.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a DOM-free, unit-tested <code>chart.coverStackReport(sud, hid, lift)</code> that reuses <code>coverVisibleFraction</code> and returns the visible fraction plus an <code>ok / tight / blank</code> verdict, so the badge and the reading-window engines can never disagree. i18n in all 5 locales.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.66</span>Fit to Range &mdash; one-tap accept-the-clamp for the &rarr;ms solvers</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>When a <code>&rarr;ms</code> target can&rsquo;t be reached, one tap accepts the closest window.</strong> Both the <strong>HiSpeed &rarr;ms</strong> (v0.0.58) and <strong>Cover &rarr;ms</strong> (v0.0.63) solvers clamp against a hard limit and (since v0.0.64/65) flag it with an amber badge. A small <strong>&#10530; Fit</strong> button now appears beside that badge: click it to drop the target onto the nearest reachable reading window and re-solve.</li>
+    <li><span class="tag add">add</span><strong>Lands exactly on the reachable side.</strong> A &ge; bound rounds the fit <em>up</em>; a &le; bound rounds it <em>down</em>, stepping strictly under the full lane where needed, so a re-solve always reports &ldquo;ok&rdquo;.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a DOM-free, unit-tested <code>chart.fitReachableMs(report)</code> and a shared <code>setUnreachableCue</code> that paints both cues (and their Fit buttons) so they can never drift. The chart is never mutated. i18n in all 5 locales.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.65</span>HiSpeed &rarr;ms Unreachable-Target Cue</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>The <code>&rarr;ms</code> HiSpeed solver now tells you when a target can&rsquo;t be reached.</strong> The v0.0.58 solver clamps the solved HiSpeed to the slider range, so a target shorter than the window at max HiSpeed (or longer than the window at min HiSpeed) can&rsquo;t be hit. The field now tints amber with a badge showing the achieved bound &mdash; <code>&#9888; &ge; &hellip; ms</code> (raise the cap or add Sudden+) or <code>&#9888; &le; &hellip; ms</code> (lower the minimum).</li>
+    <li><span class="tag add">add</span><strong>Clears itself.</strong> A reachable solve, an emptied field, or a manual HiSpeed move clears the cue &mdash; the exact HiSpeed twin of the v0.0.64 cover cue.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a DOM-free, unit-tested <code>chart.hispeedForReactionReport(&hellip;)</code>, a companion to <code>chart.hispeedForReactionMs</code>, so the applied HiSpeed and the reachability verdict can never disagree. The chart is never mutated. i18n in all 5 locales.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.64</span>Cover &rarr;ms Unreachable-Target Cue</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>The Cover &rarr;ms solver now tells you when a target can&rsquo;t be reached.</strong> The reciprocal solver (v0.0.63) caps each cover at 90%, so a target below 10% of the full-lane window can&rsquo;t be hit by cover alone, and a target longer than the full lane can&rsquo;t be hit at all. The <strong>Cover &rarr;ms</strong> field now tints amber with a badge showing the achieved bound &mdash; <code>&#9888; &ge; &hellip; ms</code> or <code>&#9888; &le; &hellip; ms</code>.</li>
+    <li><span class="tag add">add</span><strong>Clears itself.</strong> A reachable solve, an emptied field, or a manual move of any cover slider clears the cue, so it only ever flags a live clamp.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a DOM-free, unit-tested <code>chart.coverForReactionReport(&hellip;)</code>, a companion to <code>chart.coverForReactionMs</code>, so the applied fraction and the reachability verdict can never disagree. The chart is never mutated. i18n in all 5 locales.</li>
+  </ul>
+</div>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.63</span>Cover &rarr; Target Green Number</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Solve a cover for a target green number.</strong> A new <strong>Cover &rarr;ms</strong> control in the preview cover row is the reciprocal of the <em>&rarr;ms</em> HiSpeed solver (v0.0.58): keep your <strong>HiSpeed fixed</strong> and type the reaction window (ms) you want &mdash; the editor solves the <strong>Sudden+</strong> (or <strong>LIFT</strong>) cover fraction that produces it.</li>
+    <li><span class="tag add">add</span><strong>Pick the channel.</strong> A dropdown drives the solve through <strong>Sudden+</strong> or <strong>LIFT</strong>; changing it re-solves live. Cover already set on the other channels is kept, so the solve is non-destructive, and the <strong>Green#</strong> readout (v0.0.56/61) shows the achieved visible window.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a DOM-free, unit-tested <code>chart.coverForReactionMs(target, fullLaneMs)</code> &mdash; the exact inverse of <code>chart.coverVisibleFraction</code> &mdash; so the readout and the solver can never disagree. The chart is never mutated. i18n in all 5 locales.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.62</span>LIFT &mdash; raise the judgment line</h4>
