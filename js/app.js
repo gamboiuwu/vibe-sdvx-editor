@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.67';
+const APP_VERSION = '0.0.68';
 const CHANGELOG = [
+  {
+    version: '0.0.68',
+    title: 'Green-Number Range — the whole-chart reading window at a glance',
+    entries: [
+      ['add', '<strong>See the reading window across the entire chart, not just under the cursor.</strong> The <strong>Green#</strong> readout (v0.0.56) is a <em>point</em> value for the tempo at the playhead, so on a <strong>soflan</strong> chart it jumps around as you scrub and never tells you the whole picture. A new range readout beside it now shows <code>NNN–NNN ms</code> — the <strong>shortest</strong> (fastest tempo, hardest to read) and <strong>longest</strong> (slowest tempo, easiest) reaction window at your current HiSpeed — so you can pick a speed the <em>whole</em> chart stays readable at.'],
+      ['add', '<strong>Follows everything the point readout does.</strong> It rides the same HiSpeed, practice rate and Sudden+/Hidden+/LIFT cover fraction, tinting amber under a cover just like the point number. It shows only in <strong>M-mode</strong> on multi-tempo charts (in C-mode the window is constant by design, and a single-tempo chart has no range), and hides itself the moment there is nothing to show.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.reactionWindowSpan(visibleTicks, rate)</code> that scans the chart’s own tempo set and reuses <code>reactionWindowMs</code>, so the range and the point readout can never disagree. The chart is never mutated. i18n in all 5 locales.'],
+    ],
+  },
   {
     version: '0.0.67',
     title: 'Cover-Stack Legibility Guard — a warning before Sudden+/Hidden+/LIFT blank the lane',
@@ -2372,6 +2381,36 @@ function updateReactionReadout(tick) {
     gameView.reactionMs   = reactionReadout ? ms : 0;
     gameView.reactionCovered = reactionReadout && covered;
   }
+  updateGreenRange(vt, covFrac);
+}
+
+// Green-Number Range (v0.0.68): the reaction readout above is a POINT value for
+// the tempo under the playhead. In M-mode on a soflan chart the reading window
+// swings between the chart's fastest and slowest tempos; this surfaces that whole
+// spread — the shortest (hardest) and longest (easiest) window at the current
+// HiSpeed + covers + rate — so a chartist can pick a speed the WHOLE chart stays
+// readable at. Hidden in C-mode (the window is constant by design) and on
+// single-tempo charts (no range to show). Reuses the same cover-adjusted visible
+// distance as the point readout via chart.reactionWindowSpan. Render-only.
+function updateGreenRange(vt, covFrac) {
+  const el = document.getElementById('pvc-green-range');
+  if (!el) return;
+  const off = () => { el.style.display = 'none'; el.textContent = ''; };
+  if (!reactionReadout || !chart || typeof chart.reactionWindowSpan !== 'function') return off();
+  // C-mode holds the window constant across soflan, so there is no range to read.
+  if (previewScrollMode === 'cmode') return off();
+  const span = chart.reactionWindowSpan(vt * covFrac, playbackRate);
+  if (!span || !span.soflan) return off();   // single tempo → nothing to show
+  el.style.display = '';
+  el.textContent = `${Math.round(span.shortestMs)}–${Math.round(span.longestMs)} ms`;
+  el.style.color = covFrac < 0.999 ? '#ffcc55' : '#66ff99';
+  const tmpl = (typeof t === 'function') ? t('preview.greenRangeTitle') : '';
+  el.title = (tmpl && tmpl !== 'preview.greenRangeTitle')
+    ? tmpl.replace('{short}', Math.round(span.shortestMs))
+          .replace('{shortBpm}', Math.round(span.shortestBpm))
+          .replace('{long}', Math.round(span.longestMs))
+          .replace('{longBpm}', Math.round(span.longestBpm))
+    : `Reading window across the chart at this HiSpeed: ${Math.round(span.shortestMs)} ms at the fastest ${Math.round(span.shortestBpm)} BPM (hardest) … ${Math.round(span.longestMs)} ms at the slowest ${Math.round(span.longestBpm)} BPM (easiest).`;
 }
 
 // Toggle the green-number readout on/off; refresh HUD and redraw when paused.

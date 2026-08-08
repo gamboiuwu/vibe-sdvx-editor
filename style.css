@@ -1068,6 +1068,17 @@ kbd {
 }
 .pvc-cover-guard.tight { color: #ffcc55; background: rgba(120, 84, 20, 0.35); }
 .pvc-cover-guard.blank { color: #ff6d6d; background: rgba(120, 30, 30, 0.4); font-weight: 600; }
+/* Green-Number Range (v0.0.68): the shortest–longest reaction window across the
+   whole chart at the current HiSpeed. Only shown in M-mode on a soflan (multi-
+   tempo) chart, next to the point Green# readout. Render-only. */
+.pvc-green-range {
+  font-size: 10px;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(40, 60, 44, 0.35);
+}
 /* Fit-to-range one-tap accept-the-clamp button (v0.0.66). Only shown while a
    →ms cue is flagging an unreachable target; styled amber to match the cue. */
 .pvc-fit-btn {
