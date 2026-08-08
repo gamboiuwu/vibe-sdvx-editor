@@ -812,6 +812,40 @@ export class ChartData {
     return vt / TICKS_PER_BEAT * (60 / b) * 1000 / r;
   }
 
+  // ── Green-number range across the whole chart (v0.0.68) ─────────────────────
+  // The green number (reactionWindowMs) is a POINT reading — it uses the tempo at
+  // the playhead. On a soflan chart the reading window swings section to section
+  // as the tempo changes: at a FIXED HiSpeed (fixed `visibleTicks`) and rate, the
+  // window scales as 1/bpm, so the SHORTEST (hardest to read) window falls on the
+  // chart's FASTEST tempo and the LONGEST on its SLOWEST. This scans the chart's
+  // own set of tempos and returns both extremes, so a chartist can pick a HiSpeed
+  // the WHOLE chart stays readable at instead of only the moment under the cursor.
+  // `bpms` may be passed explicitly (for testing); otherwise the chart's bpmEvents
+  // are used. DOM-free single source of truth — reuses reactionWindowMs so the
+  // range and the point readout can never disagree. Never touches chart data.
+  reactionWindowSpan(visibleTicks, rate = 1, bpms = null) {
+    const src = (Array.isArray(bpms) && bpms.length)
+      ? bpms
+      : (Array.isArray(this.bpmEvents) && this.bpmEvents.length
+          ? this.bpmEvents.map(e => e.bpm)
+          : [120]);
+    const valid = src.map(Number).filter(b => Number.isFinite(b) && b > 0);
+    if (!valid.length) valid.push(120);
+    const loBpm = Math.min(...valid);   // slowest tempo → LONGEST window
+    const hiBpm = Math.max(...valid);   // fastest tempo → SHORTEST window
+    const shortestMs = this.reactionWindowMs(visibleTicks, hiBpm, rate);
+    const longestMs  = this.reactionWindowMs(visibleTicks, loBpm, rate);
+    // Distinct tempos (rounded to 0.001 BPM so float dupes collapse).
+    const distinct = new Set(valid.map(b => Math.round(b * 1000))).size;
+    return {
+      shortestMs, shortestBpm: hiBpm,   // the fastest section — least reaction time
+      longestMs,  longestBpm:  loBpm,   // the slowest section — most reaction time
+      spanMs: longestMs - shortestMs,
+      soflan: hiBpm - loBpm > 1e-6,     // more than one distinct tempo in play
+      bpmCount: distinct,
+    };
+  }
+
   // Inverse of reactionWindowMs: given a TARGET green number (`targetMs`, the ms a
   // note should be on screen), return the HiSpeed multiplier that achieves it at
   // tempo `bpm` and practice `rate`. `visibleTicksAt1x` is the visible scroll
