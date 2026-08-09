@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.67';
+const APP_VERSION = '0.0.68';
 const CHANGELOG = [
+  {
+    version: '0.0.68',
+    title: 'Reaction Range — the green number for the whole chart, not just the playhead',
+    entries: [
+      ['add', '<strong>See the reading-window swing of a soflan chart at a glance.</strong> The <strong>Green#</strong> readout (v0.0.56) only ever shows the reaction window <em>at the playhead</em>, so on a tempo-gimmick chart you can\'t tell how much harder the fastest section reads than the rest. A new <strong>⇄ Range</strong> toggle in the preview Green# row scans <em>every tempo in the chart</em> and shows <code>⇔ 264–912 ms</code> — the fastest-reading (hardest) and slowest-reading (easiest) windows — for your current HiSpeed, practice rate and cover. A wide swing (max/min ≥ 1.5×) paints amber.'],
+      ['add', '<strong>Click to jump to the hardest part.</strong> Clicking the range readout seeks the editor straight to the <strong>fastest-reading section</strong> (the min-ms tick), so you can go tune HiSpeed or a cover against the tightest window the chart demands. In <strong>C-mode</strong> the constant scroll fixes the window across soflan, so a single dimmed value is shown instead of a range.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.reactionWindowExtremes(visibleTicks, rate, bpmList)</code> that reuses <code>reactionWindowMs</code> and shares HiSpeed / rate / Sudden+·Hidden+·LIFT cover with the live number, so the range and the readout can never disagree. The chart is never mutated. Persists via <strong>Save Config</strong> / prefs; i18n in all 5 locales.'],
+    ],
+  },
   {
     version: '0.0.67',
     title: 'Cover-Stack Legibility Guard — a warning before Sudden+/Hidden+/LIFT blank the lane',
@@ -2312,6 +2321,7 @@ function _updateScrollHud() {
 // reference is the constant dominant tempo, so the number stays fixed across
 // soflan; in M-mode it tracks the local tempo live. Never touches chart data.
 let reactionReadout = true;
+let reactionRange   = false;   // v0.0.68 — chart-wide reaction-window min/max readout (off by default)
 
 // ── Green-Number Auto-Follow (v0.0.60) ────────────────────────────────────────
 // A lock that HOLDS the green number. Once the user has dialled a target
@@ -2333,6 +2343,7 @@ function updateReactionReadout(tick) {
   if (!chart || typeof chart.reactionWindowMs !== 'function') {
     if (lbl) lbl.textContent = '–';
     if (gameView) { gameView.showReaction = false; gameView.reactionMs = 0; }
+    updateReactionRange();   // v0.0.68 — clear the range readout too when there's no chart
     return;
   }
   const tkNow = (tick != null) ? tick : (renderer ? renderer.playTick : 0);
@@ -2372,6 +2383,60 @@ function updateReactionReadout(tick) {
     gameView.reactionMs   = reactionReadout ? ms : 0;
     gameView.reactionCovered = reactionReadout && covered;
   }
+  updateReactionRange();   // v0.0.68 — keep the chart-wide range in lockstep with the live number
+}
+
+// ── Reaction-window range readout (v0.0.68) ───────────────────────────────────
+// The green number above is the reaction window AT THE PLAYHEAD. This readout
+// scans the WHOLE chart and shows the fastest-reading (min ms, hardest) and
+// slowest-reading (max ms, easiest) windows, so a soflan chart's reading-
+// difficulty swing is visible without scrubbing. It shares every input with the
+// live number — visibleTicks (HiSpeed), the practice rate, and any active
+// Sudden+/Hidden+/LIFT cover — via the DOM-free chart.reactionWindowExtremes, so
+// the two can never disagree. In C-mode the window is constant across the chart,
+// so a single value is shown (dimmed). A large swing (max/min ≥ 1.5) paints amber.
+// Clicking the readout seeks the editor to the hardest-reading (min-ms) section.
+// Render-only — it never changes the chart or the live HiSpeed.
+function updateReactionRange() {
+  const lbl = document.getElementById('pvc-reaction-range');
+  const btn = document.getElementById('pvc-range-toggle');
+  if (btn) btn.classList.toggle('active', reactionRange);
+  if (!lbl) return;
+  if (!reactionRange || !chart || typeof chart.reactionWindowExtremes !== 'function') {
+    lbl.textContent = '–'; lbl.style.color = ''; lbl.title = ''; lbl.dataset.seekTick = '';
+    return;
+  }
+  const vt = gameView ? gameView.VISIBLE_TICKS : (TICKS_PER_MEASURE * 4 / Math.max(0.1, chartSpeed));
+  const covFrac = (gameView && typeof chart.coverVisibleFraction === 'function')
+    ? chart.coverVisibleFraction(gameView.coverSudden, gameView.coverHidden, gameView.coverLift) : 1;
+  // In C-mode the constant scroll speed fixes the window across soflan, so the
+  // range collapses to the single C-ref window; pass it as a one-BPM list.
+  const cmode = (previewScrollMode === 'cmode' && typeof chart.dominantBpm === 'function');
+  const bpmList = cmode ? [{ y: 0, bpm: cModeRefBpmResolved() }] : null;
+  const ext = chart.reactionWindowExtremes(vt * covFrac, playbackRate, bpmList);
+  const lo = Math.round(ext.minMs), hi = Math.round(ext.maxMs);
+  if (ext.constant) {
+    lbl.textContent = `${lo} ms`;
+    lbl.style.color = '#7a8296';   // dimmed — no range to show
+    lbl.title = cmode
+      ? `C-mode: the reaction window is constant across the chart at ${lo} ms.`
+      : `The chart holds a single tempo, so the reaction window is a constant ${lo} ms.`;
+    lbl.dataset.seekTick = String(ext.minTick);
+  } else {
+    const wide = ext.ratio >= 1.5;
+    lbl.textContent = `⇔ ${lo}–${hi} ms`;
+    lbl.style.color = wide ? '#ffcc55' : '#66ff99';
+    lbl.title = `Reaction window across the chart: ${lo} ms at the fastest section (${Math.round(ext.minBpm)} BPM — hardest to read) up to ${hi} ms at the slowest (${Math.round(ext.maxBpm)} BPM). Click to seek to the hardest-reading section.`;
+    lbl.dataset.seekTick = String(ext.minTick);
+  }
+}
+
+// Toggle the chart-wide reaction-range readout on/off.
+function toggleReactionRange() {
+  reactionRange = !reactionRange;
+  prefs.reactionRange = reactionRange;   // mirror onto prefs so localStorage persists it
+  updateReactionRange();
+  savePrefsToLocalStorage();
 }
 
 // Toggle the green-number readout on/off; refresh HUD and redraw when paused.
@@ -9880,6 +9945,23 @@ function _initProjectionControls() {
   reactBtn?.addEventListener('click', toggleReactionReadout);
   updateReactionReadout();   // sync label + button to current state
 
+  // Chart-wide reaction-window range readout toggle + click-to-seek (v0.0.68)
+  const rangeBtn = document.getElementById('pvc-range-toggle');
+  if (rangeBtn && !rangeBtn._wired) {
+    rangeBtn._wired = true;
+    rangeBtn.addEventListener('click', toggleReactionRange);
+  }
+  const rangeLbl = document.getElementById('pvc-reaction-range');
+  if (rangeLbl && !rangeLbl._wired) {
+    rangeLbl._wired = true;
+    rangeLbl.addEventListener('click', () => {
+      if (!reactionRange) return;
+      const tk = parseInt(rangeLbl.dataset.seekTick, 10);
+      if (Number.isFinite(tk) && typeof _seekTo === 'function') _seekTo(tk);
+    });
+  }
+  updateReactionRange();     // sync range label + button to current state
+
   // Soflan runway markers toggle — faint on-lane labels at every tempo change.
   // Render-only; state persists on prefs so it composes with Save Config too.
   // The game-preview renderer reads the flag through window.prefs (the bridge it
@@ -10293,6 +10375,7 @@ function _initProjectionControls() {
     prefs.previewCRefBpm    = previewCRefBpm;
     // Reaction-time "green number" readout (render-only)
     prefs.reactionReadout   = reactionReadout;
+    prefs.reactionRange     = reactionRange;   // v0.0.68 — chart-wide range readout toggle
     // Green-Number Auto-Follow hold + held target ms (render-only)
     prefs.greenFollowLock   = greenFollowLock;
     prefs.greenFollowTarget = greenFollowTarget;
@@ -10380,6 +10463,7 @@ function _initProjectionControls() {
   if (prefs.previewCRefBpm   != null) applyCRefBpm(prefs.previewCRefBpm);
   // Restore reaction-time "green number" readout (render-only)
   if (prefs.reactionReadout != null) { reactionReadout = !!prefs.reactionReadout; updateReactionReadout(); }
+  if (prefs.reactionRange != null)   { reactionRange   = !!prefs.reactionRange;   updateReactionRange(); }
   // Restore Green-Number Auto-Follow hold + held target (render-only). Reflect the
   // target into the →ms field so the UI shows what is being held, then snap.
   if (prefs.greenFollowTarget != null) {
