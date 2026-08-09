@@ -911,6 +911,48 @@ export class ChartData {
     return { visible, total, status, visiblePct: Math.round(visible * 100), warn: WARN, blank: BLANK };
   }
 
+  // ── Reaction-window range across the whole chart (v0.0.68) ─────────────────
+  // The green number (reactionWindowMs) shown in the preview panel is the window
+  // AT THE PLAYHEAD only. On a soflan chart the reading window swings between
+  // sections and that instantaneous readout hides it: a chartist can't tell that
+  // the hardest-to-read part demands, say, a 260 ms reaction while the rest sits
+  // at 900 ms. This DOM-free source of truth sweeps every BPM segment in the
+  // chart and returns the MIN (fastest-reading / hardest) and MAX (slowest /
+  // easiest) reaction window, the tick + tempo each occurs at, and the span
+  // between them. `visibleTicks` and `rate` are the same inputs the readout uses
+  // (fold any active Sudden+/Hidden+/LIFT cover into visibleTicks before calling,
+  // exactly as updateReactionReadout does), so the range agrees with the live
+  // number. `bpmList` overrides this.bpmEvents (C-Mode passes a single constant
+  // reference BPM so min === max and `constant` is true). reactionWindowMs is
+  // strictly decreasing in BPM for fixed visibleTicks/rate — min ms rides the
+  // fastest tempo, max ms the slowest — but we sweep segments directly so the
+  // tick anchors are exact and the readout can seek to the worst section. The
+  // `ratio` (max/min) drives the "large swing" cue. Render-only; never mutates.
+  reactionWindowExtremes(visibleTicks, rate = 1, bpmList = null) {
+    const src = (Array.isArray(bpmList) && bpmList.length) ? bpmList
+      : ((Array.isArray(this.bpmEvents) && this.bpmEvents.length) ? this.bpmEvents : [{ y: 0, bpm: 120 }]);
+    const evs = src
+      .map(e => ({ y: Math.max(0, Number(e.y) || 0), bpm: Math.max(1, Number(e.bpm) || 120) }))
+      .sort((p, q) => p.y - q.y);
+    let minMs = Infinity, maxMs = -Infinity;
+    let minTick = 0, maxTick = 0, minBpm = 0, maxBpm = 0;
+    for (const ev of evs) {
+      const ms = this.reactionWindowMs(visibleTicks, ev.bpm, rate);
+      if (ms < minMs) { minMs = ms; minTick = ev.y; minBpm = ev.bpm; }
+      if (ms > maxMs) { maxMs = ms; maxTick = ev.y; maxBpm = ev.bpm; }
+    }
+    if (!Number.isFinite(minMs)) {
+      minMs = maxMs = this.reactionWindowMs(visibleTicks, 120, rate);
+      minBpm = maxBpm = 120;
+    }
+    const spanMs = Math.max(0, maxMs - minMs);
+    return {
+      minMs, maxMs, spanMs, minTick, maxTick, minBpm, maxBpm,
+      ratio: minMs > 0 ? maxMs / minMs : 1,
+      constant: evs.length <= 1 || spanMs < 0.5,
+    };
+  }
+
   // ── Solve cover for a target green number (v0.0.63) ────────────────────────
   // Inverse of coverVisibleFraction for the green number. Given the FULL-LANE
   // reaction window (ms a note is on screen at the CURRENT HiSpeed, no cover) and
