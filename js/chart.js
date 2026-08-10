@@ -953,6 +953,59 @@ export class ChartData {
     };
   }
 
+  // ── Reading-difficulty curve across the whole chart (v0.0.69) ──────────────
+  // The v0.0.68 Range readout collapses a soflan chart's reading-window swing into
+  // two numbers (fastest/slowest ms). This turns the SAME per-segment sweep into a
+  // full PER-MEASURE curve, so a chartist sees exactly WHERE the hard-to-read
+  // spikes are — a green-number heatmap strip — not just that they exist. Each
+  // sample is the reaction window (ms) at a measure's downbeat for the given
+  // `visibleTicks` (fold any Sudden+/Hidden+/LIFT cover into visibleTicks first,
+  // exactly as updateReactionReadout does) and practice `rate`. `bpmList` overrides
+  // this.bpmEvents (C-Mode passes a single constant reference BPM, giving a flat
+  // line). minMs/maxMs/minTick come straight from reactionWindowExtremes' exact
+  // sweep so the strip's normalization and coloring agree with the Range readout to
+  // the pixel and can never miss a brief tempo spike between two measure downbeats.
+  // `samples` caps the point count for very long charts (default 256): measures are
+  // bucketed by an integer `step` so the strip stays compact. Render-only; never
+  // mutates the chart.
+  reactionWindowCurve(visibleTicks, rate = 1, bpmList = null, samples = 256) {
+    const ext      = this.reactionWindowExtremes(visibleTicks, rate, bpmList);
+    const measures = Math.max(1, Math.floor(this.totalMeasures) || 1);
+    const useList  = Array.isArray(bpmList) && bpmList.length;
+    const listEvs  = useList
+      ? bpmList.map(e => ({ y: Math.max(0, Number(e.y) || 0), bpm: Math.max(1, Number(e.bpm) || 120) }))
+               .sort((p, q) => p.y - q.y)
+      : null;
+    const bpmAt = (tick) => {
+      if (!listEvs) return Math.max(1, this.getBpmAt(tick) || 120);
+      let b = listEvs[0].bpm;
+      for (const ev of listEvs) { if (ev.y <= tick) b = ev.bpm; else break; }
+      return b;
+    };
+    const cap  = Math.max(1, Math.min(2048, (samples | 0) || 256));
+    const step = Math.max(1, Math.ceil(measures / cap));
+    const pts  = [];
+    for (let m = 0; m < measures; m += step) {
+      const tick = m * TICKS_PER_MEASURE;
+      const bpm  = bpmAt(tick);
+      pts.push({ measure: m, tick, bpm, ms: this.reactionWindowMs(visibleTicks, bpm, rate) });
+    }
+    // Always represent the final measure so the strip spans the whole chart even
+    // when `step` skips past the last bucket boundary.
+    if (pts.length && pts[pts.length - 1].measure !== measures - 1) {
+      const tick = (measures - 1) * TICKS_PER_MEASURE;
+      const bpm  = bpmAt(tick);
+      pts.push({ measure: measures - 1, tick, bpm, ms: this.reactionWindowMs(visibleTicks, bpm, rate) });
+    }
+    return {
+      points: pts, step, measures,
+      minMs: ext.minMs, maxMs: ext.maxMs,
+      minTick: ext.minTick, maxTick: ext.maxTick,
+      minBpm: ext.minBpm, maxBpm: ext.maxBpm,
+      constant: ext.constant,
+    };
+  }
+
   // ── Solve cover for a target green number (v0.0.63) ────────────────────────
   // Inverse of coverVisibleFraction for the green number. Given the FULL-LANE
   // reaction window (ms a note is on screen at the CURRENT HiSpeed, no cover) and
