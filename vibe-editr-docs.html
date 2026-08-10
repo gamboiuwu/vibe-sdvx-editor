@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.68 · 2026</span>
+  <span class="version">v0.0.69 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.69</span>Reading-Difficulty Strip &mdash; a per-measure green-number heatmap of the whole chart</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>See <em>where</em> a soflan chart reads hard, not just how hard.</strong> The <strong>&#8646; Range</strong> readout (v0.0.68) collapses a chart&rsquo;s reading-window swing into two numbers. A new <strong>&#9636; Strip</strong> toggle in the preview Green# row draws the whole curve as a compact <strong>per-measure heatmap</strong>: each measure is coloured by how tight its reaction window is &mdash; <span style="color:#ff5555">red where it&rsquo;s hardest to read</span>, <span style="color:#66ff99">green where it&rsquo;s easiest</span> &mdash; so the hard-to-read spikes jump out at a glance instead of hiding behind an average.</li>
+    <li><span class="tag add">add</span><strong>Playhead-marked and click-to-seek.</strong> A bright line rides the strip at the current playhead, and clicking any slice seeks the editor straight to that measure, so you can jump to a spike and tune HiSpeed or a cover against it. In <strong>C-mode</strong> the constant scroll fixes the window across soflan, so the strip is flat and dimmed.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.reactionWindowCurve(visibleTicks, rate, bpmList, samples)</code> that samples <code>reactionWindowMs</code> per measure and takes its min/max from the same exact <code>reactionWindowExtremes</code> sweep as the Range readout &mdash; so the strip, the range and the live green number can never disagree, and long charts bucket to keep the strip compact. Shares HiSpeed / practice rate / Sudden+&middot;Hidden+&middot;LIFT cover with the number. The chart is never mutated. Persists via <strong>Save Config</strong> / prefs; i18n in all 5 locales.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.68</span>Reaction Range &mdash; the green number for the whole chart</h4>

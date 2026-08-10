@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.68';
+const APP_VERSION = '0.0.69';
 const CHANGELOG = [
+  {
+    version: '0.0.69',
+    title: 'Reading-Difficulty Strip — a per-measure green-number heatmap of the whole chart',
+    entries: [
+      ['add', '<strong>See <em>where</em> a soflan chart reads hard, not just how hard.</strong> The <strong>⇄ Range</strong> readout (v0.0.68) collapses a chart\'s reading-window swing into two numbers. A new <strong>▢ Strip</strong> toggle in the preview Green# row draws the whole curve as a compact <strong>per-measure heatmap</strong>: each measure is coloured by how tight its reaction window is — <span style="color:#ff5555">red where it\'s hardest to read</span>, <span style="color:#66ff99">green where it\'s easiest</span> — so the hard-to-read spikes jump out at a glance instead of hiding behind an average.'],
+      ['add', '<strong>Playhead-marked and click-to-seek.</strong> A bright line rides the strip at the current playhead, and clicking any slice seeks the editor straight to that measure, so you can jump to a spike and tune HiSpeed or a cover against it. In <strong>C-mode</strong> the constant scroll fixes the window across soflan, so the strip is flat and dimmed.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.reactionWindowCurve(visibleTicks, rate, bpmList, samples)</code> that samples <code>reactionWindowMs</code> per measure and takes its min/max from the same exact <code>reactionWindowExtremes</code> sweep as the Range readout — so the strip, the range and the live green number can never disagree, and long charts bucket to keep the strip compact. Shares HiSpeed / practice rate / Sudden+·Hidden+·LIFT cover with the number. The chart is never mutated. Persists via <strong>Save Config</strong> / prefs; i18n in all 5 locales.'],
+    ],
+  },
   {
     version: '0.0.68',
     title: 'Reaction Range — the green number for the whole chart, not just the playhead',
@@ -2322,6 +2331,7 @@ function _updateScrollHud() {
 // soflan; in M-mode it tracks the local tempo live. Never touches chart data.
 let reactionReadout = true;
 let reactionRange   = false;   // v0.0.68 — chart-wide reaction-window min/max readout (off by default)
+let diffStrip       = false;   // v0.0.69 — per-measure reading-difficulty heatmap strip (off by default)
 
 // ── Green-Number Auto-Follow (v0.0.60) ────────────────────────────────────────
 // A lock that HOLDS the green number. Once the user has dialled a target
@@ -2344,6 +2354,7 @@ function updateReactionReadout(tick) {
     if (lbl) lbl.textContent = '–';
     if (gameView) { gameView.showReaction = false; gameView.reactionMs = 0; }
     updateReactionRange();   // v0.0.68 — clear the range readout too when there's no chart
+    updateDiffStrip();       // v0.0.69 — clear the difficulty strip too when there's no chart
     return;
   }
   const tkNow = (tick != null) ? tick : (renderer ? renderer.playTick : 0);
@@ -2384,6 +2395,7 @@ function updateReactionReadout(tick) {
     gameView.reactionCovered = reactionReadout && covered;
   }
   updateReactionRange();   // v0.0.68 — keep the chart-wide range in lockstep with the live number
+  updateDiffStrip(tkNow);  // v0.0.69 — keep the difficulty strip (and its playhead marker) in lockstep
 }
 
 // ── Reaction-window range readout (v0.0.68) ───────────────────────────────────
@@ -2436,6 +2448,95 @@ function toggleReactionRange() {
   reactionRange = !reactionRange;
   prefs.reactionRange = reactionRange;   // mirror onto prefs so localStorage persists it
   updateReactionRange();
+  savePrefsToLocalStorage();
+}
+
+// ── Reading-difficulty strip (v0.0.69) ────────────────────────────────────────
+// The v0.0.68 Range readout gives only the two extremes; this draws the whole
+// curve as a per-measure heatmap so a chartist sees WHERE the hard-to-read spikes
+// are. Each slice is coloured by how hard that measure reads — the tightest
+// reaction window (min ms) paints red, the widest (max ms) green, on a
+// green→amber→red ramp normalised to the chart's own extremes. The current
+// playhead is marked with a bright line, and clicking a slice seeks the editor to
+// that measure. Backed by the DOM-free chart.reactionWindowCurve, which shares
+// visibleTicks (HiSpeed), the practice rate and any Sudden+/Hidden+/LIFT cover
+// with the live green number — and takes its min/max from the same exact sweep as
+// the Range readout — so the strip, the range and the number can never disagree.
+// In C-mode the constant scroll fixes the window, so the strip is flat and dimmed.
+// Render-only — it never changes the chart or the live HiSpeed.
+function updateDiffStrip(tick) {
+  const sec  = document.getElementById('pvc-diffstrip-section');
+  const btn  = document.getElementById('pvc-diffstrip-toggle');
+  const host = document.getElementById('pvc-diffstrip');
+  const leg  = document.getElementById('pvc-diffstrip-legend');
+  if (btn) btn.classList.toggle('active', diffStrip);
+  if (sec) sec.style.display = diffStrip ? '' : 'none';
+  if (!host) return;
+  if (!diffStrip || !chart || typeof chart.reactionWindowCurve !== 'function') {
+    host.innerHTML = '';
+    host.dataset.minTick = ''; host.dataset.span = ''; host.dataset.step = '';
+    if (leg) { leg.textContent = '–'; leg.style.color = ''; }
+    return;
+  }
+  const vt = gameView ? gameView.VISIBLE_TICKS : (TICKS_PER_MEASURE * 4 / Math.max(0.1, chartSpeed));
+  const covFrac = (gameView && typeof chart.coverVisibleFraction === 'function')
+    ? chart.coverVisibleFraction(gameView.coverSudden, gameView.coverHidden, gameView.coverLift) : 1;
+  const cmode = (previewScrollMode === 'cmode' && typeof chart.dominantBpm === 'function');
+  const bpmList = cmode ? [{ y: 0, bpm: cModeRefBpmResolved() }] : null;
+  const cur = chart.reactionWindowCurve(vt * covFrac, playbackRate, bpmList, 256);
+  const pts = cur.points || [];
+  if (!pts.length) { host.innerHTML = ''; if (leg) leg.textContent = '–'; return; }
+
+  const lo = cur.minMs, hi = cur.maxMs;
+  const span = Math.max(1e-6, hi - lo);
+  // difficulty t: 1 = hardest (min ms, tightest window), 0 = easiest (max ms).
+  // Colour ramp green(#2ecc71) → amber(#ffcc55) → red(#ff5555).
+  const colorFor = (ms) => {
+    if (cur.constant) return '#5a86c9';   // flat — no swing to show, cool neutral
+    const t = Math.max(0, Math.min(1, (hi - ms) / span));
+    const lerp = (a, b, f) => Math.round(a + (b - a) * f);
+    let r, g, b2;
+    if (t < 0.5) { const f = t / 0.5;       r = lerp(0x2e,0xff,f); g = lerp(0xcc,0xcc,f); b2 = lerp(0x71,0x55,f); }
+    else         { const f = (t-0.5)/0.5;   r = lerp(0xff,0xff,f); g = lerp(0xcc,0x55,f); b2 = lerp(0x55,0x55,f); }
+    return `rgb(${r},${g},${b2})`;
+  };
+
+  const total = pts.length;
+  const wPct = 100 / total;
+  let slices = '';
+  for (let i = 0; i < total; i++) {
+    const p = pts[i];
+    const left = (i * wPct).toFixed(4);
+    const w = wPct.toFixed(4);
+    slices += `<span class="pvc-diffstrip-slice" data-tick="${p.tick}" data-measure="${p.measure}" data-ms="${Math.round(p.ms)}" data-bpm="${Math.round(p.bpm)}" style="left:${left}%;width:${w}%;background:${colorFor(p.ms)}"></span>`;
+  }
+  // Playhead marker — clamp into the covered tick span so it stays on-strip.
+  const lastTick = (cur.measures) * TICKS_PER_MEASURE;
+  const tkNow = (tick != null) ? tick : (renderer ? renderer.playTick : 0);
+  const phFrac = lastTick > 0 ? Math.max(0, Math.min(1, tkNow / lastTick)) : 0;
+  const marker = `<span class="pvc-diffstrip-ph" style="left:${(phFrac * 100).toFixed(3)}%"></span>`;
+  host.innerHTML = slices + marker;
+  host.dataset.minTick = String(cur.minTick);
+  host.dataset.lastTick = String(lastTick);
+
+  if (leg) {
+    if (cur.constant) {
+      leg.textContent = `${Math.round(lo)} ms`;
+      leg.style.color = '#7a8296';
+      leg.title = 'The reaction window is constant across the chart — the strip is flat.';
+    } else {
+      leg.textContent = `${Math.round(lo)}–${Math.round(hi)} ms`;
+      leg.style.color = '#9fb0c8';
+      leg.title = `Reading window ${Math.round(lo)} ms (hardest, red) to ${Math.round(hi)} ms (easiest, green) across the chart. Click a slice to seek.`;
+    }
+  }
+}
+
+// Toggle the reading-difficulty strip on/off.
+function toggleDiffStrip() {
+  diffStrip = !diffStrip;
+  prefs.diffStrip = diffStrip;   // mirror onto prefs so localStorage persists it
+  updateDiffStrip();
   savePrefsToLocalStorage();
 }
 
@@ -9962,6 +10063,33 @@ function _initProjectionControls() {
   }
   updateReactionRange();     // sync range label + button to current state
 
+  // Reading-difficulty strip toggle + click-to-seek (v0.0.69)
+  const stripBtn = document.getElementById('pvc-diffstrip-toggle');
+  if (stripBtn && !stripBtn._wired) {
+    stripBtn._wired = true;
+    stripBtn.addEventListener('click', toggleDiffStrip);
+  }
+  const stripHost = document.getElementById('pvc-diffstrip');
+  if (stripHost && !stripHost._wired) {
+    stripHost._wired = true;
+    stripHost.addEventListener('click', (e) => {
+      if (!diffStrip) return;
+      const slice = e.target.closest('.pvc-diffstrip-slice');
+      let tk = slice ? parseInt(slice.dataset.tick, 10) : NaN;
+      // Clicking a gap between slices (or the marker) falls back to the x-position.
+      if (!Number.isFinite(tk)) {
+        const rect = stripHost.getBoundingClientRect();
+        const last = parseInt(stripHost.dataset.lastTick, 10) || 0;
+        if (rect.width > 0 && last > 0) {
+          const frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+          tk = Math.round(frac * last);
+        }
+      }
+      if (Number.isFinite(tk) && typeof _seekTo === 'function') _seekTo(tk);
+    });
+  }
+  updateDiffStrip();         // sync strip + button to current state
+
   // Soflan runway markers toggle — faint on-lane labels at every tempo change.
   // Render-only; state persists on prefs so it composes with Save Config too.
   // The game-preview renderer reads the flag through window.prefs (the bridge it
@@ -10376,6 +10504,7 @@ function _initProjectionControls() {
     // Reaction-time "green number" readout (render-only)
     prefs.reactionReadout   = reactionReadout;
     prefs.reactionRange     = reactionRange;   // v0.0.68 — chart-wide range readout toggle
+    prefs.diffStrip         = diffStrip;       // v0.0.69 — reading-difficulty strip toggle
     // Green-Number Auto-Follow hold + held target ms (render-only)
     prefs.greenFollowLock   = greenFollowLock;
     prefs.greenFollowTarget = greenFollowTarget;
@@ -10464,6 +10593,7 @@ function _initProjectionControls() {
   // Restore reaction-time "green number" readout (render-only)
   if (prefs.reactionReadout != null) { reactionReadout = !!prefs.reactionReadout; updateReactionReadout(); }
   if (prefs.reactionRange != null)   { reactionRange   = !!prefs.reactionRange;   updateReactionRange(); }
+  if (prefs.diffStrip != null)       { diffStrip       = !!prefs.diffStrip;       updateDiffStrip(); }
   // Restore Green-Number Auto-Follow hold + held target (render-only). Reflect the
   // target into the →ms field so the UI shows what is being held, then snap.
   if (prefs.greenFollowTarget != null) {

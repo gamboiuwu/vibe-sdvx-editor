@@ -1228,6 +1228,38 @@ kbd {
 }
 .pvc-loop-btn.clear { color: #c88; }
 
+/* Reading-difficulty strip (v0.0.69) — per-measure green-number heatmap */
+.pvc-diffstrip-row { flex-basis: 100%; align-items: center; gap: 8px; }
+.pvc-diffstrip {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 120px;
+  height: 20px;
+  border: 1px solid #2a3550;
+  border-radius: 4px;
+  background: #0d1017;
+  overflow: hidden;
+  cursor: pointer;
+}
+.pvc-diffstrip-slice {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  min-width: 1px;
+}
+.pvc-diffstrip-slice:hover { filter: brightness(1.25); }
+.pvc-diffstrip-ph {
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  width: 2px;
+  margin-left: -1px;
+  background: #ffffff;
+  box-shadow: 0 0 4px #ffffffcc;
+  pointer-events: none;
+}
+.pvc-diffstrip-legend { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
 #game-seekbar:hover #game-seekbar-track { background: #252540; }
 #game-seekbar:hover #game-seekbar-thumb { box-shadow: 0 0 10px #1255e8cc; width: 14px; height: 14px; }
 #game-seekbar-track.scrubbing #game-seekbar-fill { transition: none; }
