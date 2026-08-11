@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.68';
+const APP_VERSION = '0.0.69';
 const CHANGELOG = [
+  {
+    version: '0.0.69',
+    title: 'Reading-Difficulty Strip — the whole green-number curve, not just its two endpoints',
+    entries: [
+      ['add', '<strong>See exactly WHERE a soflan chart reads hard, not just that it does.</strong> Reaction Range (v0.0.68) gives the fastest and slowest reading windows as two numbers; a new <strong>▾ Strip</strong> toggle in the preview Green# row draws the whole curve between them. A compact sparkline samples the reaction window across the <em>entire chart</em> — a shorter window (harder to read) draws a <strong>taller, redder</strong> bar, an easier one a short green bar — so the hard-to-read spikes stand out at a glance instead of hiding between the two range endpoints.'],
+      ['add', '<strong>Find and jump to the worst section.</strong> The hardest-reading bin is <strong>ringed in white</strong> and a live marker tracks the playhead, so you always know where you are on the difficulty curve. <strong>Click anywhere on the strip to seek there</strong> — straight to the spike you want to tune. In <strong>C-mode</strong> the constant scroll flattens the curve (a single reading window across the whole chart), matching the Range readout.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.reactionWindowProfile(visibleTicks, rate, lastTick, bins, bpmList)</code> that reuses <code>reactionWindowMs</code> and shares HiSpeed / practice rate / Sudden+·Hidden+·LIFT cover with the live number and the range — its endpoints agree with <code>reactionWindowExtremes</code> exactly. The chart is never mutated. Persists via <strong>Save Config</strong> / prefs; i18n in all 5 locales.'],
+    ],
+  },
   {
     version: '0.0.68',
     title: 'Reaction Range — the green number for the whole chart, not just the playhead',
@@ -2322,6 +2331,7 @@ function _updateScrollHud() {
 // soflan; in M-mode it tracks the local tempo live. Never touches chart data.
 let reactionReadout = true;
 let reactionRange   = false;   // v0.0.68 — chart-wide reaction-window min/max readout (off by default)
+let reactionProfile = false;   // v0.0.69 — chart-wide reading-difficulty sparkline strip (off by default)
 
 // ── Green-Number Auto-Follow (v0.0.60) ────────────────────────────────────────
 // A lock that HOLDS the green number. Once the user has dialled a target
@@ -2384,6 +2394,7 @@ function updateReactionReadout(tick) {
     gameView.reactionCovered = reactionReadout && covered;
   }
   updateReactionRange();   // v0.0.68 — keep the chart-wide range in lockstep with the live number
+  updateReactionProfile(); // v0.0.69 — redraw the reading-difficulty strip in lockstep too
 }
 
 // ── Reaction-window range readout (v0.0.68) ───────────────────────────────────
@@ -2436,6 +2447,92 @@ function toggleReactionRange() {
   reactionRange = !reactionRange;
   prefs.reactionRange = reactionRange;   // mirror onto prefs so localStorage persists it
   updateReactionRange();
+  savePrefsToLocalStorage();
+}
+
+// ── Reading-difficulty strip (v0.0.69) ────────────────────────────────────────
+// The range readout (v0.0.68) reports the fastest/slowest reading windows as two
+// numbers; this draws the WHOLE curve between them. A compact sparkline samples
+// the reaction window across the entire chart via the DOM-free
+// chart.reactionWindowProfile, sharing the SAME inputs as the live green number
+// and the range — visibleTicks (with any Sudden+/Hidden+/LIFT cover folded in),
+// the practice rate, and the C-mode constant-BPM override — so the strip, the
+// range and the number can never disagree. Bars are keyed on reading difficulty:
+// a SHORTER window (harder to read) draws TALLER and shifts green→amber→red; the
+// hardest bin is ringed. A faint marker tracks the playhead. Clicking the strip
+// seeks the editor to that tick. In C-mode the curve is flat (constant scroll).
+// Render-only — it never changes the chart or the live HiSpeed.
+function updateReactionProfile() {
+  const cvs = document.getElementById('pvc-reaction-profile');
+  const btn = document.getElementById('pvc-profile-toggle');
+  if (btn) btn.classList.toggle('active', reactionProfile);
+  if (!cvs) return;
+  cvs.style.display = reactionProfile ? 'inline-block' : 'none';
+  if (!reactionProfile || !chart || typeof chart.reactionWindowProfile !== 'function') {
+    cvs.dataset.samples = ''; return;
+  }
+  const ctx = cvs.getContext('2d');
+  if (!ctx) return;
+  const W = cvs.width, H = cvs.height;
+  ctx.clearRect(0, 0, W, H);
+
+  const vt = gameView ? gameView.VISIBLE_TICKS : (TICKS_PER_MEASURE * 4 / Math.max(0.1, chartSpeed));
+  const covFrac = (gameView && typeof chart.coverVisibleFraction === 'function')
+    ? chart.coverVisibleFraction(gameView.coverSudden, gameView.coverHidden, gameView.coverLift) : 1;
+  const cmode = (previewScrollMode === 'cmode' && typeof chart.dominantBpm === 'function');
+  const bpmList = cmode ? [{ y: 0, bpm: cModeRefBpmResolved() }] : null;
+  const lastTick = chart.totalTicks ? chart.totalTicks() : 0;
+  const bins = Math.max(8, Math.min(200, W)); // one bar per horizontal pixel-ish
+  const prof = chart.reactionWindowProfile(vt * covFrac, playbackRate, lastTick, bins, bpmList);
+  const s = prof.samples || [];
+  if (!s.length) { cvs.dataset.samples = ''; return; }
+
+  // Normalise difficulty: 0 = easiest (max ms), 1 = hardest (min ms). A flat curve
+  // (single tempo / C-mode) sits at a mid neutral height so it still reads as "a bar".
+  const range = Math.max(1e-6, prof.maxMs - prof.minMs);
+  const diffOf = (ms) => prof.constant ? 0.5 : Math.max(0, Math.min(1, (prof.maxMs - ms) / range));
+  // green (easy) → amber → red (hard)
+  const colorFor = (d) => {
+    const r = Math.round(90 + d * 165);
+    const g = Math.round(235 - d * 175);
+    const b = Math.round(120 - d * 70);
+    return `rgb(${r},${g},${b})`;
+  };
+  const bw = W / s.length;
+  for (let i = 0; i < s.length; i++) {
+    const d = diffOf(s[i].ms);
+    const h = Math.max(2, Math.round(d * (H - 3)) + 2);
+    ctx.fillStyle = colorFor(d);
+    ctx.fillRect(i * bw, H - h, Math.max(1, bw + 0.5), h);
+  }
+  // Ring the hardest (min-ms) bin so the worst section is unmistakable.
+  if (!prof.constant && lastTick > 0) {
+    const hx = Math.round(prof.minTick / lastTick * (W - 1));
+    ctx.strokeStyle = '#ffffff';
+    ctx.globalAlpha = 0.9;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(Math.max(0, hx - 1) + 0.5, 0.5, 2, H - 1);
+    ctx.globalAlpha = 1;
+  }
+  // Playhead marker.
+  if (lastTick > 0 && renderer) {
+    const px = Math.round(Math.max(0, Math.min(1, renderer.playTick / lastTick)) * (W - 1));
+    ctx.fillStyle = 'rgba(120,200,255,0.85)';
+    ctx.fillRect(px, 0, 1, H);
+  }
+  // Stash the geometry click-to-seek needs (no re-compute on click).
+  cvs.dataset.lastTick = String(lastTick);
+  cvs.dataset.minTick  = String(prof.minTick);
+  cvs.title = prof.constant
+    ? `Reading difficulty: constant ${Math.round(prof.minMs)} ms across the chart (single tempo / C-mode). Click to seek.`
+    : `Reading difficulty across the chart — taller/redder = harder to read. Hardest ${Math.round(prof.minMs)} ms (ringed) → easiest ${Math.round(prof.maxMs)} ms. Click to seek to that section.`;
+}
+
+// Toggle the reading-difficulty strip on/off.
+function toggleReactionProfile() {
+  reactionProfile = !reactionProfile;
+  prefs.reactionProfile = reactionProfile;   // mirror onto prefs so localStorage persists it
+  updateReactionProfile();
   savePrefsToLocalStorage();
 }
 
@@ -9962,6 +10059,27 @@ function _initProjectionControls() {
   }
   updateReactionRange();     // sync range label + button to current state
 
+  // Reading-difficulty strip toggle + click-to-seek (v0.0.69)
+  const profBtn = document.getElementById('pvc-profile-toggle');
+  if (profBtn && !profBtn._wired) {
+    profBtn._wired = true;
+    profBtn.addEventListener('click', toggleReactionProfile);
+  }
+  const profCvs = document.getElementById('pvc-reaction-profile');
+  if (profCvs && !profCvs._wired) {
+    profCvs._wired = true;
+    profCvs.addEventListener('click', (e) => {
+      if (!reactionProfile) return;
+      const lastTick = parseInt(profCvs.dataset.lastTick, 10);
+      if (!Number.isFinite(lastTick) || lastTick <= 0) return;
+      const rect = profCvs.getBoundingClientRect();
+      const frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / Math.max(1, rect.width)));
+      const tk = Math.round(frac * lastTick);
+      if (typeof _seekTo === 'function') _seekTo(tk);
+    });
+  }
+  updateReactionProfile();   // sync strip + button to current state
+
   // Soflan runway markers toggle — faint on-lane labels at every tempo change.
   // Render-only; state persists on prefs so it composes with Save Config too.
   // The game-preview renderer reads the flag through window.prefs (the bridge it
@@ -10376,6 +10494,7 @@ function _initProjectionControls() {
     // Reaction-time "green number" readout (render-only)
     prefs.reactionReadout   = reactionReadout;
     prefs.reactionRange     = reactionRange;   // v0.0.68 — chart-wide range readout toggle
+    prefs.reactionProfile   = reactionProfile; // v0.0.69 — reading-difficulty strip toggle
     // Green-Number Auto-Follow hold + held target ms (render-only)
     prefs.greenFollowLock   = greenFollowLock;
     prefs.greenFollowTarget = greenFollowTarget;
@@ -10464,6 +10583,7 @@ function _initProjectionControls() {
   // Restore reaction-time "green number" readout (render-only)
   if (prefs.reactionReadout != null) { reactionReadout = !!prefs.reactionReadout; updateReactionReadout(); }
   if (prefs.reactionRange != null)   { reactionRange   = !!prefs.reactionRange;   updateReactionRange(); }
+  if (prefs.reactionProfile != null) { reactionProfile = !!prefs.reactionProfile; updateReactionProfile(); }
   // Restore Green-Number Auto-Follow hold + held target (render-only). Reflect the
   // target into the →ms field so the UI shows what is being held, then snap.
   if (prefs.greenFollowTarget != null) {

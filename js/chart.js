@@ -953,6 +953,53 @@ export class ChartData {
     };
   }
 
+  // ── Reading-difficulty profile across the chart (v0.0.69) ──────────────────
+  // reactionWindowExtremes (v0.0.68) collapses the whole chart to two numbers —
+  // the fastest- and slowest-reading windows. This returns the FULL CURVE those
+  // two numbers bracket: the reaction window sampled at `bins` evenly spaced
+  // ticks from tick 0 to `lastTick`, each computed at the tempo in force at that
+  // tick, so a chartist sees exactly WHERE the hard-to-read spikes are, not just
+  // that they exist. Shares every input with the live green number and the range
+  // — `visibleTicks` (fold any active Sudden+/Hidden+/LIFT cover in before
+  // calling, exactly as the readout does) and `rate` — so the strip, the range
+  // and the number can never disagree. `bpmList` overrides this.bpmEvents (C-Mode
+  // passes a single constant reference BPM → a flat strip). Because the profile
+  // steps ticks (not BPM events) the tempo at each sample is the value in force at
+  // or before that tick, matching how the lane actually scrolls there. Returns
+  // `samples` ([{tick, bpm, ms}], ordered by tick), the global `minMs`/`maxMs` and
+  // the `minTick`/`maxTick` they occur at (min = hardest to read), and a
+  // `constant` flag when the curve is flat. Render-only; never mutates chart data.
+  reactionWindowProfile(visibleTicks, rate = 1, lastTick = 0, bins = 64, bpmList = null) {
+    const src = (Array.isArray(bpmList) && bpmList.length) ? bpmList
+      : ((Array.isArray(this.bpmEvents) && this.bpmEvents.length) ? this.bpmEvents : [{ y: 0, bpm: 120 }]);
+    const evs = src
+      .map(e => ({ y: Math.max(0, Number(e.y) || 0), bpm: Math.max(1, Number(e.bpm) || 120) }))
+      .sort((p, q) => p.y - q.y);
+    // Local tempo lookup — the BPM in force at or before tick `t` (step function).
+    const bpmAt = (t) => {
+      let b = evs[0].bpm;
+      for (const ev of evs) { if (ev.y <= t) b = ev.bpm; else break; }
+      return b;
+    };
+    const last  = Math.max(0, Math.floor(Number(lastTick) || 0));
+    const n     = Math.max(1, Math.floor(Number(bins) || 1));
+    const steps = (last > 0 && n > 1) ? n : 1;
+    const samples = [];
+    let minMs = Infinity, maxMs = -Infinity, minTick = 0, maxTick = 0;
+    for (let i = 0; i < steps; i++) {
+      const tick = (steps > 1) ? Math.round(i / (steps - 1) * last) : 0;
+      const bpm  = bpmAt(tick);
+      const ms   = this.reactionWindowMs(visibleTicks, bpm, rate);
+      samples.push({ tick, bpm, ms });
+      if (ms < minMs) { minMs = ms; minTick = tick; }
+      if (ms > maxMs) { maxMs = ms; maxTick = tick; }
+    }
+    if (!Number.isFinite(minMs)) {
+      minMs = maxMs = this.reactionWindowMs(visibleTicks, 120, rate);
+    }
+    return { samples, minMs, maxMs, minTick, maxTick, constant: (maxMs - minMs) < 0.5 };
+  }
+
   // ── Solve cover for a target green number (v0.0.63) ────────────────────────
   // Inverse of coverVisibleFraction for the green number. Given the FULL-LANE
   // reaction window (ms a note is on screen at the CURRENT HiSpeed, no cover) and
