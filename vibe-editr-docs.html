@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.68 · 2026</span>
+  <span class="version">v0.0.69 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.69</span>Reading-Difficulty Strip &mdash; the whole green-number curve at a glance</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>See exactly WHERE a soflan chart reads hard, not just that it does.</strong> Reaction Range (v0.0.68) reports the fastest and slowest reading windows as two numbers; a new <strong>&#9662; Strip</strong> toggle in the preview Green# row draws the whole curve between them. A compact sparkline samples the reaction window across the <em>entire chart</em> &mdash; a shorter window (harder to read) draws a <strong>taller, redder</strong> bar, an easier one a short green bar &mdash; so the hard-to-read spikes stand out at a glance instead of hiding between the two range endpoints.</li>
+    <li><span class="tag add">add</span><strong>Find and jump to the worst section.</strong> The hardest-reading bin is <strong>ringed in white</strong> and a live marker tracks the playhead. <strong>Click anywhere on the strip to seek there</strong> &mdash; straight to the spike you want to tune. In <strong>C-mode</strong> the constant scroll flattens the curve to a single reading window, matching the Range readout.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.reactionWindowProfile(visibleTicks, rate, lastTick, bins, bpmList)</code> that reuses <code>reactionWindowMs</code> and shares HiSpeed / practice rate / Sudden+&middot;Hidden+&middot;LIFT cover with the live number and the range &mdash; its endpoints agree with <code>reactionWindowExtremes</code> exactly. The chart is never mutated. Persists via <strong>Save Config</strong> / prefs; i18n in all 5 locales.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.68</span>Reaction Range &mdash; the green number for the whole chart</h4>
