@@ -953,6 +953,56 @@ export class ChartData {
     };
   }
 
+  // ── Per-measure reaction-window profile (v0.0.69) ──────────────────────────
+  // The reaction RANGE readout (v0.0.68) collapses the whole chart to two numbers
+  // (min / max ms). This turns that same per-segment idea into a full CURVE: it
+  // samples reactionWindowMs once per measure across the chart, so a chartist can
+  // see EXACTLY WHERE the hard-to-read (short-window) spikes sit — a green-number
+  // heatmap — not merely that a swing exists. It shares every input with the live
+  // green number and the range readout: `visibleTicks` already folds in HiSpeed
+  // and any Sudden+/Hidden+/LIFT cover (fold it in before calling, exactly as
+  // updateReactionReadout does), and `rate` is the practice rate — so all three
+  // agree by construction. `opts.lastTick` bounds the sweep (caller passes
+  // chartLastTick); `opts.measureTicks` defaults to TICKS_PER_MEASURE and matches
+  // tickToMeasure. Each sample carries its measure index, start tick, the local
+  // BPM (getBpmAt, so soflan shows through), the window ms, and a `norm` in
+  // 0..1 where 1 = the shortest window (hardest to read) and 0 = the longest
+  // (easiest) — the value the strip colours by. `opts.bpmList` (a one-BPM list,
+  // as C-mode passes) flattens the curve to the constant reference window. The
+  // sample count is hard-capped (opts.maxSamples, default 512) and the sweep
+  // strides so a very long chart can never produce an unbounded array. Returns
+  // { samples, minMs, maxMs, minIdx, count, stride, measureTicks }. reuses
+  // reactionWindowMs, DOM-free, unit-tested. Render-only; never mutates chart data.
+  reactionWindowProfile(visibleTicks, rate = 1, opts = {}) {
+    const measureTicks = Math.max(1, Number(opts.measureTicks) || TICKS_PER_MEASURE);
+    const lastTick     = Math.max(0, Number(opts.lastTick) || 0);
+    const MAX_SAMPLES  = Math.max(1, Math.floor(Number(opts.maxSamples) || 512));
+    const constBpm     = (Array.isArray(opts.bpmList) && opts.bpmList.length)
+      ? Math.max(1, Number(opts.bpmList[0].bpm) || 120) : null;
+    const measureCount = Math.max(1, Math.floor(lastTick / measureTicks) + 1);
+    // Stride so the sample array never exceeds the cap on a very long chart.
+    const stride  = Math.max(1, Math.ceil(measureCount / MAX_SAMPLES));
+    const samples = [];
+    let minMs = Infinity, maxMs = -Infinity, minIdx = 0;
+    for (let m = 0; m < measureCount; m += stride) {
+      const tick = m * measureTicks;
+      const bpm  = constBpm != null ? constBpm : this.getBpmAt(tick);
+      const ms   = this.reactionWindowMs(visibleTicks, bpm, rate);
+      if (ms < minMs) { minMs = ms; minIdx = samples.length; }
+      if (ms > maxMs) { maxMs = ms; }
+      samples.push({ measure: m, tick, bpm, ms, norm: 0 });
+    }
+    if (!samples.length || !Number.isFinite(minMs)) {
+      const ms = this.reactionWindowMs(visibleTicks, constBpm ?? 120, rate);
+      samples.length = 0;
+      samples.push({ measure: 0, tick: 0, bpm: constBpm ?? 120, ms, norm: 0 });
+      minMs = maxMs = ms; minIdx = 0;
+    }
+    const span = maxMs - minMs;
+    for (const s of samples) s.norm = span > 1e-6 ? (maxMs - s.ms) / span : 0;
+    return { samples, minMs, maxMs, minIdx, count: samples.length, stride, measureTicks };
+  }
+
   // ── Solve cover for a target green number (v0.0.63) ────────────────────────
   // Inverse of coverVisibleFraction for the green number. Given the FULL-LANE
   // reaction window (ms a note is on screen at the CURRENT HiSpeed, no cover) and
