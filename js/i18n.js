@@ -135,6 +135,7 @@ export const I18N = {
     'preview.reaction':   'Green#',
     'preview.reactionRange': 'Range',
     'preview.readingStrip': 'Strip',
+    'preview.stripTip': 'M{m} · {bpm} BPM · {ms} ms',
     'preview.greenTarget':   '→ms',
     'preview.greenTargetPh': 'set',
     'preview.crefBpm':    'auto',
@@ -430,6 +431,7 @@ export const I18N = {
     'preview.reaction':   'Green#',
     'preview.reactionRange': 'Rango',
     'preview.readingStrip': 'Tira',
+    'preview.stripTip': 'C{m} · {bpm} BPM · {ms} ms',
     'preview.greenTarget':   '→ms',
     'preview.greenTargetPh': 'set',
     'preview.crefBpm':    'auto',
@@ -616,7 +618,7 @@ export const I18N = {
 
     'preview.projection': 'Projection', 'preview.perspective': 'Perspective',
     'preview.hispeed': 'Vitesse', 'preview.btWidth': 'Largeur BT',
-    'preview.rate': 'Cadence', 'preview.judgeY': 'Ligne Y', 'preview.loop': 'Boucle', 'preview.metronome': 'Métronome', 'preview.scroll': 'Défilement', 'preview.mods': 'Mods', 'preview.reaction': 'Green#', 'preview.reactionRange': 'Plage', 'preview.readingStrip': 'Bande', 'preview.greenTarget': '→ms', 'preview.greenTargetPh': 'régl', 'preview.crefBpm': 'auto', 'preview.soflan': 'Soflan', 'preview.greenFollow': 'Hold', 'preview.reactionCover': 'Fenêtre de réaction ajustée au cache', 'preview.sudden': 'Sudden+', 'preview.hidden': 'Hidden+', 'preview.lift': 'LIFT', 'preview.coverTarget': 'Cache →ms', 'preview.coverSolve': 'Résoudre', 'preview.coverUnreachable': 'Le cache seul atteint {ms} ms — {hint}', 'preview.greenUnreachable': 'La vitesse seule atteint {ms} ms — {hint}', 'preview.fitToRange': 'Ajuster', 'preview.fitToRangeTitle': 'Définit la cible à {ms} ms — la fenêtre de lecture atteignable la plus proche — et recalcule', 'preview.coverGuard': '{pct}% de piste visible', 'preview.coverGuardTitle': 'Sudden+/Hidden+/LIFT couvrent ensemble {total}% de la piste — seulement {pct}% est visible. La bande de lecture est très réduite.', 'preview.multiChart': 'Multi-graphique', 'preview.more': 'Plus',
+    'preview.rate': 'Cadence', 'preview.judgeY': 'Ligne Y', 'preview.loop': 'Boucle', 'preview.metronome': 'Métronome', 'preview.scroll': 'Défilement', 'preview.mods': 'Mods', 'preview.reaction': 'Green#', 'preview.reactionRange': 'Plage', 'preview.readingStrip': 'Bande', 'preview.stripTip': 'M{m} · {bpm} BPM · {ms} ms', 'preview.greenTarget': '→ms', 'preview.greenTargetPh': 'régl', 'preview.crefBpm': 'auto', 'preview.soflan': 'Soflan', 'preview.greenFollow': 'Hold', 'preview.reactionCover': 'Fenêtre de réaction ajustée au cache', 'preview.sudden': 'Sudden+', 'preview.hidden': 'Hidden+', 'preview.lift': 'LIFT', 'preview.coverTarget': 'Cache →ms', 'preview.coverSolve': 'Résoudre', 'preview.coverUnreachable': 'Le cache seul atteint {ms} ms — {hint}', 'preview.greenUnreachable': 'La vitesse seule atteint {ms} ms — {hint}', 'preview.fitToRange': 'Ajuster', 'preview.fitToRangeTitle': 'Définit la cible à {ms} ms — la fenêtre de lecture atteignable la plus proche — et recalcule', 'preview.coverGuard': '{pct}% de piste visible', 'preview.coverGuardTitle': 'Sudden+/Hidden+/LIFT couvrent ensemble {total}% de la piste — seulement {pct}% est visible. La bande de lecture est très réduite.', 'preview.multiChart': 'Multi-graphique', 'preview.more': 'Plus',
     'preview.ortho': 'Ortho', 'preview.sdvx': 'SDVX', 'preview.hybrid': 'Hybride',
 
     'tool.desc.bpm-sync':       'Calcule les temps en ms et en ticks pour tout BPM et subdivision. Utile pour vérifier la synchro audio.',
@@ -779,7 +781,7 @@ export const I18N = {
 
     'preview.projection': '投影', 'preview.perspective': '遠近',
     'preview.hispeed': 'ハイスピード', 'preview.btWidth': 'BT 幅',
-    'preview.rate': '再生速度', 'preview.judgeY': '判定Y', 'preview.loop': 'ループ', 'preview.metronome': 'メトロノーム', 'preview.scroll': 'スクロール', 'preview.mods': 'モッド', 'preview.reaction': '緑数字', 'preview.reactionRange': '範囲', 'preview.readingStrip': '帯', 'preview.greenTarget': '→ms', 'preview.greenTargetPh': '設定', 'preview.crefBpm': '自動', 'preview.soflan': 'ソフラン', 'preview.greenFollow': '固定', 'preview.reactionCover': 'カバー適用時の反応ウィンドウ', 'preview.sudden': 'サドン+', 'preview.hidden': 'ヒドゥン+', 'preview.lift': 'リフト', 'preview.coverTarget': 'カバー →ms', 'preview.coverSolve': '計算', 'preview.coverUnreachable': 'カバーのみでは {ms} ms まで — {hint}', 'preview.greenUnreachable': 'ハイスピードのみでは {ms} ms まで — {hint}', 'preview.fitToRange': '合わせる', 'preview.fitToRangeTitle': 'ターゲットを到達可能な最も近い読みウィンドウ {ms} ms に設定して再計算', 'preview.coverGuard': 'レーン表示 {pct}%', 'preview.coverGuardTitle': 'サドン+/ヒドゥン+/リフトの合計でレーンの{total}%を覆い、見えるのは{pct}%だけです。読める帯が非常に狭くなっています。', 'preview.multiChart': 'マルチ譜面', 'preview.more': '詳細',
+    'preview.rate': '再生速度', 'preview.judgeY': '判定Y', 'preview.loop': 'ループ', 'preview.metronome': 'メトロノーム', 'preview.scroll': 'スクロール', 'preview.mods': 'モッド', 'preview.reaction': '緑数字', 'preview.reactionRange': '範囲', 'preview.readingStrip': '帯', 'preview.stripTip': '{m}小節 · {bpm} BPM · {ms} ms', 'preview.greenTarget': '→ms', 'preview.greenTargetPh': '設定', 'preview.crefBpm': '自動', 'preview.soflan': 'ソフラン', 'preview.greenFollow': '固定', 'preview.reactionCover': 'カバー適用時の反応ウィンドウ', 'preview.sudden': 'サドン+', 'preview.hidden': 'ヒドゥン+', 'preview.lift': 'リフト', 'preview.coverTarget': 'カバー →ms', 'preview.coverSolve': '計算', 'preview.coverUnreachable': 'カバーのみでは {ms} ms まで — {hint}', 'preview.greenUnreachable': 'ハイスピードのみでは {ms} ms まで — {hint}', 'preview.fitToRange': '合わせる', 'preview.fitToRangeTitle': 'ターゲットを到達可能な最も近い読みウィンドウ {ms} ms に設定して再計算', 'preview.coverGuard': 'レーン表示 {pct}%', 'preview.coverGuardTitle': 'サドン+/ヒドゥン+/リフトの合計でレーンの{total}%を覆い、見えるのは{pct}%だけです。読める帯が非常に狭くなっています。', 'preview.multiChart': 'マルチ譜面', 'preview.more': '詳細',
     'preview.ortho': '正射', 'preview.sdvx': 'SDVX', 'preview.hybrid': 'ハイブリッド',
 
     'tool.desc.bpm-sync':       '任意のBPMと細分でのノートタイミング（ms・tick）を計算します。オーディオ同期の確認や配置計画に便利。',
@@ -942,7 +944,7 @@ export const I18N = {
 
     'preview.projection': '投影', 'preview.perspective': '透视',
     'preview.hispeed': '速度', 'preview.btWidth': 'BT 宽度',
-    'preview.rate': '倍速', 'preview.judgeY': '判定线Y', 'preview.loop': '循环', 'preview.metronome': '节拍器', 'preview.scroll': '滚动', 'preview.mods': '修改器', 'preview.reaction': '绿数字', 'preview.reactionRange': '范围', 'preview.readingStrip': '难度条', 'preview.greenTarget': '→ms', 'preview.greenTargetPh': '设置', 'preview.crefBpm': '自动', 'preview.soflan': '变速', 'preview.greenFollow': '锁定', 'preview.reactionCover': '遮罩后的反应窗口', 'preview.sudden': '顶部遮罩', 'preview.hidden': '底部遮罩', 'preview.lift': '判定线上移', 'preview.coverTarget': '遮罩 →ms', 'preview.coverSolve': '求解', 'preview.coverUnreachable': '仅靠遮罩只能达到 {ms} ms — {hint}', 'preview.greenUnreachable': '仅靠速度只能达到 {ms} ms — {hint}', 'preview.fitToRange': '适配', 'preview.fitToRangeTitle': '将目标设为最接近的可达阅读窗口 {ms} ms 并重新求解', 'preview.coverGuard': '轨道可见 {pct}%', 'preview.coverGuardTitle': '顶部遮罩/底部遮罩/判定线上移合计遮住轨道 {total}%，仅剩 {pct}% 可见。可读区域非常小。', 'preview.multiChart': '多谱面', 'preview.more': '更多',
+    'preview.rate': '倍速', 'preview.judgeY': '判定线Y', 'preview.loop': '循环', 'preview.metronome': '节拍器', 'preview.scroll': '滚动', 'preview.mods': '修改器', 'preview.reaction': '绿数字', 'preview.reactionRange': '范围', 'preview.readingStrip': '难度条', 'preview.stripTip': '{m}小节 · {bpm} BPM · {ms} ms', 'preview.greenTarget': '→ms', 'preview.greenTargetPh': '设置', 'preview.crefBpm': '自动', 'preview.soflan': '变速', 'preview.greenFollow': '锁定', 'preview.reactionCover': '遮罩后的反应窗口', 'preview.sudden': '顶部遮罩', 'preview.hidden': '底部遮罩', 'preview.lift': '判定线上移', 'preview.coverTarget': '遮罩 →ms', 'preview.coverSolve': '求解', 'preview.coverUnreachable': '仅靠遮罩只能达到 {ms} ms — {hint}', 'preview.greenUnreachable': '仅靠速度只能达到 {ms} ms — {hint}', 'preview.fitToRange': '适配', 'preview.fitToRangeTitle': '将目标设为最接近的可达阅读窗口 {ms} ms 并重新求解', 'preview.coverGuard': '轨道可见 {pct}%', 'preview.coverGuardTitle': '顶部遮罩/底部遮罩/判定线上移合计遮住轨道 {total}%，仅剩 {pct}% 可见。可读区域非常小。', 'preview.multiChart': '多谱面', 'preview.more': '更多',
     'preview.ortho': '正交', 'preview.sdvx': 'SDVX', 'preview.hybrid': '混合',
 
     'tool.desc.bpm-sync':       '计算任意 BPM 和细分下的音符时值（ms 和 tick）。用于验证音频同步或规划精确放置。',

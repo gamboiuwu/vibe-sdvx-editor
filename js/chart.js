@@ -1003,6 +1003,21 @@ export class ChartData {
     return { samples, minMs, maxMs, minIdx, count: samples.length, stride, measureTicks };
   }
 
+  // ── Reading-strip pointer hit-test (v0.0.70) ───────────────────────────────
+  // Maps a 0..1 horizontal fraction across a reactionWindowProfile() result back
+  // to the sample under that fraction, so both the strip's click-to-seek AND its
+  // hover readout resolve the same column from the same math and can never point
+  // at different measures. Given the profile (or just its sample count) and a
+  // fraction, returns the clamped sample index in [0, count-1], or -1 when there
+  // are no samples. Pure, DOM-free, unit-tested. Never touches chart data.
+  profileIndexAtFraction(profile, frac) {
+    const n = (profile && Array.isArray(profile.samples)) ? profile.samples.length
+            : (Number.isFinite(profile) ? Math.floor(profile) : 0);
+    if (!Number.isFinite(n) || n <= 0) return -1;
+    const f = Math.max(0, Math.min(0.999999, Number(frac) || 0));
+    return Math.min(n - 1, Math.max(0, Math.floor(f * n)));
+  }
+
   // ── Solve cover for a target green number (v0.0.63) ────────────────────────
   // Inverse of coverVisibleFraction for the green number. Given the FULL-LANE
   // reaction window (ms a note is on screen at the CURRENT HiSpeed, no cover) and
