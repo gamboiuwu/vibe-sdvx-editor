@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.69';
+const APP_VERSION = '0.0.70';
 const CHANGELOG = [
+  {
+    version: '0.0.70',
+    title: 'Reading-Strip Hover Readout — read any measure to the millisecond without seeking',
+    entries: [
+      ['add', '<strong>Hover the Reading-Difficulty Strip to read a column exactly.</strong> The strip (v0.0.69) shows the reaction window for every measure as a green-to-red curve, and clicking a column seeks there — but to see a column\'s <em>value</em> you had to jump the playhead to it. Now moving the cursor over the strip pops a small readout — <code>M42 · 240 BPM · 4000 ms</code> — for the measure under the pointer: its measure number, the tempo playing there, and the exact reaction window. Read the whole soflan curve to the millisecond without moving the playhead.'],
+      ['add', '<strong>Same column as the click.</strong> The hover and the click-to-seek resolve the pointer through one shared hit-test, so the measure you read is exactly the one a click would jump to — they can never point at different columns. The readout follows the cursor, clamps to the window edge so it never runs off-screen, and hides itself when you leave the strip or turn it off.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.profileIndexAtFraction(profile, frac)</code> that maps a 0–1 position across a <code>reactionWindowProfile()</code> result to its sample index, shared by both the hover and the seek. The chart is never mutated. i18n in all 5 locales.'],
+    ],
+  },
   {
     version: '0.0.69',
     title: 'Reading-Difficulty Strip — a per-measure green-number heatmap',
@@ -2470,6 +2479,8 @@ function updateReadingStrip() {
   if (!cv) return;
   if (!readingStrip || !chart || typeof chart.reactionWindowProfile !== 'function') {
     cv.style.display = 'none';
+    const tip = document.getElementById('pvc-strip-tip');   // v0.0.70 — hide the hover readout with the strip
+    if (tip) tip.style.display = 'none';
     _stripSamples = null;
     return;
   }
@@ -10055,15 +10066,49 @@ function _initProjectionControls() {
   const stripCv = document.getElementById('pvc-reading-strip');
   if (stripCv && !stripCv._wired) {
     stripCv._wired = true;
-    stripCv.addEventListener('click', (e) => {
-      if (!readingStrip || !_stripSamples || !_stripSamples.samples.length) return;
+    // Shared hit-test: map an x-pixel to a sample via the DOM-free source of truth
+    // so click-to-seek and the hover readout can never resolve different columns.
+    const stripSampleAt = (clientX) => {
+      if (!readingStrip || !_stripSamples || !_stripSamples.samples.length) return null;
+      if (!chart || typeof chart.profileIndexAtFraction !== 'function') return null;
       const rect = stripCv.getBoundingClientRect();
-      const frac = Math.max(0, Math.min(0.9999, (e.clientX - rect.left) / rect.width));
-      const idx  = Math.min(_stripSamples.samples.length - 1,
-                            Math.floor(frac * _stripSamples.samples.length));
-      const tk = _stripSamples.samples[idx].tick;
-      if (Number.isFinite(tk) && typeof _seekTo === 'function') _seekTo(tk);
+      if (rect.width <= 0) return null;
+      const frac = (clientX - rect.left) / rect.width;
+      const idx  = chart.profileIndexAtFraction(_stripSamples, frac);
+      return idx < 0 ? null : _stripSamples.samples[idx];
+    };
+    stripCv.addEventListener('click', (e) => {
+      const s = stripSampleAt(e.clientX);
+      if (s && Number.isFinite(s.tick) && typeof _seekTo === 'function') _seekTo(s.tick);
     });
+    // v0.0.70 — hover readout: measure, BPM and exact reaction window (ms) for the
+    // column under the cursor, so the curve reads to the millisecond without
+    // seeking. Render-only; uses the cached profile the last draw stored.
+    stripCv.addEventListener('mousemove', (e) => {
+      const tip = document.getElementById('pvc-strip-tip');
+      if (!tip) return;
+      const s = stripSampleAt(e.clientX);
+      if (!s) { tip.style.display = 'none'; return; }
+      const measNo = Math.round((s.tick / (_stripSamples.measureTicks || TICKS_PER_MEASURE))) + 1;
+      const tpl = (typeof t === 'function') ? t('preview.stripTip') : 'M{m} · {bpm} BPM · {ms} ms';
+      tip.textContent = tpl
+        .replace('{m}',   measNo)
+        .replace('{bpm}', Math.round(s.bpm))
+        .replace('{ms}',  Math.round(s.ms));
+      // Position just above the cursor, clamped to the viewport width.
+      tip.style.display = 'block';
+      const tw = tip.offsetWidth || 120;
+      let px = e.clientX - tw / 2;
+      px = Math.max(4, Math.min(window.innerWidth - tw - 4, px));
+      const rect = stripCv.getBoundingClientRect();
+      tip.style.left = px + 'px';
+      tip.style.top  = Math.max(4, rect.top - tip.offsetHeight - 6) + 'px';
+    });
+    const hideStripTip = () => {
+      const tip = document.getElementById('pvc-strip-tip');
+      if (tip) tip.style.display = 'none';
+    };
+    stripCv.addEventListener('mouseleave', hideStripTip);
   }
   updateReadingStrip();      // sync strip + button to current state
 
