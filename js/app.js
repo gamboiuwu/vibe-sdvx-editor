@@ -60,8 +60,26 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.69';
+const APP_VERSION = '0.0.71';
 const CHANGELOG = [
+  {
+    version: '0.0.71',
+    title: 'Fit HiSpeed to Chart — one HiSpeed that reads evenly across a soflan chart',
+    entries: [
+      ['add', '<strong>Pick a HiSpeed for the WHOLE chart, not just the tempo under the playhead.</strong> The <code>→ms</code> solver (v0.0.58) sets HiSpeed so the reaction window hits your target at the <em>playhead</em> tempo — but on a soflan chart that leaves every other section reading too fast or too slow (solve the 240-BPM peak to 550 ms and the 120-BPM verse balloons to 1100 ms). The new <strong>&#9878; Chart</strong> button takes the same <code>→ms</code> target and solves the single HiSpeed whose reaction window across <em>every tempo in the chart</em> best straddles it, so the fastest- and slowest-reading sections land equidistant from your target instead of one being perfect and the rest miles off.'],
+      ['add', '<strong>Shows the range it lands on.</strong> After the fit, a readout reports the applied HiSpeed and the chart-wide window it yields — <code>3.2× · &#8660; 560–1120 ms</code> — amber when the swing is still wide (worst-case &ge; 1.5×). Click it to seek to the hardest-reading section. Honours practice rate, C-mode (the window is constant, so the fit matches the plain <code>→ms</code> solve) and any active Sudden+/Hidden+/LIFT cover, and clamps cleanly to the HiSpeed slider range.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.hispeedForChartRange(target, visibleTicks, rate, bpmList, loHs, hiHs)</code> that reuses <code>reactionWindowExtremes</code> for the chart-wide range and returns the geometric-mean-centred (minimax-ratio-optimal) HiSpeed — an exact round-trip with <code>hispeedForReactionMs</code> on a constant-tempo chart. The chart is never mutated. i18n in all 5 locales.'],
+    ],
+  },
+  {
+    version: '0.0.70',
+    title: 'Reading-Strip Hover Readout — read any measure to the millisecond without seeking',
+    entries: [
+      ['add', '<strong>Hover the Reading-Difficulty Strip to read a column exactly.</strong> The strip (v0.0.69) shows the reaction window for every measure as a green-to-red curve, and clicking a column seeks there — but to see a column\'s <em>value</em> you had to jump the playhead to it. Now moving the cursor over the strip pops a small readout — <code>M42 · 240 BPM · 4000 ms</code> — for the measure under the pointer: its measure number, the tempo playing there, and the exact reaction window. Read the whole soflan curve to the millisecond without moving the playhead.'],
+      ['add', '<strong>Same column as the click.</strong> The hover and the click-to-seek resolve the pointer through one shared hit-test, so the measure you read is exactly the one a click would jump to — they can never point at different columns. The readout follows the cursor, clamps to the window edge so it never runs off-screen, and hides itself when you leave the strip or turn it off.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.profileIndexAtFraction(profile, frac)</code> that maps a 0–1 position across a <code>reactionWindowProfile()</code> result to its sample index, shared by both the hover and the seek. The chart is never mutated. i18n in all 5 locales.'],
+    ],
+  },
   {
     version: '0.0.69',
     title: 'Reading-Difficulty Strip — a per-measure green-number heatmap',
@@ -2470,6 +2488,8 @@ function updateReadingStrip() {
   if (!cv) return;
   if (!readingStrip || !chart || typeof chart.reactionWindowProfile !== 'function') {
     cv.style.display = 'none';
+    const tip = document.getElementById('pvc-strip-tip');   // v0.0.70 — hide the hover readout with the strip
+    if (tip) tip.style.display = 'none';
     _stripSamples = null;
     return;
   }
@@ -2576,6 +2596,66 @@ function applyGreenTarget(targetMs, tick) {
   if (topLbl) topLbl.textContent = hs.toFixed(2) + '×';
   if (gameView) gameView.hispeed = hs;
   setGreenTargetCue(report);   // v0.0.65 — flag a clamp against the HiSpeed range
+  updateReactionReadout();
+  if (gameView && !playing) gameView.draw();
+}
+
+// ── Fit HiSpeed to the whole chart (v0.0.71) ──────────────────────────────────
+// Render-only. The →ms solver (applyGreenTarget) fits HiSpeed to the PLAYHEAD
+// tempo only; on a soflan chart that leaves every other section reading too fast
+// or too slow. This takes the SAME target green number and solves the single
+// HiSpeed whose reaction window across the ENTIRE chart best straddles it — the
+// hardest- and easiest-reading sections land equidistant (in ratio) from the
+// target — via the DOM-free chart.hispeedForChartRange. It applies the solved
+// HiSpeed exactly the way applyGreenTarget does (slider + labels + top control +
+// gameView) and paints a compact readout of the chart-wide range the fit yields.
+// Clicking that readout seeks to the hardest-reading section. Never touches data.
+function applyChartFit(targetMs) {
+  const out = document.getElementById('pvc-chartfit-out');
+  if (!chart || typeof chart.hispeedForChartRange !== 'function') return;
+  const t = Number(targetMs);
+  if (!Number.isFinite(t) || t <= 0) {
+    if (out) { out.textContent = ''; out.title = ''; out.dataset.seekTick = ''; }
+    return;
+  }
+  const hsSl = document.getElementById('pvc-hispeed');
+  const lo = hsSl ? (+hsSl.min || 0.2) : 0.2;
+  const hi = hsSl ? (+hsSl.max || 10)  : 10;
+  // Fold any active Sudden+/Hidden+/LIFT cover into the visible runway, exactly as
+  // applyGreenTarget and the range readout do, so the fit matches what's read.
+  const covFrac = (gameView && typeof chart.coverVisibleFraction === 'function')
+    ? Math.max(0.05, chart.coverVisibleFraction(gameView.coverSudden, gameView.coverHidden, gameView.coverLift)) : 1;
+  const vt1 = (TICKS_PER_MEASURE * BEATS_PER_MEASURE) * covFrac;
+  // C-mode holds a constant window across soflan — pass a one-BPM list so the fit
+  // collapses to the plain →ms solve (mirrors updateReactionRange).
+  const cmode = (previewScrollMode === 'cmode' && typeof chart.dominantBpm === 'function');
+  const bpmList = cmode ? [{ y: 0, bpm: cModeRefBpmResolved() }] : null;
+  const r = chart.hispeedForChartRange(t, vt1, playbackRate, bpmList, lo, hi);
+  const hs = r.hs;
+  // Mirror to the HiSpeed slider + labels + top-menu control (same path applyGreenTarget uses).
+  if (hsSl) hsSl.value = hs;
+  const hsLbl = document.getElementById('pvc-hispeed-label');
+  if (hsLbl) hsLbl.textContent = hs.toFixed(1) + '×';
+  const topSl  = document.getElementById('chart-speed');
+  const topLbl = document.getElementById('chart-speed-label');
+  if (topSl)  topSl.value = hs;
+  if (topLbl) topLbl.textContent = hs.toFixed(2) + '×';
+  if (gameView) gameView.hispeed = hs;
+  // Paint the result: applied HiSpeed + the chart-wide range it yields.
+  if (out) {
+    const rlo = Math.round(r.rangeLoMs), rhi = Math.round(r.rangeHiMs);
+    out.dataset.seekTick = String(r.minTick);
+    if (r.constant) {
+      out.textContent = `${hs.toFixed(1)}× · ${rlo} ms`;
+      out.style.color = '#7a8296';   // dimmed — no soflan range to straddle
+      out.title = `Constant tempo — the fitted HiSpeed ${hs.toFixed(1)}× yields a ${rlo} ms reaction window across the whole chart.`;
+    } else {
+      out.textContent = `${hs.toFixed(1)}× · ⇔ ${rlo}–${rhi} ms`;
+      out.style.color = (r.dev >= 1.5) ? '#ffcc55' : '#66ff99';   // amber when the swing stays wide
+      out.title = `Fitted HiSpeed ${hs.toFixed(1)}× — reaction window spans ${rlo} ms at the fastest section (${Math.round(r.minBpm)} BPM) to ${rhi} ms at the slowest (${Math.round(r.maxBpm)} BPM), centred on your ${Math.round(t)} ms target (worst-case ${r.dev.toFixed(2)}× off). ${r.clamped ? 'HiSpeed hit the slider limit, so this is the closest achievable fit. ' : ''}Click to seek to the hardest-reading section.`;
+    }
+  }
+  clearGreenTargetCue();   // this fit governs HiSpeed now — clear the →ms clamp cue, as a manual slider move would
   updateReactionReadout();
   if (gameView && !playing) gameView.draw();
 }
@@ -10055,15 +10135,49 @@ function _initProjectionControls() {
   const stripCv = document.getElementById('pvc-reading-strip');
   if (stripCv && !stripCv._wired) {
     stripCv._wired = true;
-    stripCv.addEventListener('click', (e) => {
-      if (!readingStrip || !_stripSamples || !_stripSamples.samples.length) return;
+    // Shared hit-test: map an x-pixel to a sample via the DOM-free source of truth
+    // so click-to-seek and the hover readout can never resolve different columns.
+    const stripSampleAt = (clientX) => {
+      if (!readingStrip || !_stripSamples || !_stripSamples.samples.length) return null;
+      if (!chart || typeof chart.profileIndexAtFraction !== 'function') return null;
       const rect = stripCv.getBoundingClientRect();
-      const frac = Math.max(0, Math.min(0.9999, (e.clientX - rect.left) / rect.width));
-      const idx  = Math.min(_stripSamples.samples.length - 1,
-                            Math.floor(frac * _stripSamples.samples.length));
-      const tk = _stripSamples.samples[idx].tick;
-      if (Number.isFinite(tk) && typeof _seekTo === 'function') _seekTo(tk);
+      if (rect.width <= 0) return null;
+      const frac = (clientX - rect.left) / rect.width;
+      const idx  = chart.profileIndexAtFraction(_stripSamples, frac);
+      return idx < 0 ? null : _stripSamples.samples[idx];
+    };
+    stripCv.addEventListener('click', (e) => {
+      const s = stripSampleAt(e.clientX);
+      if (s && Number.isFinite(s.tick) && typeof _seekTo === 'function') _seekTo(s.tick);
     });
+    // v0.0.70 — hover readout: measure, BPM and exact reaction window (ms) for the
+    // column under the cursor, so the curve reads to the millisecond without
+    // seeking. Render-only; uses the cached profile the last draw stored.
+    stripCv.addEventListener('mousemove', (e) => {
+      const tip = document.getElementById('pvc-strip-tip');
+      if (!tip) return;
+      const s = stripSampleAt(e.clientX);
+      if (!s) { tip.style.display = 'none'; return; }
+      const measNo = Math.round((s.tick / (_stripSamples.measureTicks || TICKS_PER_MEASURE))) + 1;
+      const tpl = (typeof t === 'function') ? t('preview.stripTip') : 'M{m} · {bpm} BPM · {ms} ms';
+      tip.textContent = tpl
+        .replace('{m}',   measNo)
+        .replace('{bpm}', Math.round(s.bpm))
+        .replace('{ms}',  Math.round(s.ms));
+      // Position just above the cursor, clamped to the viewport width.
+      tip.style.display = 'block';
+      const tw = tip.offsetWidth || 120;
+      let px = e.clientX - tw / 2;
+      px = Math.max(4, Math.min(window.innerWidth - tw - 4, px));
+      const rect = stripCv.getBoundingClientRect();
+      tip.style.left = px + 'px';
+      tip.style.top  = Math.max(4, rect.top - tip.offsetHeight - 6) + 'px';
+    });
+    const hideStripTip = () => {
+      const tip = document.getElementById('pvc-strip-tip');
+      if (tip) tip.style.display = 'none';
+    };
+    stripCv.addEventListener('mouseleave', hideStripTip);
   }
   updateReadingStrip();      // sync strip + button to current state
 
@@ -10125,6 +10239,30 @@ function _initProjectionControls() {
       greenFollowTarget = fitMs;
       prefs.greenFollowTarget = fitMs;
       savePrefsToLocalStorage();
+    });
+  }
+
+  // Fit HiSpeed to the whole chart (v0.0.71): take the →ms target and solve the
+  // single HiSpeed whose reaction window across every tempo best straddles it, so
+  // a soflan chart reads evenly instead of only at the playhead tempo. Reads the
+  // target already typed in the →ms field. Render-only.
+  const chartFitBtn = document.getElementById('pvc-chartfit-btn');
+  if (chartFitBtn && !chartFitBtn._wired) {
+    chartFitBtn._wired = true;
+    chartFitBtn.addEventListener('click', () => {
+      const v = greenTgt ? greenTgt.value.trim() : '';
+      const t = +v;
+      if (!Number.isFinite(t) || t <= 0) return;   // needs a target in the →ms field
+      applyChartFit(t);
+    });
+  }
+  // Click the chart-fit readout to seek to the hardest-reading section (mirrors the Range readout).
+  const chartFitOut = document.getElementById('pvc-chartfit-out');
+  if (chartFitOut && !chartFitOut._wired) {
+    chartFitOut._wired = true;
+    chartFitOut.addEventListener('click', () => {
+      const tk = parseInt(chartFitOut.dataset.seekTick, 10);
+      if (Number.isFinite(tk) && typeof _seekTo === 'function') _seekTo(tk);
     });
   }
 

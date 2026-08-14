@@ -863,6 +863,58 @@ export class ChartData {
     return { rawHs, hs, achievedMs, status, reachable: status === 'ok' };
   }
 
+  // ── Chart-wide HiSpeed fit for a target reaction window (v0.0.71) ──────────
+  // The →ms solver (hispeedForReactionMs / hispeedForReactionReport) hits a target
+  // green number at ONE tempo — the playhead's. On a soflan chart that leaves every
+  // OTHER tempo reading too fast or too slow: solve the 240-BPM peak to 550 ms and
+  // the 120-BPM verse balloons to 1100 ms. This solves the single HiSpeed whose
+  // CHART-WIDE reaction-window RANGE best straddles the target. Because
+  // reactionWindowMs ∝ 1/hispeed, scaling HiSpeed by h divides BOTH ends of the
+  // 1× range [minMs, maxMs] by h, so the geometric-mean-centred HiSpeed
+  //   h* = sqrt(minMs₁ₓ · maxMs₁ₓ) / target
+  // puts the hardest- and easiest-reading sections EQUIDISTANT (in ratio) from the
+  // target — the minimax-ratio-optimal single HiSpeed for the whole chart (it
+  // minimises the worst-case max(window/target, target/window) over all tempos).
+  // Reuses reactionWindowExtremes for the 1× range, so this and the range readout
+  // can never disagree; `visibleTicksAt1x` already folds any active Sudden+/Hidden+/
+  // LIFT cover through the caller, exactly as applyGreenTarget does. `bpmList`
+  // overrides this.bpmEvents (C-mode passes a one-BPM list so min === max and the
+  // solve collapses to the →ms solve). Returns the solved HiSpeed (snapped to 0.1
+  // and clamped to [loHs, hiHs]); the reaction-window range the applied HiSpeed
+  // yields (rangeLoMs / rangeHiMs); the worst-case ratio deviation from the target
+  // (`dev`, ≥ 1 — how far the hardest/easiest section lands from target); the tick +
+  // tempo of each extreme (for seek); a `constant` flag (no soflan → an exact
+  // round-trip with hispeedForReactionMs); and `clamped` (the 0.1-snapped ideal fell
+  // outside the slider range). DOM-free, unit-tested; never mutates chart data.
+  hispeedForChartRange(targetMs, visibleTicksAt1x = TICKS_PER_MEASURE * BEATS_PER_MEASURE, rate = 1, bpmList = null, loHs = 0.2, hiHs = 10) {
+    const t   = Math.max(1,    Number(targetMs) || 1);
+    const lo  = Math.max(0.01, Number(loHs) || 0.2);
+    const hi  = Math.max(lo,   Number(hiHs) || 10);
+    const vt1 = Math.max(1,    Number(visibleTicksAt1x) || 1);
+    // Reaction-window range at HiSpeed 1× across every tempo in the chart.
+    const ext  = this.reactionWindowExtremes(vt1, rate, bpmList);
+    const loMs = Math.max(1e-6, ext.minMs);
+    const hiMs = Math.max(loMs, ext.maxMs);
+    // Geometric-mean centre. For a constant chart loMs === hiMs, so h* = loMs / t —
+    // identical to hispeedForReactionMs (an exact round-trip with the →ms solve).
+    const rawHs   = Math.sqrt(loMs * hiMs) / t;
+    const snapped = Math.round(rawHs * 10) / 10;   // 0.1 step, same as the →ms solver
+    const hs      = Math.max(lo, Math.min(hi, snapped));
+    // The range the APPLIED HiSpeed yields — both ends divided by hs.
+    const rangeLoMs = loMs / hs;
+    const rangeHiMs = hiMs / hs;
+    // Worst-case deviation from target: the larger of (easiest reads this much
+    // LONGER than target) and (hardest reads this much SHORTER), as a ratio ≥ 1.
+    const dev = Math.max(rangeHiMs / t, t / rangeLoMs, 1);
+    return {
+      hs, rawHs, rangeLoMs, rangeHiMs, dev,
+      minTick: ext.minTick, maxTick: ext.maxTick,
+      minBpm: ext.minBpm, maxBpm: ext.maxBpm,
+      constant: !!ext.constant,
+      clamped: Math.abs(hs - snapped) > 1e-9,
+    };
+  }
+
   // ── Cover-adjusted reaction window (SUD+/HID+/LIFT green number) ───────────
   // The Sudden+/Hidden+ track covers hide the far/top end (sud) and the near/
   // bottom end (hid) of the runway, and LIFT (v0.0.62) raises the judgment line
@@ -1001,6 +1053,21 @@ export class ChartData {
     const span = maxMs - minMs;
     for (const s of samples) s.norm = span > 1e-6 ? (maxMs - s.ms) / span : 0;
     return { samples, minMs, maxMs, minIdx, count: samples.length, stride, measureTicks };
+  }
+
+  // ── Reading-strip pointer hit-test (v0.0.70) ───────────────────────────────
+  // Maps a 0..1 horizontal fraction across a reactionWindowProfile() result back
+  // to the sample under that fraction, so both the strip's click-to-seek AND its
+  // hover readout resolve the same column from the same math and can never point
+  // at different measures. Given the profile (or just its sample count) and a
+  // fraction, returns the clamped sample index in [0, count-1], or -1 when there
+  // are no samples. Pure, DOM-free, unit-tested. Never touches chart data.
+  profileIndexAtFraction(profile, frac) {
+    const n = (profile && Array.isArray(profile.samples)) ? profile.samples.length
+            : (Number.isFinite(profile) ? Math.floor(profile) : 0);
+    if (!Number.isFinite(n) || n <= 0) return -1;
+    const f = Math.max(0, Math.min(0.999999, Number(frac) || 0));
+    return Math.min(n - 1, Math.max(0, Math.floor(f * n)));
   }
 
   // ── Solve cover for a target green number (v0.0.63) ────────────────────────
