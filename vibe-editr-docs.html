@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.70 · 2026</span>
+  <span class="version">v0.0.71 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.71</span>Fit HiSpeed to Chart &mdash; one HiSpeed that reads evenly across a soflan chart</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Pick a HiSpeed for the WHOLE chart, not just the tempo under the playhead.</strong> The <code>&rarr;ms</code> solver (v0.0.58) sets HiSpeed so the reaction window hits your target at the <em>playhead</em> tempo &mdash; but on a soflan chart that leaves every other section reading too fast or too slow (solve the 240-BPM peak to 550 ms and the 120-BPM verse balloons to 1100 ms). The new <strong>&#9878; Chart</strong> button takes the same <code>&rarr;ms</code> target and solves the single HiSpeed whose reaction window across <em>every tempo in the chart</em> best straddles it, so the fastest- and slowest-reading sections land equidistant from your target instead of one being perfect and the rest miles off.</li>
+    <li><span class="tag add">add</span><strong>Shows the range it lands on.</strong> After the fit, a readout reports the applied HiSpeed and the chart-wide window it yields &mdash; <code>3.2&times; &middot; &#8660; 560&ndash;1120 ms</code> &mdash; amber when the swing is still wide (worst-case &ge; 1.5&times;). Click it to seek to the hardest-reading section. Honours practice rate, C-mode (the window is constant, so the fit matches the plain <code>&rarr;ms</code> solve) and any active Sudden+/Hidden+/LIFT cover, and clamps cleanly to the HiSpeed slider range.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.hispeedForChartRange(target, visibleTicks, rate, bpmList, loHs, hiHs)</code> that reuses <code>reactionWindowExtremes</code> for the chart-wide range and returns the geometric-mean-centred (minimax-ratio-optimal) HiSpeed &mdash; an exact round-trip with <code>hispeedForReactionMs</code> on a constant-tempo chart. The chart is never mutated. i18n in all 5 locales.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.70</span>Reading-Strip Hover Readout &mdash; read any measure to the millisecond without seeking</h4>
