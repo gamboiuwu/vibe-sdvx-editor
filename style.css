@@ -1068,6 +1068,27 @@ kbd {
 }
 .pvc-cover-guard.tight { color: #ffcc55; background: rgba(120, 84, 20, 0.35); }
 .pvc-cover-guard.blank { color: #ff6d6d; background: rgba(120, 30, 30, 0.4); font-weight: 600; }
+/* Reading-difficulty strip hover tooltip (v0.0.70). A small floating readout of
+   the exact measure / BPM / reaction-window ms for the strip column under the
+   cursor. Render-only; positioned in JS, never intercepts the pointer. */
+.reading-strip-tip {
+  position: fixed;
+  display: none;
+  z-index: 420;
+  pointer-events: none;
+  background: #151528;
+  border: 1px solid #2a3550;
+  border-radius: 5px;
+  padding: 4px 8px;
+  box-shadow: 0 4px 14px #0009;
+  font-size: 10.5px;
+  line-height: 1.35;
+  white-space: nowrap;
+  color: #cdd6e6;
+}
+.reading-strip-tip-m { display: block; font-weight: 700; color: #e8eefc; }
+.reading-strip-tip-v { display: block; color: #9fb0cc; }
+.reading-strip-tip-hard { display: block; color: #ff8a6d; font-weight: 600; }
 /* Fit-to-range one-tap accept-the-clamp button (v0.0.66). Only shown while a
    →ms cue is flagging an unreachable target; styled amber to match the cue. */
 .pvc-fit-btn {

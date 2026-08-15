@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.69';
+const APP_VERSION = '0.0.70';
 const CHANGELOG = [
+  {
+    version: '0.0.70',
+    title: 'Reading-Difficulty Strip Hover Tooltip — read the exact numbers off the curve',
+    entries: [
+      ['add', '<strong>Hover any column of the Reading-Difficulty Strip to read its exact numbers.</strong> The <strong>▐ Strip</strong> (v0.0.69) draws the reaction window for every measure as a green-to-red sparkline, but you could only <em>see</em> where a spike sits, not its values. Now moving the cursor across the strip floats a small readout showing that column’s <strong>measure number</strong>, <strong>BPM</strong> and the <strong>exact reaction-window ms</strong> — the green number for that measure — so you read the whole soflan curve to the millisecond without seeking.'],
+      ['add', '<strong>Marks the hardest-reading measure.</strong> When the column under the cursor is the chart’s shortest reaction window, the readout adds a <span style="color:#ff8a6d">✦ hardest</span> tag, so the single worst spot to read is unmistakable as you sweep across.'],
+      ['add', '<strong>One source of truth with click-to-seek.</strong> Both the hover readout and the existing click-to-seek now map the cursor to a measure through the same DOM-free, unit-tested <code>chart.profileSampleAt(profile, frac)</code>, so the number you read and the measure a click jumps to can never point at different columns. Render-only — the chart is never mutated; i18n in all 5 locales.'],
+    ],
+  },
   {
     version: '0.0.69',
     title: 'Reading-Difficulty Strip — a per-measure green-number heatmap',
@@ -2471,6 +2480,7 @@ function updateReadingStrip() {
   if (!readingStrip || !chart || typeof chart.reactionWindowProfile !== 'function') {
     cv.style.display = 'none';
     _stripSamples = null;
+    hideStripTip();   // v0.0.70 — drop any lingering hover readout when the strip is off
     return;
   }
   cv.style.display = 'inline-block';
@@ -2521,6 +2531,58 @@ function toggleReadingStrip() {
   prefs.readingStrip = readingStrip;   // mirror onto prefs so localStorage persists it
   updateReadingStrip();
   savePrefsToLocalStorage();
+}
+
+// ── Reading-difficulty strip hover tooltip (v0.0.70) ──────────────────────────
+// The strip (v0.0.69) draws the reaction window per measure but reads only as a
+// coloured curve — you can see WHERE a spike sits but not its exact numbers. On
+// mouseover, this floats a small readout showing the measure number, BPM and the
+// exact reaction-window ms for the column under the cursor, plus a ✦ marker when
+// it is the chart's hardest-reading measure. It maps cursor-x → sample through
+// the SAME DOM-free chart.profileSampleAt the click-to-seek uses, so the tooltip
+// and the seek target can never disagree. Render-only — reads the cached
+// _stripSamples, never touches chart data.
+let _stripTipEl = null;
+function ensureStripTip() {
+  if (_stripTipEl) return _stripTipEl;
+  _stripTipEl = document.createElement('div');
+  _stripTipEl.className = 'reading-strip-tip';
+  document.body.appendChild(_stripTipEl);
+  return _stripTipEl;
+}
+function hideStripTip() {
+  if (_stripTipEl) _stripTipEl.style.display = 'none';
+}
+function showStripTipAt(clientX, clientY, canvas) {
+  if (!readingStrip || !_stripSamples || !chart || typeof chart.profileSampleAt !== 'function') {
+    hideStripTip();
+    return;
+  }
+  const rect = canvas.getBoundingClientRect();
+  const frac = (clientX - rect.left) / Math.max(1, rect.width);
+  const hit  = chart.profileSampleAt(_stripSamples, frac);
+  if (!hit) { hideStripTip(); return; }
+  const s   = hit.sample;
+  const el  = ensureStripTip();
+  const ms  = Math.round(s.ms);
+  const bpm = Math.round(s.bpm * 100) / 100;
+  const mLabel = (typeof t === 'function' ? t('preview.stripTipMeasure') : 'Measure') || 'Measure';
+  const rLabel = (typeof t === 'function' ? t('preview.stripTipReact')   : 'react')   || 'react';
+  const hard   = hit.isHardest
+    ? `<span class="reading-strip-tip-hard">✦ ${(typeof t === 'function' ? t('preview.stripTipHardest') : 'hardest') || 'hardest'}</span>`
+    : '';
+  el.innerHTML =
+    `<span class="reading-strip-tip-m">${mLabel} ${s.measure + 1}</span>` +
+    `<span class="reading-strip-tip-v">${bpm} BPM · ${ms} ms ${rLabel}</span>` + hard;
+  el.style.display = 'block';
+  // Position above the cursor, clamped to the viewport.
+  const w = el.offsetWidth || 140, h = el.offsetHeight || 34;
+  let x = clientX - w / 2;
+  x = Math.max(4, Math.min(window.innerWidth - w - 4, x));
+  let y = clientY - h - 10;
+  if (y < 4) y = clientY + 16;   // flip below the cursor if there's no room above
+  el.style.left = x + 'px';
+  el.style.top  = y + 'px';
 }
 
 // Toggle the green-number readout on/off; refresh HUD and redraw when paused.
@@ -10056,14 +10118,15 @@ function _initProjectionControls() {
   if (stripCv && !stripCv._wired) {
     stripCv._wired = true;
     stripCv.addEventListener('click', (e) => {
-      if (!readingStrip || !_stripSamples || !_stripSamples.samples.length) return;
+      if (!readingStrip || !_stripSamples || typeof chart?.profileSampleAt !== 'function') return;
       const rect = stripCv.getBoundingClientRect();
-      const frac = Math.max(0, Math.min(0.9999, (e.clientX - rect.left) / rect.width));
-      const idx  = Math.min(_stripSamples.samples.length - 1,
-                            Math.floor(frac * _stripSamples.samples.length));
-      const tk = _stripSamples.samples[idx].tick;
-      if (Number.isFinite(tk) && typeof _seekTo === 'function') _seekTo(tk);
+      const frac = (e.clientX - rect.left) / Math.max(1, rect.width);
+      const hit  = chart.profileSampleAt(_stripSamples, frac);   // v0.0.70 — same map as the hover tooltip
+      if (hit && Number.isFinite(hit.sample.tick) && typeof _seekTo === 'function') _seekTo(hit.sample.tick);
     });
+    // v0.0.70 — hover tooltip: exact measure / BPM / ms for the column under the cursor.
+    stripCv.addEventListener('mousemove', (e) => showStripTipAt(e.clientX, e.clientY, stripCv));
+    stripCv.addEventListener('mouseleave', hideStripTip);
   }
   updateReadingStrip();      // sync strip + button to current state
 
