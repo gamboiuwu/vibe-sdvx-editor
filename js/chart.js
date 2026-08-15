@@ -1003,6 +1003,24 @@ export class ChartData {
     return { samples, minMs, maxMs, minIdx, count: samples.length, stride, measureTicks };
   }
 
+  // ── Map a strip x-fraction to its profile sample (v0.0.70) ─────────────────
+  // The reading-difficulty strip (v0.0.69) needs to turn a cursor x — expressed
+  // as a 0..1 fraction of the strip width — into the per-measure sample under it
+  // in TWO places: the existing click-to-seek and the new hover tooltip. Folding
+  // that mapping into ONE source of truth means the seek target and the tooltip
+  // can never point at different measures. `profile` is a reactionWindowProfile
+  // result; `frac` is clamped to [0,1). Returns { index, sample, isHardest } —
+  // isHardest flags the min-ms (shortest-window) column so the tooltip can mark
+  // the chart's hardest-reading measure — or null when the profile is empty.
+  // Pure, DOM-free, unit-tested; never touches chart data.
+  profileSampleAt(profile, frac) {
+    if (!profile || !Array.isArray(profile.samples) || !profile.samples.length) return null;
+    const n = profile.samples.length;
+    const f = Math.max(0, Math.min(0.999999, Number(frac) || 0));
+    const index = Math.min(n - 1, Math.floor(f * n));
+    return { index, sample: profile.samples[index], isHardest: index === profile.minIdx };
+  }
+
   // ── Solve cover for a target green number (v0.0.63) ────────────────────────
   // Inverse of coverVisibleFraction for the green number. Given the FULL-LANE
   // reaction window (ms a note is on screen at the CURRENT HiSpeed, no cover) and
