@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.70';
+const APP_VERSION = '0.0.71';
 const CHANGELOG = [
+  {
+    version: '0.0.71',
+    title: 'Peak NPS — the honest, BPM-independent physical-difficulty number',
+    entries: [
+      ['add', '<strong>See how physically dense your chart really gets — in notes per second of real time.</strong> Every density view in the editor until now was <em>tick-based</em>: the per-measure Density Heatmap, the per-beat Adaptive-Compress scan and the Chart Statistics “peak” all count notes per a fixed span of <em>ticks</em>, so a busy measure at 200 BPM scores the same as the identical measure at 100 BPM — even though it’s twice as hard to hit. A new <strong>⤔ NPS</strong> toggle in the preview <strong>Density</strong> row scans the whole chart for its densest one second of <em>wall-clock</em> time and shows that <strong>peak notes-per-second</strong> — the honest physical-load number a player actually feels. It’s the physical-load twin of the <strong>Green#</strong> reaction window (which is the <em>reading</em> load).'],
+      ['add', '<strong>Click to jump to the busiest burst.</strong> Clicking the readout seeks the editor to the onset that starts the densest second, so you can go straight to the hardest stream to check spacing or ergonomics. Dense streams (≥16 NPS) glow amber; hover the readout for the peak, the chart-wide average and the note count. BT and FX notes each count as one press (a hold counts once at its start); lasers are continuous knob motion, not notes, so they’re excluded — that’s the Tsumami axis.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.notesPerSecond(opts)</code> that converts every onset to seconds through the same <code>tickToSeconds</code> time model the C-mode scroll and audio path use, then slides a 1-second window (a two-pointer sweep that’s provably exact) to find the peak — so it stays honest across soflan and BPM changes where a tick metric can’t. A cheap onset-signature cache skips the recompute when nothing changed. The chart is never mutated. Persists via <strong>Save Config</strong> / prefs; i18n in all 5 locales.'],
+    ],
+  },
   {
     version: '0.0.70',
     title: 'Reading-Difficulty Strip Hover Tooltip — read the exact numbers off the curve',
@@ -2341,6 +2350,8 @@ function _updateScrollHud() {
 let reactionReadout = true;
 let reactionRange   = false;   // v0.0.68 — chart-wide reaction-window min/max readout (off by default)
 let readingStrip    = false;   // v0.0.69 — per-measure reaction-window sparkline (off by default)
+let npsReadout      = false;   // v0.0.71 — peak notes-per-second (wall-clock physical density) readout (off by default)
+let _npsCache       = null;    // v0.0.71 — { chart, sig, result }: skip the recompute when the chart is unchanged
 
 // ── Green-Number Auto-Follow (v0.0.60) ────────────────────────────────────────
 // A lock that HOLDS the green number. Once the user has dialled a target
@@ -2530,6 +2541,61 @@ function toggleReadingStrip() {
   readingStrip = !readingStrip;
   prefs.readingStrip = readingStrip;   // mirror onto prefs so localStorage persists it
   updateReadingStrip();
+  savePrefsToLocalStorage();
+}
+
+// ── Peak NPS readout (v0.0.71) ────────────────────────────────────────────────
+// The physical-load twin of the green number: where the reaction window measures
+// how long you have to READ a note, this shows the honest, BPM-independent
+// notes-per-second your hands actually hit at the chart's densest second. Backed
+// by the DOM-free chart.notesPerSecond, which converts every BT/FX onset to real
+// wall-clock time through tickToSeconds and slides a 1-second window to find the
+// peak — so unlike the tick-based density heatmap it does NOT flatter a fast
+// section. NPS depends only on the chart (not HiSpeed / rate / cover / playhead),
+// so a cheap onset-signature cache skips the O(n log n) recompute on the many
+// render() frames where nothing changed. Clicking the readout seeks to the onset
+// that starts the densest burst. Render-only — never touches chart data.
+function updateNpsReadout() {
+  const lbl = document.getElementById('pvc-nps');
+  const btn = document.getElementById('pvc-nps-toggle');
+  if (btn) btn.classList.toggle('active', npsReadout);
+  if (!lbl) return;
+  if (!npsReadout || !chart || typeof chart.notesPerSecond !== 'function') {
+    lbl.textContent = '–';
+    lbl.style.color = '';
+    lbl.title = '';
+    lbl.dataset.seekTick = '';
+    return;
+  }
+  // Cheap signature over onset ticks — recompute only when the notes changed.
+  let sum = 0, cnt = 0;
+  for (const lane of chart.bt) for (const n of lane) { sum += n.y; cnt++; }
+  for (const lane of chart.fx) for (const n of lane) { sum += n.y; cnt++; }
+  const sig = cnt + ':' + sum;
+  let res;
+  if (_npsCache && _npsCache.chart === chart && _npsCache.sig === sig) {
+    res = _npsCache.result;
+  } else {
+    res = chart.notesPerSecond({ windowSec: 1.0 });
+    _npsCache = { chart, sig, result: res };
+  }
+  const peak = res.peakNps, mean = res.meanNps;
+  lbl.textContent = `⤒ ${peak.toFixed(1)}`;
+  // Dense streams (≥16 NPS) glow amber — the physical-load analogue of the
+  // cover-adjusted green number's amber tint; otherwise a calm cyan.
+  lbl.style.color = peak >= 16 ? '#ffcc55' : '#66ddff';
+  lbl.dataset.seekTick = String(res.peakTick);
+  const label = (typeof t === 'function' ? t('preview.npsTip') : '') || 'Peak notes-per-second';
+  lbl.title = res.total > 0
+    ? `${label}: ${peak.toFixed(1)} NPS peak · ${mean.toFixed(1)} avg · ${res.total} notes over ${Math.round(res.spanSec)}s. Click to seek to the densest second.`
+    : `${label}: no BT/FX notes in this chart.`;
+}
+
+// Toggle the peak-NPS readout on/off.
+function toggleNpsReadout() {
+  npsReadout = !npsReadout;
+  prefs.npsReadout = npsReadout;   // mirror onto prefs so localStorage persists it
+  updateNpsReadout();
   savePrefsToLocalStorage();
 }
 
@@ -5128,6 +5194,7 @@ export function render() {
     if (typeof updateRadar     === 'function') updateRadar();
     if (typeof updateHeatmap   === 'function') updateHeatmap();
     if (typeof invalidateFxAuto === 'function') invalidateFxAuto();
+    updateNpsReadout();   // v0.0.71 — keep the peak-NPS readout in sync with edits/switches (cached, no-op when unchanged)
     _drawMinimap();
   });
 }
@@ -10130,6 +10197,23 @@ function _initProjectionControls() {
   }
   updateReadingStrip();      // sync strip + button to current state
 
+  // Peak-NPS readout toggle + click-to-seek (v0.0.71) — wall-clock physical density.
+  const npsBtn = document.getElementById('pvc-nps-toggle');
+  if (npsBtn && !npsBtn._wired) {
+    npsBtn._wired = true;
+    npsBtn.addEventListener('click', toggleNpsReadout);
+  }
+  const npsLbl = document.getElementById('pvc-nps');
+  if (npsLbl && !npsLbl._wired) {
+    npsLbl._wired = true;
+    npsLbl.addEventListener('click', () => {
+      if (!npsReadout) return;
+      const tk = parseInt(npsLbl.dataset.seekTick, 10);
+      if (Number.isFinite(tk) && typeof _seekTo === 'function') _seekTo(tk);
+    });
+  }
+  updateNpsReadout();        // sync readout + button to current state
+
   // Soflan runway markers toggle — faint on-lane labels at every tempo change.
   // Render-only; state persists on prefs so it composes with Save Config too.
   // The game-preview renderer reads the flag through window.prefs (the bridge it
@@ -10545,6 +10629,7 @@ function _initProjectionControls() {
     prefs.reactionReadout   = reactionReadout;
     prefs.reactionRange     = reactionRange;   // v0.0.68 — chart-wide range readout toggle
     prefs.readingStrip      = readingStrip;    // v0.0.69 — per-measure reading-difficulty strip toggle
+    prefs.npsReadout        = npsReadout;      // v0.0.71 — peak notes-per-second readout toggle
     // Green-Number Auto-Follow hold + held target ms (render-only)
     prefs.greenFollowLock   = greenFollowLock;
     prefs.greenFollowTarget = greenFollowTarget;
@@ -10634,6 +10719,7 @@ function _initProjectionControls() {
   if (prefs.reactionReadout != null) { reactionReadout = !!prefs.reactionReadout; updateReactionReadout(); }
   if (prefs.reactionRange != null)   { reactionRange   = !!prefs.reactionRange;   updateReactionRange(); }
   if (prefs.readingStrip != null)    { readingStrip    = !!prefs.readingStrip;    updateReadingStrip(); }
+  if (prefs.npsReadout != null)      { npsReadout      = !!prefs.npsReadout;      updateNpsReadout(); }
   // Restore Green-Number Auto-Follow hold + held target (render-only). Reflect the
   // target into the →ms field so the UI shows what is being held, then snap.
   if (prefs.greenFollowTarget != null) {

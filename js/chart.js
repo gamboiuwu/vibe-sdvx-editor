@@ -1021,6 +1021,59 @@ export class ChartData {
     return { index, sample: profile.samples[index], isHardest: index === profile.minIdx };
   }
 
+  // ── Peak notes-per-second — wall-clock physical density (v0.0.71) ──────────
+  // Every existing density view in the editor is TICK-based: the per-measure
+  // heatmap, the per-beat Adaptive-Compress scan, and computeChartStats' "peak"
+  // all count notes per a fixed span of TICKS, so a busy measure at 100 BPM scores
+  // the same as the identical measure at 200 BPM — even though the second is twice
+  // as physically hard to hit. This returns the honest, BPM-INDEPENDENT number a
+  // player actually feels: NOTES PER SECOND of real wall-clock time. It is the
+  // physical-load twin of the reaction-window green number (which measures reading
+  // load): green# = how long you have to READ a note, NPS = how many notes your
+  // hands actuate per second. Each BT and FX note is one onset at its tick (a hold
+  // is a single press at its start, matching computeChartStats' buckets); lasers
+  // are continuous knob motion, not discrete notes, so they are intentionally
+  // excluded (that physical axis is Tsumami / laser coverage). Every onset tick is
+  // converted to seconds through tickToSeconds — the same BPM-integrated time model
+  // the C-Mode scroll and the audio path use — then a fixed-width sliding window
+  // (default 1.0 s) finds the densest stretch. The window that maximises the count
+  // can always be slid left until its left edge meets an onset without dropping any
+  // note, so anchoring the window at each onset is EXACT: a single two-pointer sweep
+  // over the sorted onset times yields the true peak. Returns { peakNps, peakTick,
+  // peakTime, meanNps, total, spanSec, windowSec } — peakTick is the onset that
+  // STARTS the densest window (seek there to land just before the burst), meanNps
+  // is onsets / active span. DOM-free single source of truth, unit-tested; never
+  // mutates chart data.
+  notesPerSecond(opts = {}) {
+    const windowSec = Math.max(0.05, Number(opts.windowSec) || 1.0);
+    const ticks = [];
+    for (const lane of this.bt) for (const n of lane) ticks.push(n.y);
+    for (const lane of this.fx) for (const n of lane) ticks.push(n.y);
+    const total = ticks.length;
+    if (total === 0) {
+      return { peakNps: 0, peakTick: 0, peakTime: 0, meanNps: 0, total: 0, spanSec: 0, windowSec };
+    }
+    const rows = ticks
+      .map(tick => ({ tick, sec: this.tickToSeconds(tick) }))
+      .sort((a, b) => a.sec - b.sec || a.tick - b.tick);
+    let peakCount = 0, peakIdx = 0, j = 0;
+    for (let i = 0; i < rows.length; i++) {
+      if (j < i) j = i;
+      const limit = rows[i].sec + windowSec;
+      while (j < rows.length && rows[j].sec < limit) j++;
+      const cnt = j - i;
+      if (cnt > peakCount) { peakCount = cnt; peakIdx = i; }
+    }
+    const spanSec = Math.max(0, rows[rows.length - 1].sec - rows[0].sec);
+    const meanNps = spanSec > 1e-6 ? total / spanSec : total / windowSec;
+    return {
+      peakNps: peakCount / windowSec,
+      peakTick: rows[peakIdx].tick,
+      peakTime: rows[peakIdx].sec,
+      meanNps, total, spanSec, windowSec,
+    };
+  }
+
   // ── Solve cover for a target green number (v0.0.63) ────────────────────────
   // Inverse of coverVisibleFraction for the green number. Given the FULL-LANE
   // reaction window (ms a note is on screen at the CURRENT HiSpeed, no cover) and
