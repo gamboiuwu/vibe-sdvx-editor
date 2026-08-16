@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.70 · 2026</span>
+  <span class="version">v0.0.71 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.71</span>Peak NPS &mdash; the honest, BPM-independent physical-difficulty number</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>See how physically dense your chart really gets &mdash; in notes per second of real time.</strong> Every density view in the editor until now was <em>tick-based</em>: the per-measure Density Heatmap, the per-beat Adaptive-Compress scan and the Chart Statistics &ldquo;peak&rdquo; all count notes per a fixed span of <em>ticks</em>, so a busy measure at 200 BPM scores the same as the identical measure at 100 BPM &mdash; even though it&rsquo;s twice as hard to hit. A new <strong>&#10514; NPS</strong> toggle in the preview <strong>Density</strong> row scans the whole chart for its densest one second of <em>wall-clock</em> time and shows that <strong>peak notes-per-second</strong> &mdash; the honest physical-load number a player actually feels. It&rsquo;s the physical-load twin of the <strong>Green#</strong> reaction window (which is the <em>reading</em> load).</li>
+    <li><span class="tag add">add</span><strong>Click to jump to the busiest burst.</strong> Clicking the readout seeks the editor to the onset that starts the densest second, so you can go straight to the hardest stream to check spacing or ergonomics. Dense streams (&ge;16 NPS) glow amber; hover for the peak, the chart-wide average and the note count. BT and FX notes each count as one press (a hold counts once at its start); lasers are continuous knob motion, not notes, so they&rsquo;re excluded &mdash; that&rsquo;s the Tsumami axis.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.notesPerSecond(opts)</code> that converts every onset to seconds through the same <code>tickToSeconds</code> time model the C-mode scroll and audio path use, then slides a 1-second window (a two-pointer sweep that&rsquo;s provably exact) to find the peak &mdash; so it stays honest across soflan and BPM changes where a tick metric can&rsquo;t. A cheap onset-signature cache skips the recompute when nothing changed. The chart is never mutated. Persists via <strong>Save Config</strong> / prefs; i18n in all 5 locales.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.70</span>Reading-Difficulty Strip Hover Tooltip &mdash; read the exact numbers off the curve</h4>
