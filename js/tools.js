@@ -1,5 +1,5 @@
 import { chart, renderer, gameView, render, saveUndo, updateSeekbar, addChartAnnotation, _seekTo, sel, playing, audioBuffer, flipHorizontalRange, flipTemporalRange, updateStopEventList } from './app.js';
-import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick } from './chart.js';
+import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, npsDifficultyBand, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick } from './chart.js';
 import { Renderer } from './renderer.js';
 import { updateRadar } from './radar.js';
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -5862,11 +5862,17 @@ function _toolChartStats(c) {
       { label: 'Measures',  value: totalMeas, color: '#aabbff' },
     ]));
 
+    // v0.0.72 — honest, BPM-independent physical density banded via the shared
+    // npsDifficultyBand so the number and its colour match the Chart Statistics
+    // modal and the live peak-NPS readout.
+    const npsBand = npsDifficultyBand(st.peakNps);
     const details = [
       { label: 'FX Chips / Holds',    value: `${fxChips} / ${fxHolds}` },
       { label: 'VOL-L coverage',       value: `${coverL}%  (${ch.lasers[0].length} section${ch.lasers[0].length!==1?'s':''})` },
       { label: 'VOL-R coverage',       value: `${coverR}%  (${ch.lasers[1].length} section${ch.lasers[1].length!==1?'s':''})` },
       { label: 'Peak density',         value: `${peakDens} notes/measure` },
+      { label: 'Peak NPS',             value: `${st.peakNps.toFixed(1)} <span style="color:${npsBand.color};font-weight:600">${npsBand.label}</span>` },
+      { label: 'Avg NPS',              value: `${(st.meanNps || 0).toFixed(1)}` },
       { label: 'Total note events',    value: totalNoteEvents },
       { label: 'BPM events',           value: ch.bpmEvents.length },
       { label: 'Chart sections',       value: (ch.sections||[]).length },

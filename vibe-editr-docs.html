@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.71 · 2026</span>
+  <span class="version">v0.0.72 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.72</span>NPS in Chart Statistics &mdash; the honest physical-difficulty number, banded, next to the legacy one</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Chart Statistics now shows the honest, BPM-independent physical density.</strong> The <strong>Density</strong> section of both the <strong>&#128202; Chart Statistics</strong> modal and the Tools-Hub Chart Statistics tool listed only the <em>tick-based</em> peak (<em>notes/measure</em>), which flatters a fast section &mdash; a 200-BPM measure scores the same as the identical 100-BPM one. New <strong>Peak NPS</strong> and <strong>Avg NPS</strong> rows now sit right beside it, showing notes per <em>real wall-clock second</em> &mdash; the same number the <strong>v0.0.71</strong> preview readout surfaces, now where you actually compare two charts&rsquo; difficulty.</li>
+    <li><span class="tag add">add</span><strong>A difficulty band reads the number at a glance.</strong> The peak NPS is labelled and colour-coded &mdash; <span style="color:#6fe08a">Light</span> (&lt;8), <span style="color:#66ddff">Moderate</span> (8&ndash;16), <span style="color:#ffcc55">Dense</span> (16&ndash;20), <span style="color:#ff8a3d">Heavy</span> (20&ndash;28), <span style="color:#ff4d4d">Extreme</span> (&ge;28) &mdash; with the <strong>Dense</strong> threshold at 16 NPS, matching the amber tint the live preview readout already switches to, so &ldquo;how stream-heavy is this?&rdquo; answers itself without reading the raw figure.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> <code>computeChartStats</code> now folds in the v0.0.71 <code>chart.notesPerSecond</code> engine (guarded so a non-chart caller degrades to zero, never throws), and a new DOM-free, unit-tested <code>chart.npsDifficultyBand(peakNps)</code> drives the label and colour so the modal, the tool and the preview readout can never disagree. The chart is never mutated.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.71</span>Peak NPS &mdash; the honest, BPM-independent physical-difficulty number</h4>
