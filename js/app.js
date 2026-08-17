@@ -1,4 +1,4 @@
-import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
+import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, npsDifficultyBand, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
 import { Renderer, C, laserColors, laserOpacity, laserWideMode, LASER_PRESETS, applyLaserPreset, setLaserColorCustom, buildLaneHeader, setLaserOpacity, setLaserWideMode } from './renderer.js';
 import { GameView } from './game.js';
 import { exportKsh, importKsh, downloadText } from './ksh.js';
@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.71';
+const APP_VERSION = '0.0.72';
 const CHANGELOG = [
+  {
+    version: '0.0.72',
+    title: 'NPS in Chart Statistics — the honest physical-difficulty number, banded, next to the legacy one',
+    entries: [
+      ['add', '<strong>Chart Statistics now shows the honest, BPM-independent physical density.</strong> The <strong>Density</strong> section of both the <strong>📊 Chart Statistics</strong> modal and the Tools-Hub Chart Statistics tool listed only the <em>tick-based</em> peak (<em>notes/measure</em>), which flatters a fast section — a 200-BPM measure scores the same as the identical 100-BPM one. New <strong>Peak NPS</strong> and <strong>Avg NPS</strong> rows sit right beside it, showing notes per <em>real wall-clock second</em> — the same number the v0.0.71 preview readout surfaces, now where you actually compare two charts’ difficulty.'],
+      ['add', '<strong>A difficulty band reads the number at a glance.</strong> The peak NPS is labelled and colour-coded — <span style="color:#6fe08a">Light</span>, <span style="color:#66ddff">Moderate</span>, <span style="color:#ffcc55">Dense</span>, <span style="color:#ff8a3d">Heavy</span>, <span style="color:#ff4d4d">Extreme</span> — with the <strong>Dense</strong> threshold at 16 NPS, matching the amber tint the live preview readout already switches to, so “how stream-heavy is this?” answers itself without reading the raw figure.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> <code>computeChartStats</code> now folds in the v0.0.71 <code>chart.notesPerSecond</code> engine (guarded so a non-chart caller degrades to zero, never throws), and a new DOM-free, unit-tested <code>chart.npsDifficultyBand(peakNps)</code> drives the label and colour so the modal, the tool and the preview readout can never disagree. The chart is never mutated.'],
+    ],
+  },
   {
     version: '0.0.71',
     title: 'Peak NPS — the honest, BPM-independent physical-difficulty number',
@@ -11284,6 +11293,13 @@ const DisclaimerGate = (function() {
       section('Density'),
       row('Peak (notes/measure)', `${s.peak} @ m${s.peakMeas + 1}`),
       row('Avg over active measures', s.avgDens.toFixed(1)),
+      // v0.0.72 — honest, BPM-independent physical density from chart.notesPerSecond,
+      // banded via the shared npsDifficultyBand so the colour/label match everywhere.
+      row('Peak NPS (per second)', (() => {
+        const band = npsDifficultyBand(s.peakNps);
+        return `<strong>${s.peakNps.toFixed(1)}</strong> <span style="color:${band.color};font-weight:600">${band.label}</span>`;
+      })()),
+      row('Avg NPS', (s.meanNps || 0).toFixed(1)),
     ].join('');
   }
 

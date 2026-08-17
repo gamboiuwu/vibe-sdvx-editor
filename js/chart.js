@@ -102,16 +102,48 @@ export function computeChartStats(chart) {
   const bpmMax = bs.length ? Math.max(...bs) : 0;
   const bpmRange = bs.length ? (bpmMin === bpmMax ? bpmMin.toFixed(2) : `${bpmMin.toFixed(2)} – ${bpmMax.toFixed(2)}`) : '—';
 
+  // Honest, BPM-independent physical density (v0.0.72) — the wall-clock
+  // notes-per-second peak from the v0.0.71 engine, surfaced HERE next to the
+  // legacy tick-based `peak` so the two numbers live side by side. The tick
+  // metric above flatters a fast section (a 200-BPM measure scores the same as
+  // the identical 100-BPM one); NPS does not. Reuses chart.notesPerSecond as the
+  // single source of truth; guarded so a plain-object caller (no method) degrades
+  // to zero rather than throwing.
+  const npsRes = (typeof chart.notesPerSecond === 'function')
+    ? chart.notesPerSecond({ windowSec: 1.0 })
+    : { peakNps: 0, meanNps: 0, peakTick: 0 };
+
   return {
     btChip, btHold, fxChip, fxHold,
     btTotal: btChip + btHold, fxTotal: fxChip + fxHold,
     segL, segR, slamL, slamR, pointsL, pointsR,
     totalNotes, totalMeas, peak, peakMeas, avgDens, durStr, durSec,
+    peakNps: npsRes.peakNps, meanNps: npsRes.meanNps, peakNpsTick: npsRes.peakTick,
     coverL, coverR,
     bpmMin, bpmMax, bpmRange,
     bpmCount: chart.bpmEvents.length,
     sectionCount: (chart.sections || []).length,
   };
+}
+
+// ── NPS difficulty band (v0.0.72) ─────────────────────────────────────────────
+// Classify a peak notes-per-second value into a coarse physical-difficulty band
+// so the honest number (computeChartStats.peakNps / the v0.0.71 readout) reads at
+// a glance, not just as a bare figure. Thresholds follow the physical density a
+// SDVX chart of a given level tends to demand: streams get denser as the level
+// climbs, and ~16 NPS is where a chart starts to feel stream-heavy (matching the
+// amber tint the live peak-NPS readout already switches to at 16). Pure and
+// DOM-free so the modal, the Tools stat panel and any future caller colour and
+// label the band from ONE source of truth. `key` is a stable i18n/testing handle;
+// `color` matches the readout palette (calm cyan → amber → hot). Returns the
+// lowest band for 0 / NaN so an empty chart reads "Light", never blank.
+export function npsDifficultyBand(peakNps) {
+  const v = Math.max(0, Number(peakNps) || 0);
+  if (v >= 28) return { key: 'extreme', label: 'Extreme', color: '#ff4d4d' };
+  if (v >= 20) return { key: 'heavy',   label: 'Heavy',   color: '#ff8a3d' };
+  if (v >= 16) return { key: 'dense',   label: 'Dense',   color: '#ffcc55' };
+  if (v >= 8)  return { key: 'moderate',label: 'Moderate',color: '#66ddff' };
+  return { key: 'light', label: 'Light', color: '#6fe08a' };
 }
 
 // ── Quantize / Nudge engine ──────────────────────────────────────────────────
