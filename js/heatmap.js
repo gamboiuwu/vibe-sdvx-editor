@@ -13,8 +13,17 @@ let _hmCtx     = null;
 let _hmVisible = false;
 let _hmAnimId  = null;
 let _hmLastTick = -1;
+// v0.0.73 — density metric: 'notes' = raw tick-based count (flatters fast
+// sections), 'nps' = honest wall-clock notes-per-second (BPM-independent, agrees
+// with Chart Statistics' Peak NPS). Persisted alongside the window position.
+let _hmDensityMode = 'notes';
 
-function _saveHmState(s) { try { localStorage.setItem(_HM_STATE_KEY, JSON.stringify(s)); } catch {} }
+function _saveHmState(s) {
+  try {
+    const prev = _loadHmState() || {};
+    localStorage.setItem(_HM_STATE_KEY, JSON.stringify({ ...prev, ...s, mode: _hmDensityMode }));
+  } catch {}
+}
 function _loadHmState()  { try { return JSON.parse(localStorage.getItem(_HM_STATE_KEY) || 'null'); } catch { return null; } }
 
 // ── Color gradient: cold (sparse) → hot (dense) ───────────────────────────────
@@ -94,9 +103,29 @@ function _computeHeatmapData(ch) {
   const satPt   = nonZero.length ? nonZero[Math.floor(nonZero.length * 0.8)] : 1;
   const sat     = Math.max(satPt, 1);
 
+  // Honest wall-clock density (v0.0.73) — the same per-measure notes-per-second
+  // the Chart Statistics Peak NPS uses, from the shared tickToSeconds time model.
+  // Guarded so a plain-object chart (no method) degrades to the tick metric rather
+  // than throwing. Normalised by its own 80th-percentile so both modes get the
+  // same contrast treatment.
+  let npsRaw = new Array(totalMeas).fill(0);
+  let npsDensities = new Array(totalMeas).fill(0);
+  if (typeof ch.measureDensityNps === 'function') {
+    try {
+      const r = ch.measureDensityNps({ totalMeasures: totalMeas });
+      npsRaw = r.perMeasure.slice(0, totalMeas);
+      while (npsRaw.length < totalMeas) npsRaw.push(0);
+      const nzN  = npsRaw.filter(v => v > 0).sort((a, b) => a - b);
+      const satN = Math.max(nzN.length ? nzN[Math.floor(nzN.length * 0.8)] : 1, 1e-6);
+      npsDensities = npsRaw.map(v => Math.min(1, v / satN));
+    } catch {}
+  }
+
   return {
     densities: Array.from(noteCounts).map(v => Math.min(1, v / sat)),
     rawCounts: Array.from(noteCounts),
+    npsDensities,
+    npsRaw,
     laserL:    Array.from(laserLCov),
     laserR:    Array.from(laserRCov),
     totalMeas,
@@ -136,7 +165,11 @@ function _drawHeatmap() {
     return;
   }
 
-  const { densities, rawCounts, laserL, laserR, totalMeas } = _computeHeatmapData(ch);
+  const hd = _computeHeatmapData(ch);
+  const { rawCounts, laserL, laserR, totalMeas } = hd;
+  // v0.0.73 — colour by the honest wall-clock NPS density when NPS mode is active,
+  // else the legacy tick-based note count.
+  const densities = (_hmDensityMode === 'nps') ? hd.npsDensities : hd.densities;
 
   const RULER_W = 30;   // px for measure-number ruler
   const LL_W    = 6;    // px for laser-L channel
@@ -301,6 +334,7 @@ function _buildHeatmapWindow() {
   const st = _loadHmState();
   if (st?.left) { win.style.left = st.left; win.style.right  = 'auto'; }
   if (st?.top)  { win.style.top  = st.top;  win.style.bottom = 'auto'; }
+  if (st?.mode === 'nps' || st?.mode === 'notes') _hmDensityMode = st.mode;
 
   win.innerHTML = `
 <div id="hm-titlebar" style="display:flex;align-items:center;gap:6px;padding:7px 10px;background:#0f0f22;cursor:move;border-bottom:1px solid #22225088;flex-shrink:0">
@@ -310,7 +344,7 @@ function _buildHeatmapWindow() {
 <div style="padding:3px 8px;border-bottom:1px solid #1a1a30;display:flex;align-items:center;gap:5px;flex-shrink:0">
   <span style="width:8px;height:8px;background:#2299ff;display:inline-block;border-radius:1px"></span>
   <span style="font-size:9px;color:#4488cc">L-Laser</span>
-  <span style="flex:1;font-size:9px;color:#334;text-align:center">note density</span>
+  <button id="hm-mode" title="Toggle density metric — tick-based note count vs honest wall-clock notes/second (BPM-independent, matches Chart Statistics Peak NPS)" style="flex:1;margin:0 2px;background:#141430;border:1px solid #2a2a55;border-radius:3px;color:#8aa0d8;font-size:9px;line-height:1;padding:2px 4px;cursor:pointer;letter-spacing:0.02em">note density</button>
   <span style="font-size:9px;color:#cc44aa">R-Laser</span>
   <span style="width:8px;height:8px;background:#ff1188;display:inline-block;border-radius:1px"></span>
 </div>
@@ -328,6 +362,21 @@ function _buildHeatmapWindow() {
 
   _makeHmDraggable(win, win.querySelector('#hm-titlebar'));
   win.querySelector('#hm-close').addEventListener('click', closeHeatmapWindow);
+
+  // v0.0.73 — density-metric toggle (tick note count ⇄ honest wall-clock NPS)
+  const modeBtn = win.querySelector('#hm-mode');
+  const _syncModeBtn = () => {
+    if (!modeBtn) return;
+    modeBtn.textContent = (_hmDensityMode === 'nps') ? 'NPS · notes/sec' : 'note density';
+    modeBtn.style.color = (_hmDensityMode === 'nps') ? '#ffcc66' : '#8aa0d8';
+  };
+  _syncModeBtn();
+  modeBtn?.addEventListener('click', () => {
+    _hmDensityMode = (_hmDensityMode === 'nps') ? 'notes' : 'nps';
+    _syncModeBtn();
+    _saveHmState({ left: _hmWin?.style.left, top: _hmWin?.style.top });
+    _drawHeatmap();
+  });
 
   // Click → seek to that measure
   _hmCanvas.addEventListener('click', e => {
@@ -357,7 +406,14 @@ function _buildHeatmapWindow() {
     let count = 0;
     for (let i = 0; i < 4; i++) (ch.bt[i] || []).forEach(n => { if (Math.floor(n.y / TPM) === m) count++; });
     for (let i = 0; i < 2; i++) (ch.fx[i] || []).forEach(n => { if (Math.floor(n.y / TPM) === m) count++; });
-    info.textContent = `M${m + 1}: ${count} note${count !== 1 ? 's' : ''}`;
+    // v0.0.73 — in NPS mode, read the honest wall-clock density for that measure.
+    if (_hmDensityMode === 'nps' && typeof ch.measureDensityNps === 'function') {
+      let nps = 0;
+      try { nps = ch.measureDensityNps({ totalMeasures: totalMeas }).perMeasure[m] || 0; } catch {}
+      info.textContent = `M${m + 1}: ${nps.toFixed(1)} nps (${count} note${count !== 1 ? 's' : ''})`;
+    } else {
+      info.textContent = `M${m + 1}: ${count} note${count !== 1 ? 's' : ''}`;
+    }
   });
 
   _hmCanvas.addEventListener('mouseleave', () => {

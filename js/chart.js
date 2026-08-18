@@ -1106,6 +1106,39 @@ export class ChartData {
     };
   }
 
+  // ── Per-measure honest density (v0.0.73) ───────────────────────────────────
+  // The Intensity Heatmap (heatmap.js) colours each measure by a raw tick-based
+  // note COUNT, which — exactly like the tick metric v0.0.71/72 replaced — flatters
+  // a fast section: a 200-BPM measure and the identical 100-BPM one score the same
+  // even though the first is physically twice as dense. This returns the HONEST,
+  // BPM-independent density: each measure's BT+FX onset count divided by that
+  // measure's REAL wall-clock duration (seconds, via the same tickToSeconds time
+  // model the C-Mode scroll, the audio path and chart.notesPerSecond all use), so
+  // the heatmap's NPS mode agrees with Chart Statistics' Peak NPS and the preview
+  // readout — one source of truth. Onsets only (each BT/FX note = 1, holds counted
+  // at their start), matching the notesPerSecond engine. DOM-free and unit-tested.
+  // Returns { perMeasure:[nps…], peak, peakMeasure, totalMeasures }.
+  measureDensityNps(opts = {}) {
+    const TPM = TICKS_PER_MEASURE;
+    const totalMeasures = Math.max(1, Number(opts.totalMeasures) || this.totalMeasures || 64);
+    const counts = new Float64Array(totalMeasures);
+    const addOnset = (tick) => {
+      const m = Math.floor(tick / TPM);
+      if (m >= 0 && m < totalMeasures) counts[m] += 1;
+    };
+    for (const lane of this.bt) for (const n of lane) addOnset(n.y);
+    for (const lane of this.fx) for (const n of lane) addOnset(n.y);
+    const perMeasure = new Array(totalMeasures);
+    let peak = 0, peakMeasure = 0;
+    for (let m = 0; m < totalMeasures; m++) {
+      const durSec = Math.max(1e-6, this.tickToSeconds((m + 1) * TPM) - this.tickToSeconds(m * TPM));
+      const nps = counts[m] / durSec;
+      perMeasure[m] = nps;
+      if (nps > peak) { peak = nps; peakMeasure = m; }
+    }
+    return { perMeasure, peak, peakMeasure, totalMeasures };
+  }
+
   // ── Solve cover for a target green number (v0.0.63) ────────────────────────
   // Inverse of coverVisibleFraction for the green number. Given the FULL-LANE
   // reaction window (ms a note is on screen at the CURRENT HiSpeed, no cover) and

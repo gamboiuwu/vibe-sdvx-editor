@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.72 · 2026</span>
+  <span class="version">v0.0.73 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.73</span>Honest NPS mode for the Intensity Heatmap &mdash; the density colour that respects BPM</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>The Intensity Heatmap can now colour by honest wall-clock density, not just raw note count.</strong> The <strong>&#x1F5E1; Intensity Heatmap</strong> window coloured every measure by its <em>tick-based note count</em> &mdash; the same metric v0.0.71/72 replaced elsewhere &mdash; so a busy measure at 200&nbsp;BPM looked exactly as hot as the identical measure at 100&nbsp;BPM even though it is physically twice as dense. A new density-metric toggle in the heatmap header switches between <strong>note density</strong> (the legacy tick count) and <strong>NPS &middot; notes/sec</strong> (notes per <em>real second</em>), so the hottest bands finally line up with where the chart actually plays hardest.</li>
+    <li><span class="tag add">add</span><strong>Hover reads the exact number; the choice sticks.</strong> In NPS mode the footer readout shows that measure&rsquo;s <code>X.X&nbsp;nps</code> alongside its note count, so you can read the honest density measure-by-measure without seeking. The chosen mode persists across sessions next to the window position.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.measureDensityNps()</code> that divides each measure&rsquo;s BT+FX onset count by its real duration through the same <code>tickToSeconds</code> time model the C-Mode scroll, the audio path and <code>chart.notesPerSecond</code> all use &mdash; so the heatmap&rsquo;s NPS mode, Chart Statistics&rsquo; Peak NPS and the preview readout can never disagree. Guarded so a plain-object chart degrades to the tick metric rather than throwing; the chart is never mutated.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.72</span>NPS in Chart Statistics &mdash; the honest physical-difficulty number, banded, next to the legacy one</h4>
