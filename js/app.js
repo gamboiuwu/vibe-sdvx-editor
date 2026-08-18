@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.72';
+const APP_VERSION = '0.0.73';
 const CHANGELOG = [
+  {
+    version: '0.0.73',
+    title: 'Honest NPS mode for the Intensity Heatmap — the density colour that respects BPM',
+    entries: [
+      ['add', '<strong>The Intensity Heatmap can now colour by honest wall-clock density, not just raw note count.</strong> The <strong>🗡 Intensity Heatmap</strong> window coloured every measure by its <em>tick-based note count</em> — the same metric v0.0.71/72 replaced elsewhere — so a busy measure at 200&nbsp;BPM looked exactly as hot as the identical measure at 100&nbsp;BPM even though it is physically twice as dense. A new density-metric toggle in the heatmap header switches between <strong>note density</strong> (the legacy tick count) and <strong>NPS · notes/sec</strong> (notes per <em>real second</em>), so the hottest bands finally line up with where the chart actually plays hardest.'],
+      ['add', '<strong>Hover reads the exact number; the choice sticks.</strong> In NPS mode the footer readout shows that measure’s <code>X.X&nbsp;nps</code> alongside its note count, so you can read the honest density measure-by-measure without seeking. The chosen mode persists across sessions next to the window position.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.measureDensityNps()</code> that divides each measure’s BT+FX onset count by its real duration through the same <code>tickToSeconds</code> time model the C-Mode scroll, the audio path and <code>chart.notesPerSecond</code> all use — so the heatmap’s NPS mode, Chart Statistics’ Peak NPS and the preview readout can never disagree. Guarded so a plain-object chart degrades to the tick metric rather than throwing; the chart is never mutated.'],
+    ],
+  },
   {
     version: '0.0.72',
     title: 'NPS in Chart Statistics — the honest physical-difficulty number, banded, next to the legacy one',
