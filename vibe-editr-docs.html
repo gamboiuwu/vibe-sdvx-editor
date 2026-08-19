@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.73 · 2026</span>
+  <span class="version">v0.0.74 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.74</span>Hand Balance &mdash; peak NPS split by hand, so a one-sided stream is visible</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Chart Statistics now shows which hand carries the density.</strong> The v0.0.71&ndash;73 NPS work told you <em>how</em> dense the busiest second is, but not <em>which hand</em> plays it. On the SDVX controller the left hand covers <strong>BT-A/B + FX-L</strong> and the right hand covers <strong>BT-C/D + FX-R</strong>; a stream that piles onto one side is more fatiguing than the same note count spread evenly, yet every existing density metric summed both hands and hid that. New <strong>Hand peak NPS (L / R)</strong> and <strong>Note share (L / R)</strong> rows in the <strong>Density</strong> block of both the <strong>&#128202; Chart Statistics</strong> modal and the Tools-Hub Chart Statistics tool break the density out per hand and flag a <span style="color:#ffcc55;font-weight:600">left-heavy</span>/<span style="color:#ffcc55;font-weight:600">right-heavy</span> chart (&ge;60/40 split) versus an <span style="color:#6fe08a;font-weight:600">even</span> one.</li>
+    <li><span class="tag add">add</span><strong>Each hand&rsquo;s peak is measured exactly like the whole-chart figure.</strong> The two-pointer peak-window sweep behind <code>chart.notesPerSecond</code> was extracted into one shared, exact routine, and the whole-chart NPS and the new per-hand NPS both run through it &mdash; so a hand&rsquo;s peak NPS is directly comparable to the combined Peak NPS and they can never disagree. Lasers stay excluded as the Tsumami axis, matching the rest of the NPS family.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.handBalanceNps()</code> that splits the onset stream by hand and runs the shared sweep on each side. <code>computeChartStats</code> folds it in, guarded so a plain-object caller degrades to an even split rather than throwing; the chart is never mutated.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.73</span>Honest NPS mode for the Intensity Heatmap &mdash; the density colour that respects BPM</h4>

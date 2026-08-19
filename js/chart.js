@@ -113,12 +113,23 @@ export function computeChartStats(chart) {
     ? chart.notesPerSecond({ windowSec: 1.0 })
     : { peakNps: 0, meanNps: 0, peakTick: 0 };
 
+  // Hand balance (v0.0.74) — peak NPS split by hand (BT-A/B + FX-L vs BT-C/D +
+  // FX-R) so a one-hand-heavy stream is visible next to the combined figure.
+  // Shares chart.handBalanceNps as the single source of truth; guarded so a
+  // plain-object caller degrades to an even split rather than throwing.
+  const hb = (typeof chart.handBalanceNps === 'function')
+    ? chart.handBalanceNps({ windowSec: 1.0 })
+    : { leftPeakNps: 0, rightPeakNps: 0, leftShare: 0.5, rightShare: 0.5,
+        skew: 0, dominant: 'even', leftTotal: 0, rightTotal: 0,
+        leftPeakTick: 0, rightPeakTick: 0 };
+
   return {
     btChip, btHold, fxChip, fxHold,
     btTotal: btChip + btHold, fxTotal: fxChip + fxHold,
     segL, segR, slamL, slamR, pointsL, pointsR,
     totalNotes, totalMeas, peak, peakMeas, avgDens, durStr, durSec,
     peakNps: npsRes.peakNps, meanNps: npsRes.meanNps, peakNpsTick: npsRes.peakTick,
+    handBalance: hb,
     coverL, coverR,
     bpmMin, bpmMax, bpmRange,
     bpmCount: chart.bpmEvents.length,
@@ -1076,15 +1087,19 @@ export class ChartData {
   // STARTS the densest window (seek there to land just before the burst), meanNps
   // is onsets / active span. DOM-free single source of truth, unit-tested; never
   // mutates chart data.
-  notesPerSecond(opts = {}) {
-    const windowSec = Math.max(0.05, Number(opts.windowSec) || 1.0);
-    const ticks = [];
-    for (const lane of this.bt) for (const n of lane) ticks.push(n.y);
-    for (const lane of this.fx) for (const n of lane) ticks.push(n.y);
+  // Exact peak-window sweep shared by every NPS reading (v0.0.74). Given a list of
+  // onset ticks and a window width in seconds, converts each tick to wall-clock
+  // seconds through the shared tickToSeconds time model and slides a fixed-width
+  // window with a two-pointer sweep to find the densest stretch. The window that
+  // maximises the count can always be slid left until its left edge meets an onset
+  // without dropping a note, so anchoring the window at each onset is EXACT.
+  // Returns { peakCount, peakTick, peakTime, total, spanSec } — peakTick STARTS
+  // the densest window. Extracting this means the whole-chart peak (notesPerSecond)
+  // and the per-hand peak (handBalanceNps) compute density the SAME way, so they
+  // can never disagree. DOM-free; never mutates chart data.
+  _peakNpsSweep(ticks, windowSec) {
     const total = ticks.length;
-    if (total === 0) {
-      return { peakNps: 0, peakTick: 0, peakTime: 0, meanNps: 0, total: 0, spanSec: 0, windowSec };
-    }
+    if (total === 0) return { peakCount: 0, peakTick: 0, peakTime: 0, total: 0, spanSec: 0 };
     const rows = ticks
       .map(tick => ({ tick, sec: this.tickToSeconds(tick) }))
       .sort((a, b) => a.sec - b.sec || a.tick - b.tick);
@@ -1097,12 +1112,73 @@ export class ChartData {
       if (cnt > peakCount) { peakCount = cnt; peakIdx = i; }
     }
     const spanSec = Math.max(0, rows[rows.length - 1].sec - rows[0].sec);
-    const meanNps = spanSec > 1e-6 ? total / spanSec : total / windowSec;
+    return { peakCount, peakTick: rows[peakIdx].tick, peakTime: rows[peakIdx].sec, total, spanSec };
+  }
+
+  notesPerSecond(opts = {}) {
+    const windowSec = Math.max(0.05, Number(opts.windowSec) || 1.0);
+    const ticks = [];
+    for (const lane of this.bt) for (const n of lane) ticks.push(n.y);
+    for (const lane of this.fx) for (const n of lane) ticks.push(n.y);
+    const sw = this._peakNpsSweep(ticks, windowSec);
+    if (sw.total === 0) {
+      return { peakNps: 0, peakTick: 0, peakTime: 0, meanNps: 0, total: 0, spanSec: 0, windowSec };
+    }
+    const meanNps = sw.spanSec > 1e-6 ? sw.total / sw.spanSec : sw.total / windowSec;
     return {
-      peakNps: peakCount / windowSec,
-      peakTick: rows[peakIdx].tick,
-      peakTime: rows[peakIdx].sec,
-      meanNps, total, spanSec, windowSec,
+      peakNps: sw.peakCount / windowSec,
+      peakTick: sw.peakTick,
+      peakTime: sw.peakTime,
+      meanNps, total: sw.total, spanSec: sw.spanSec, windowSec,
+    };
+  }
+
+  // ── Hand-balance / left-right split NPS (v0.0.74) ──────────────────────────
+  // The whole-chart Peak NPS (v0.0.71) tells you HOW dense the busiest second is,
+  // but not WHICH HAND carries it. On the SDVX controller the left hand covers
+  // BT-A/B and FX-L; the right hand covers BT-C/D and FX-R (the VOL knobs are the
+  // Tsumami axis, excluded here exactly as in notesPerSecond). A stream that piles
+  // onto one side is more fatiguing and awkward than the same note count spread
+  // evenly, yet every existing density metric (whole-chart NPS, per-measure NPS,
+  // the tick heatmap) sums both hands and hides that. This splits the onset stream
+  // by hand and runs the SAME exact peak sweep on each side, so each hand's peak
+  // NPS is directly comparable to the whole-chart figure. It also returns each
+  // hand's share of total onsets and a `dominant` verdict (>=60/40 split) so the
+  // UI can flag a one-hand-heavy chart. Onsets only (each BT/FX note = 1, a hold
+  // counted once at its start), matching the notesPerSecond engine. DOM-free,
+  // unit-tested; render-only, never mutates chart data. Returns:
+  //   { leftPeakNps, rightPeakNps, leftPeakTick, rightPeakTick,
+  //     leftTotal, rightTotal, grandTotal, leftShare, rightShare, skew, dominant,
+  //     windowSec }  — skew is 0 (even) … 1 (fully one-sided); dominant is
+  //   'left' | 'right' | 'even'.
+  handBalanceNps(opts = {}) {
+    const windowSec = Math.max(0.05, Number(opts.windowSec) || 1.0);
+    const leftTicks = [], rightTicks = [];
+    // Left hand: BT-A, BT-B, FX-L. Right hand: BT-C, BT-D, FX-R.
+    for (const n of (this.bt[0] || [])) leftTicks.push(n.y);
+    for (const n of (this.bt[1] || [])) leftTicks.push(n.y);
+    for (const n of (this.fx[0] || [])) leftTicks.push(n.y);
+    for (const n of (this.bt[2] || [])) rightTicks.push(n.y);
+    for (const n of (this.bt[3] || [])) rightTicks.push(n.y);
+    for (const n of (this.fx[1] || [])) rightTicks.push(n.y);
+    const L = this._peakNpsSweep(leftTicks, windowSec);
+    const R = this._peakNpsSweep(rightTicks, windowSec);
+    const leftTotal = L.total, rightTotal = R.total;
+    const grandTotal = leftTotal + rightTotal;
+    const leftShare  = grandTotal > 0 ? leftTotal  / grandTotal : 0.5;
+    const rightShare = grandTotal > 0 ? rightTotal / grandTotal : 0.5;
+    const skew = Math.abs(leftShare - 0.5) * 2;   // 0 = even, 1 = fully one-sided
+    let dominant = 'even';
+    if (grandTotal > 0) {
+      if (leftShare >= 0.6)  dominant = 'left';
+      else if (leftShare <= 0.4) dominant = 'right';
+    }
+    return {
+      leftPeakNps:  L.peakCount / windowSec,
+      rightPeakNps: R.peakCount / windowSec,
+      leftPeakTick: L.peakTick, rightPeakTick: R.peakTick,
+      leftTotal, rightTotal, grandTotal,
+      leftShare, rightShare, skew, dominant, windowSec,
     };
   }
 
