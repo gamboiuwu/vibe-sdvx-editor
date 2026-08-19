@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.73';
+const APP_VERSION = '0.0.74';
 const CHANGELOG = [
+  {
+    version: '0.0.74',
+    title: 'Hand Balance — peak NPS split by hand, so a one-sided stream is visible',
+    entries: [
+      ['add', '<strong>Chart Statistics now shows which hand carries the density.</strong> The v0.0.71–73 NPS work told you <em>how</em> dense the busiest second is, but not <em>which hand</em> plays it. On the SDVX controller the left hand covers <strong>BT-A/B + FX-L</strong> and the right hand covers <strong>BT-C/D + FX-R</strong>; a stream that piles onto one side is more fatiguing than the same note count spread evenly, yet every existing density metric summed both hands and hid that. New <strong>Hand peak NPS (L / R)</strong> and <strong>Note share (L / R)</strong> rows in the <strong>Density</strong> block of both the <strong>📊 Chart Statistics</strong> modal and the Tools-Hub Chart Statistics tool break the density out per hand and flag a <span style="color:#ffcc55;font-weight:600">left-heavy</span>/<span style="color:#ffcc55;font-weight:600">right-heavy</span> chart (≥60/40 split) versus an <span style="color:#6fe08a;font-weight:600">even</span> one.'],
+      ['add', '<strong>Each hand’s peak is measured exactly like the whole-chart figure.</strong> The two-pointer peak-window sweep behind <code>chart.notesPerSecond</code> was extracted into one shared, exact routine, and the whole-chart NPS and the new per-hand NPS both run through it — so a hand’s peak NPS is directly comparable to the combined Peak NPS and they can never disagree. Lasers stay excluded as the Tsumami axis, matching the rest of the NPS family.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.handBalanceNps()</code> that splits the onset stream by hand and runs the shared sweep on each side. <code>computeChartStats</code> folds it in, guarded so a plain-object caller degrades to an even split rather than throwing; the chart is never mutated.'],
+    ],
+  },
   {
     version: '0.0.73',
     title: 'Honest NPS mode for the Intensity Heatmap — the density colour that respects BPM',
@@ -11309,6 +11318,19 @@ const DisclaimerGate = (function() {
         return `<strong>${s.peakNps.toFixed(1)}</strong> <span style="color:${band.color};font-weight:600">${band.label}</span>`;
       })()),
       row('Avg NPS', (s.meanNps || 0).toFixed(1)),
+      // v0.0.74 — hand balance: peak NPS split by hand (BT-A/B + FX-L vs
+      // BT-C/D + FX-R) so a one-hand-heavy stream is visible. Shared engine.
+      row('Hand peak NPS (L / R)', (() => {
+        const hb = s.handBalance || {};
+        const dom = (hb.dominant && hb.dominant !== 'even')
+          ? ` <span style="color:#ffcc55;font-weight:600">${hb.dominant}-heavy</span>`
+          : ' <span style="color:#6fe08a;font-weight:600">even</span>';
+        return `<strong>${(hb.leftPeakNps || 0).toFixed(1)}</strong> / <strong>${(hb.rightPeakNps || 0).toFixed(1)}</strong>${dom}`;
+      })()),
+      row('Note share (L / R)', (() => {
+        const hb = s.handBalance || {};
+        return `${Math.round((hb.leftShare ?? 0.5) * 100)}% / ${Math.round((hb.rightShare ?? 0.5) * 100)}%`;
+      })()),
     ].join('');
   }
 

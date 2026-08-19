@@ -5873,6 +5873,19 @@ function _toolChartStats(c) {
       { label: 'Peak density',         value: `${peakDens} notes/measure` },
       { label: 'Peak NPS',             value: `${st.peakNps.toFixed(1)} <span style="color:${npsBand.color};font-weight:600">${npsBand.label}</span>` },
       { label: 'Avg NPS',              value: `${(st.meanNps || 0).toFixed(1)}` },
+      // v0.0.74 — hand balance: peak NPS split by hand (BT-A/B + FX-L vs
+      // BT-C/D + FX-R), so a one-hand-heavy stream is visible next to the total.
+      { label: 'Hand peak NPS (L / R)', value: (() => {
+          const hb = st.handBalance || {};
+          const dom = (hb.dominant && hb.dominant !== 'even')
+            ? ` <span style="color:#ffcc55;font-weight:600">${hb.dominant}-heavy</span>`
+            : ` <span style="color:#6fe08a;font-weight:600">even</span>`;
+          return `${(hb.leftPeakNps || 0).toFixed(1)} / ${(hb.rightPeakNps || 0).toFixed(1)}${dom}`;
+        })() },
+      { label: 'Note share (L / R)',   value: (() => {
+          const hb = st.handBalance || {};
+          return `${Math.round((hb.leftShare ?? 0.5) * 100)}% / ${Math.round((hb.rightShare ?? 0.5) * 100)}%`;
+        })() },
       { label: 'Total note events',    value: totalNoteEvents },
       { label: 'BPM events',           value: ch.bpmEvents.length },
       { label: 'Chart sections',       value: (ch.sections||[]).length },
