@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.73 · 2026</span>
+  <span class="version">v0.0.74 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.74</span>Jump to Peak for the Intensity Heatmap &mdash; one tap to the densest measure</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>The Intensity Heatmap now points at its hottest bar and jumps you there.</strong> The <strong>&#x1F5E1; Intensity Heatmap</strong> could seek any measure you clicked, but on a long chart you first had to <em>hunt</em> for the reddest row. A gold outline now marks the densest measure automatically, and a new <strong>&#x2913; peak</strong> button in the footer seeks the editor straight to it &mdash; the heatmap twin of the v0.0.71 preview readout&rsquo;s click-to-jump-to-the-busiest-burst.</li>
+    <li><span class="tag add">add</span><strong>The peak honours whichever density metric is showing.</strong> In <strong>note density</strong> mode the marker and jump land on the busiest measure by raw note count; flip to <strong>NPS &middot; notes/sec</strong> and both follow the honest wall-clock peak instead, so the gold marker always sits on the row you can see is reddest. After a jump the footer confirms the target &mdash; <code>&rarr; M12: 18.4 nps</code> &mdash; and the button disables itself on an empty chart.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>argmaxMeasure()</code> that returns the index of the densest row in the exact array the heatmap is colouring &mdash; so the gold marker, the seek and the readout can never point at different measures, in either metric. The chart is never mutated.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.73</span>Honest NPS mode for the Intensity Heatmap &mdash; the density colour that respects BPM</h4>

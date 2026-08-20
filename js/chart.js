@@ -146,6 +146,26 @@ export function npsDifficultyBand(peakNps) {
   return { key: 'light', label: 'Light', color: '#6fe08a' };
 }
 
+// ── Index of the densest measure (v0.0.74) ────────────────────────────────────
+// The single source of truth for the Intensity Heatmap's "Jump to Peak" marker
+// and seek: given the per-measure density array the heatmap is actually colouring
+// (either the tick-based note count or the honest wall-clock NPS from
+// measureDensityNps), return the index of its largest value so the gold marker
+// always sits on the exact row the seek jumps to, in EITHER density metric. Ties
+// resolve to the earliest measure (strict >), so the jump is deterministic. Returns
+// -1 for an empty array or when every value is ≤ 0 — a chart with no notes has no
+// peak to jump to, which the UI uses to disable the button. DOM-free and pure;
+// never touches chart data.
+export function argmaxMeasure(arr) {
+  if (!arr || typeof arr.length !== 'number') return -1;
+  let idx = -1, best = 0;   // best starts at 0 ⇒ all-zero / negative ⇒ -1 (no peak)
+  for (let i = 0; i < arr.length; i++) {
+    const v = Number(arr[i]);
+    if (Number.isFinite(v) && v > best) { best = v; idx = i; }
+  }
+  return idx;
+}
+
 // ── Quantize / Nudge engine ──────────────────────────────────────────────────
 // Shared, side-effect-isolated tick math used by the Tools Hub "Quantize" tool.
 // Kept here (not in tools.js) so it can be unit-tested without a DOM, and so any

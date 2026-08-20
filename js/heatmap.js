@@ -1,5 +1,5 @@
 import { chart, renderer, render, updateSeekbar } from './app.js';
-import { TICKS_PER_MEASURE, TICKS_PER_BEAT } from './chart.js';
+import { TICKS_PER_MEASURE, TICKS_PER_BEAT, argmaxMeasure } from './chart.js';
 
 // ── Emotional Intensity Heatmap — full-chart density visualization ─────────────
 // Per-measure note density displayed as a color gradient (cool → hot).
@@ -13,6 +13,11 @@ let _hmCtx     = null;
 let _hmVisible = false;
 let _hmAnimId  = null;
 let _hmLastTick = -1;
+// v0.0.74 — index of the densest measure in the currently-displayed metric,
+// recomputed each draw. Drives the gold "Jump to Peak" marker and seek button;
+// -1 means no notes / no peak, which disables the button.
+let _hmPeakMeasure = -1;
+let _hmPeakBtn = null;
 // v0.0.73 — density metric: 'notes' = raw tick-based count (flatters fast
 // sections), 'nps' = honest wall-clock notes-per-second (BPM-independent, agrees
 // with Chart Statistics' Peak NPS). Persisted alongside the window position.
@@ -135,6 +140,7 @@ function _computeHeatmapData(ch) {
 // ── Canvas rendering ──────────────────────────────────────────────────────────
 function _drawHeatmap() {
   if (!_hmCanvas || !_hmCtx) return;
+  _hmPeakMeasure = -1;   // v0.0.74 — reset; recomputed below once densities exist
   const ch   = (typeof chart    !== 'undefined') ? chart    : null;
   const rend = (typeof renderer !== 'undefined') ? renderer : null;
   const cvs  = _hmCanvas;
@@ -170,6 +176,9 @@ function _drawHeatmap() {
   // v0.0.73 — colour by the honest wall-clock NPS density when NPS mode is active,
   // else the legacy tick-based note count.
   const densities = (_hmDensityMode === 'nps') ? hd.npsDensities : hd.densities;
+  // v0.0.74 — the densest row in whatever metric is on screen, so the marker and
+  // the Jump-to-Peak seek always agree with the reddest bar.
+  _hmPeakMeasure = argmaxMeasure(densities);
 
   const RULER_W = 30;   // px for measure-number ruler
   const LL_W    = 6;    // px for laser-L channel
@@ -240,6 +249,26 @@ function _drawHeatmap() {
     ctx.stroke();
   }
 
+  // ── Peak-measure marker (v0.0.74) ──────────────────────────────────────────
+  // Gold outline on the densest row + a gold measure number, so the busiest bar
+  // is unmistakable and the "Jump to Peak" button lands exactly here.
+  if (_hmPeakMeasure >= 0 && _hmPeakMeasure < totalMeas) {
+    const py = _hmPeakMeasure * ROW_H;
+    const ph2 = Math.max(1, ROW_H);
+    ctx.save();
+    ctx.strokeStyle = '#ffd24a';
+    ctx.lineWidth   = 1.25;
+    ctx.shadowColor = '#ffd24aaa';
+    ctx.shadowBlur  = 4;
+    ctx.strokeRect(MAIN_X + 0.75, py + 0.75, MAIN_W - 1.5, Math.max(1, ph2 - 1.5));
+    ctx.restore();
+    ctx.fillStyle = '#ffd24a';
+    ctx.font      = `bold ${Math.min(9, Math.max(6, ROW_H - 1))}px monospace`;
+    ctx.textAlign = 'right';
+    ctx.fillText(String(_hmPeakMeasure + 1), RULER_W - 3, py + ROW_H * 0.72);
+    ctx.textAlign = 'left';
+  }
+
   // ── Playhead line ──────────────────────────────────────────────────────────
   const playTick = rend?.playTick ?? 0;
   const playY    = (playTick / 192) * ROW_H;
@@ -266,6 +295,14 @@ function _drawHeatmap() {
   ctx.strokeStyle = '#ffffff33';
   ctx.lineWidth   = 0.5;
   ctx.strokeRect(LEGEND_X, LEGEND_Y, LEGEND_W, LEGEND_H);
+
+  // v0.0.74 — reflect whether there's a peak to jump to on the button.
+  if (_hmPeakBtn) {
+    const has = _hmPeakMeasure >= 0;
+    _hmPeakBtn.disabled      = !has;
+    _hmPeakBtn.style.opacity = has ? '1' : '0.4';
+    _hmPeakBtn.style.cursor  = has ? 'pointer' : 'default';
+  }
 }
 
 // ── Animation loop ────────────────────────────────────────────────────────────
@@ -349,9 +386,9 @@ function _buildHeatmapWindow() {
   <span style="width:8px;height:8px;background:#ff1188;display:inline-block;border-radius:1px"></span>
 </div>
 <canvas id="heatmap-canvas" style="width:210px;height:440px;display:block;cursor:crosshair;flex-shrink:0"></canvas>
-<div style="padding:3px 8px 4px;background:#0b0b1c;border-top:1px solid #1a1a30;display:flex;justify-content:space-between;align-items:center;flex-shrink:0">
-  <span style="font-size:8px;color:#3a3a6a;letter-spacing:0.03em">click to seek</span>
-  <span id="hm-info" style="font-size:9px;color:#6668a0">—</span>
+<div style="padding:3px 8px 4px;background:#0b0b1c;border-top:1px solid #1a1a30;display:flex;justify-content:space-between;align-items:center;gap:6px;flex-shrink:0">
+  <button id="hm-peak" title="Jump to the densest measure in the current density metric" style="background:#141430;border:1px solid #4a3a12;border-radius:3px;color:#ffd24a;font-size:9px;line-height:1;padding:2px 6px;cursor:pointer;letter-spacing:0.02em;white-space:nowrap;flex-shrink:0">&#x2913; peak</button>
+  <span id="hm-info" style="font-size:9px;color:#6668a0;flex:1;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">click to seek</span>
 </div>
 `;
 
@@ -376,6 +413,35 @@ function _buildHeatmapWindow() {
     _syncModeBtn();
     _saveHmState({ left: _hmWin?.style.left, top: _hmWin?.style.top });
     _drawHeatmap();
+  });
+
+  // v0.0.74 — Jump to Peak: seek straight to the densest measure (whichever
+  // metric is active), the heatmap twin of the preview readout's seek-to-burst.
+  _hmPeakBtn = win.querySelector('#hm-peak');
+  _hmPeakBtn?.addEventListener('click', () => {
+    const c = (typeof chart    !== 'undefined') ? chart    : null;
+    const r = (typeof renderer !== 'undefined') ? renderer : null;
+    if (!c || !r || _hmPeakMeasure < 0) return;
+    const totalMeas = Math.max(1, c.totalMeasures || 64);
+    const m    = Math.min(totalMeas - 1, Math.max(0, _hmPeakMeasure));
+    const tick = m * 192;
+    r.playTick = tick;
+    render();
+    updateSeekbar(tick);
+    _drawHeatmap();
+    const info = win.querySelector('#hm-info');
+    if (info) {
+      if (_hmDensityMode === 'nps' && typeof c.measureDensityNps === 'function') {
+        let nps = 0;
+        try { nps = c.measureDensityNps({ totalMeasures: totalMeas }).perMeasure[m] || 0; } catch {}
+        info.textContent = `→ M${m + 1}: ${nps.toFixed(1)} nps`;
+      } else {
+        let count = 0;
+        for (let i = 0; i < 4; i++) (c.bt[i] || []).forEach(n => { if (Math.floor(n.y / 192) === m) count++; });
+        for (let i = 0; i < 2; i++) (c.fx[i] || []).forEach(n => { if (Math.floor(n.y / 192) === m) count++; });
+        info.textContent = `→ M${m + 1}: ${count} note${count !== 1 ? 's' : ''}`;
+      }
+    }
   });
 
   // Click → seek to that measure
@@ -418,7 +484,7 @@ function _buildHeatmapWindow() {
 
   _hmCanvas.addEventListener('mouseleave', () => {
     const info = win.querySelector('#hm-info');
-    if (info) info.textContent = '—';
+    if (info) info.textContent = 'click to seek';
   });
 
   return win;
