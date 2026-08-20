@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.73';
+const APP_VERSION = '0.0.74';
 const CHANGELOG = [
+  {
+    version: '0.0.74',
+    title: 'Jump to Peak for the Intensity Heatmap — one tap to the densest measure',
+    entries: [
+      ['add', '<strong>The Intensity Heatmap now points at its hottest bar and jumps you there.</strong> The <strong>🗡 Intensity Heatmap</strong> could seek any measure you clicked, but on a long chart you first had to <em>hunt</em> for the reddest row. A gold outline now marks the densest measure automatically, and a new <strong>⤓ peak</strong> button in the footer seeks the editor straight to it — the heatmap twin of the v0.0.71 preview readout’s click-to-jump-to-the-busiest-burst.'],
+      ['add', '<strong>The peak honours whichever density metric is showing.</strong> In <strong>note density</strong> mode the marker and jump land on the busiest measure by raw note count; flip to <strong>NPS · notes/sec</strong> and both follow the honest wall-clock peak instead, so the gold marker always sits on the row you can see is reddest. After a jump the footer confirms the target — <code>→ M12: 18.4 nps</code> — and the button disables itself on an empty chart.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>argmaxMeasure()</code> that returns the index of the densest row in the exact array the heatmap is colouring — so the gold marker, the seek and the readout can never point at different measures, in either metric. The chart is never mutated.'],
+    ],
+  },
   {
     version: '0.0.73',
     title: 'Honest NPS mode for the Intensity Heatmap — the density colour that respects BPM',
