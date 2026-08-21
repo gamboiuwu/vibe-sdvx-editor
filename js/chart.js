@@ -113,12 +113,23 @@ export function computeChartStats(chart) {
     ? chart.notesPerSecond({ windowSec: 1.0 })
     : { peakNps: 0, meanNps: 0, peakTick: 0 };
 
+  // Honest, BPM-independent single-finger stress (v0.0.74) — the fastest
+  // same-lane repeat (jacks/s) from the v0.0.74 engine, surfaced next to Peak
+  // NPS so the third physical-difficulty axis lives beside the other two.
+  // Reuses chart.jackStress as the single source of truth; guarded so a
+  // plain-object caller (no method) degrades to zero rather than throwing.
+  const jackRes = (typeof chart.jackStress === 'function')
+    ? chart.jackStress({})
+    : { peakJps: 0, peakLane: 0, peakTick: 0, peakRun: 0, longestRun: 0 };
+
   return {
     btChip, btHold, fxChip, fxHold,
     btTotal: btChip + btHold, fxTotal: fxChip + fxHold,
     segL, segR, slamL, slamR, pointsL, pointsR,
     totalNotes, totalMeas, peak, peakMeas, avgDens, durStr, durSec,
     peakNps: npsRes.peakNps, meanNps: npsRes.meanNps, peakNpsTick: npsRes.peakTick,
+    peakJps: jackRes.peakJps, peakJackLane: jackRes.peakLane, peakJackTick: jackRes.peakTick,
+    peakJackRun: jackRes.peakRun, longestJackRun: jackRes.longestRun,
     coverL, coverR,
     bpmMin, bpmMax, bpmRange,
     bpmCount: chart.bpmEvents.length,
@@ -144,6 +155,27 @@ export function npsDifficultyBand(peakNps) {
   if (v >= 16) return { key: 'dense',   label: 'Dense',   color: '#ffcc55' };
   if (v >= 8)  return { key: 'moderate',label: 'Moderate',color: '#66ddff' };
   return { key: 'light', label: 'Light', color: '#6fe08a' };
+}
+
+// ── Jack difficulty band (v0.0.74) ────────────────────────────────────────────
+// Classify a peak jacks-per-second value (the fastest same-lane repeat from
+// chart.jackStress) into a coarse single-finger-stress band, the jack twin of
+// npsDifficultyBand. Thresholds are calibrated to how a jack rate FEELS on one
+// finger, not how a whole hand streams — so the same numbers read harder than
+// the NPS bands: a 16th jack at 180 BPM is 12 jacks/s on ONE button, already
+// "Extreme"; 8th jacks around 6/s are "Tough"; a lane repeating slower than
+// ~3/s is barely a jack at all. Pure and DOM-free so the modal and any future
+// caller colour/label from ONE source of truth; matches the readout palette
+// (calm green → amber → hot). Returns the lowest band for 0 / NaN (a chart with
+// no repeats reads "None", never blank).
+export function jackDifficultyBand(peakJps) {
+  const v = Math.max(0, Number(peakJps) || 0);
+  if (v >= 12) return { key: 'extreme', label: 'Extreme', color: '#ff4d4d' };
+  if (v >= 9)  return { key: 'heavy',   label: 'Heavy',   color: '#ff8a3d' };
+  if (v >= 6)  return { key: 'tough',   label: 'Tough',   color: '#ffcc55' };
+  if (v >= 3)  return { key: 'moderate',label: 'Moderate',color: '#66ddff' };
+  if (v > 0)   return { key: 'light',   label: 'Light',   color: '#6fe08a' };
+  return { key: 'none', label: 'None', color: '#6fe08a' };
 }
 
 // ── Quantize / Nudge engine ──────────────────────────────────────────────────
@@ -1103,6 +1135,97 @@ export class ChartData {
       peakTick: rows[peakIdx].tick,
       peakTime: rows[peakIdx].sec,
       meanNps, total, spanSec, windowSec,
+    };
+  }
+
+  // ── Jack Stress (v0.0.74) ──────────────────────────────────────────────────
+  // The THIRD physical-difficulty axis, alongside the v0.0.56-70 green number
+  // (how long you have to READ a note) and the v0.0.71-73 NPS (how many notes
+  // your two hands actuate per second). Jack stress measures the SAME-finger
+  // load: how fast a single button/lane is asked to repeat. A "jack" is two or
+  // more consecutive notes in ONE lane — you can't alternate hands, so one
+  // finger has to strike again and again. This is a distinct pattern from a
+  // stream: an 8th stream shared across four BT lanes is a comfortable 8 NPS,
+  // but the SAME 8 NPS all landing on BT-A is a punishing jack that no NPS or
+  // reading number exposes. Like its two siblings this is BPM-INDEPENDENT: the
+  // rate is jacks-per-second (1 / real seconds between successive presses via
+  // the same tickToSeconds time model the C-Mode scroll, the audio path and
+  // notesPerSecond all use), so a 16th jack at 240 BPM honestly outscores the
+  // identical tick pattern at 120 BPM. Onsets only (a hold counts once at its
+  // start; start-to-start timing already includes the hold length, so a hold's
+  // release-and-repress is never mistaken for an ultra-fast jack), matching the
+  // notesPerSecond and measureDensityNps buckets — one source of truth. Scans
+  // the 4 BT + 2 FX lanes independently (lasers are continuous knob motion, not
+  // a jack). DOM-free and unit-tested; the chart is never mutated.
+  //
+  // `gapSec` (default 0.5 s = 2 jacks/s) is the slowest gap still counted as a
+  // jack for RUN LENGTH — successive same-lane presses closer than this chain
+  // into a run; a wider gap breaks it. peakJps itself is the fastest single
+  // repeat and is never gap-limited. Returns:
+  //   peakJps      fastest same-lane repeat rate anywhere (0 if no repeats)
+  //   peakLane     lane index (0-3 BT-A..D, 4-5 FX-L/R) of that repeat
+  //   peakTick     tick of the FIRST note of the fastest repeat
+  //   peakRun      length (in notes) of the run the peak repeat sits in (>= 2)
+  //   longestRun   most notes in any single unbroken jack run (a stamina proxy)
+  //   longestRunLane / longestRunTick   where that longest run starts
+  //   perLane      [{ lane, peakJps, longestRun }] per BT/FX lane
+  //   gapSec       echoed back
+  jackStress(opts = {}) {
+    const gapSec = Math.max(0.02, Number(opts.gapSec) || 0.5);
+    const lanes = [...this.bt, ...this.fx];         // 4 BT + 2 FX, in lane order
+    const LANE_IDX = [0, 1, 2, 3, 4, 5];            // display index per scanned lane
+    let peakJps = 0, peakLane = 0, peakTick = 0, peakRun = 0;
+    let longestRun = 0, longestRunLane = 0, longestRunTick = 0;
+    const perLane = [];
+
+    for (let li = 0; li < lanes.length; li++) {
+      const idx = LANE_IDX[li];
+      // Sort onsets within THIS lane by real time (a lane is normally already in
+      // tick order, but sort defensively so an out-of-order note can't fake a run).
+      const rows = lanes[li]
+        .map(n => ({ tick: n.y, sec: this.tickToSeconds(n.y) }))
+        .sort((a, b) => a.sec - b.sec || a.tick - b.tick);
+      let lanePeak = 0, laneLongest = rows.length ? 1 : 0;
+      let run = 1, runStartIdx = 0;
+      for (let i = 1; i < rows.length; i++) {
+        const dt = rows[i].sec - rows[i - 1].sec;
+        if (dt <= 1e-6) continue;                   // dedup a same-tick double
+        const jps = 1 / dt;
+        if (jps > lanePeak) lanePeak = jps;
+        if (jps > peakJps) {                        // new global fastest repeat
+          peakJps = jps; peakLane = idx; peakTick = rows[i - 1].tick;
+        }
+        if (dt <= gapSec) {                         // still within a jack run
+          run++;
+        } else {
+          run = 1; runStartIdx = i;
+        }
+        if (run > laneLongest) laneLongest = run;
+        if (run > longestRun) {
+          longestRun = run; longestRunLane = idx; longestRunTick = rows[runStartIdx].tick;
+        }
+      }
+      perLane.push({ lane: idx, peakJps: lanePeak, longestRun: laneLongest });
+    }
+
+    // Resolve the run length AT the peak repeat: walk the peak lane out from the
+    // fastest pair in both directions while gaps stay within gapSec.
+    if (peakJps > 0) {
+      const rows = lanes[peakLane]
+        .map(n => ({ tick: n.y, sec: this.tickToSeconds(n.y) }))
+        .sort((a, b) => a.sec - b.sec || a.tick - b.tick);
+      let k = rows.findIndex(r => r.tick === peakTick);
+      if (k < 0) k = 0;
+      let lo = k, hi = k + 1;
+      while (lo > 0 && (rows[lo].sec - rows[lo - 1].sec) <= gapSec) lo--;
+      while (hi < rows.length - 1 && (rows[hi + 1].sec - rows[hi].sec) <= gapSec) hi++;
+      peakRun = Math.max(2, hi - lo + 1);
+    }
+
+    return {
+      peakJps, peakLane, peakTick, peakRun,
+      longestRun, longestRunLane, longestRunTick,
+      perLane, gapSec,
     };
   }
 

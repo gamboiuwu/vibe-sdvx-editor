@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.73 · 2026</span>
+  <span class="version">v0.0.74 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.74</span>Peak Jack &mdash; the honest single-finger stress number, the third physical-difficulty axis</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Chart Statistics now shows how hard your chart jacks.</strong> A <em>jack</em> is two or more notes in a row on the SAME lane &mdash; you can&rsquo;t alternate hands, so one finger has to strike again and again. No number in the editor exposed it: an 8th stream shared across four BT lanes is a comfortable 8&nbsp;NPS, but the identical 8&nbsp;NPS all landing on BT-A is a punishing jack that reads exactly the same to the density and reaction numbers. A new <strong>Peak&nbsp;Jack (per second)</strong> row in both the <strong>&#128202; Chart Statistics</strong> modal and the Tools-Hub Chart Statistics tool measures the fastest same-lane repeat in the chart, names the lane and the length of the run, so single-finger stamina finally has an honest figure of its own.</li>
+    <li><span class="tag add">add</span><strong>BPM-independent, like its two siblings.</strong> The rate is jacks per <em>real</em> second (start-to-start timing through the same <code>tickToSeconds</code> time model the C-Mode scroll, the audio path, Peak NPS and the reaction window all use), so a 16th jack at 240&nbsp;BPM honestly outscores the identical tick pattern at 120. A difficulty band reads it at a glance &mdash; <span style="color:#6fe08a">Light</span>, <span style="color:#66ddff">Moderate</span>, <span style="color:#ffcc55">Tough</span>, <span style="color:#ff8a3d">Heavy</span>, <span style="color:#ff4d4d">Extreme</span> &mdash; calibrated to one finger, not a whole hand, so the same numbers read harder than the NPS bands (a 16th jack near 180&nbsp;BPM is already Extreme). Holds count once at their start, so a hold&rsquo;s release-and-repress is never mistaken for an ultra-fast jack; lasers are continuous knob motion, not jacks, and are excluded.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.jackStress(opts)</code> that scans the 4&nbsp;BT + 2&nbsp;FX lanes independently, and a shared <code>chart.jackDifficultyBand(peakJps)</code> that drives the label and colour so the modal and the tool can never disagree. <code>computeChartStats</code> folds it in beside Peak&nbsp;NPS (guarded so a plain-object caller degrades to zero, never throws). The chart is never mutated.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.73</span>Honest NPS mode for the Intensity Heatmap &mdash; the density colour that respects BPM</h4>

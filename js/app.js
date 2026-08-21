@@ -1,4 +1,4 @@
-import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, npsDifficultyBand, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
+import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, npsDifficultyBand, jackDifficultyBand, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
 import { Renderer, C, laserColors, laserOpacity, laserWideMode, LASER_PRESETS, applyLaserPreset, setLaserColorCustom, buildLaneHeader, setLaserOpacity, setLaserWideMode } from './renderer.js';
 import { GameView } from './game.js';
 import { exportKsh, importKsh, downloadText } from './ksh.js';
@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.73';
+const APP_VERSION = '0.0.74';
 const CHANGELOG = [
+  {
+    version: '0.0.74',
+    title: 'Peak Jack — the honest single-finger stress number, the third physical-difficulty axis',
+    entries: [
+      ['add', '<strong>Chart Statistics now shows how hard your chart jacks.</strong> A <em>jack</em> is two or more notes in a row on the SAME lane — you can’t alternate hands, so one finger has to strike again and again. No number in the editor exposed it: an 8th stream shared across four BT lanes is a comfortable 8&nbsp;NPS, but the identical 8&nbsp;NPS all landing on BT-A is a punishing jack that reads exactly the same to the density and reaction numbers. A new <strong>Peak&nbsp;Jack (per second)</strong> row in both the <strong>📊 Chart Statistics</strong> modal and the Tools-Hub Chart Statistics tool measures the fastest same-lane repeat in the chart, names the lane and the length of the run, so single-finger stamina finally has an honest figure of its own.'],
+      ['add', '<strong>BPM-independent, like its two siblings.</strong> The rate is jacks per <em>real</em> second (start-to-start timing through the same <code>tickToSeconds</code> time model the C-Mode scroll, the audio path, Peak NPS and the reaction window all use), so a 16th jack at 240&nbsp;BPM honestly outscores the identical tick pattern at 120. A difficulty band reads it at a glance — <span style="color:#6fe08a">Light</span>, <span style="color:#66ddff">Moderate</span>, <span style="color:#ffcc55">Tough</span>, <span style="color:#ff8a3d">Heavy</span>, <span style="color:#ff4d4d">Extreme</span> — calibrated to one finger, not a whole hand, so the same numbers read harder than the NPS bands (a 16th jack near 180&nbsp;BPM is already Extreme). Holds count once at their start, so a hold’s release-and-repress is never mistaken for an ultra-fast jack; lasers are continuous knob motion, not jacks, and are excluded.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.jackStress(opts)</code> that scans the 4&nbsp;BT + 2&nbsp;FX lanes independently, and a shared <code>chart.jackDifficultyBand(peakJps)</code> that drives the label and colour so the modal and the tool can never disagree. <code>computeChartStats</code> folds it in beside Peak&nbsp;NPS (guarded so a plain-object caller degrades to zero, never throws). The chart is never mutated.'],
+    ],
+  },
   {
     version: '0.0.73',
     title: 'Honest NPS mode for the Intensity Heatmap — the density colour that respects BPM',
@@ -11309,6 +11318,17 @@ const DisclaimerGate = (function() {
         return `<strong>${s.peakNps.toFixed(1)}</strong> <span style="color:${band.color};font-weight:600">${band.label}</span>`;
       })()),
       row('Avg NPS', (s.meanNps || 0).toFixed(1)),
+      // v0.0.74 — Peak Jack: the fastest same-lane repeat (single-finger stress),
+      // BPM-independent, banded via the shared jackDifficultyBand so the colour
+      // and label match anywhere the third physical-difficulty axis is surfaced.
+      row('Peak Jack (per second)', (() => {
+        const band = jackDifficultyBand(s.peakJps);
+        const laneNm = ['BT-A','BT-B','BT-C','BT-D','FX-L','FX-R'][s.peakJackLane] || '—';
+        const detail = s.peakJps > 0
+          ? ` <span style="opacity:.6;font-size:.82em">${laneNm}${s.peakJackRun > 1 ? `, ${s.peakJackRun}-note run` : ''}</span>`
+          : '';
+        return `<strong>${(s.peakJps || 0).toFixed(1)}</strong> <span style="color:${band.color};font-weight:600">${band.label}</span>${detail}`;
+      })()),
     ].join('');
   }
 
