@@ -1,4 +1,4 @@
-import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, npsDifficultyBand, jackDifficultyBand, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
+import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
 import { Renderer, C, laserColors, laserOpacity, laserWideMode, LASER_PRESETS, applyLaserPreset, setLaserColorCustom, buildLaneHeader, setLaserOpacity, setLaserWideMode } from './renderer.js';
 import { GameView } from './game.js';
 import { exportKsh, importKsh, downloadText } from './ksh.js';
@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.74';
+const APP_VERSION = '0.0.75';
 const CHANGELOG = [
+  {
+    version: '0.0.75',
+    title: 'Hand Balance — the honest left-vs-right workload number, the fourth physical-difficulty axis',
+    entries: [
+      ['add', '<strong>Chart Statistics now shows whether one hand carries your chart.</strong> A stream that reads as a comfortable 8&nbsp;NPS overall can be a brutal one-arm run if every note lands on the left three lanes — and no number in the editor exposed it. A new <strong>Hand&nbsp;Balance (L&nbsp;/&nbsp;R)</strong> row in both the <strong>📊 Chart Statistics</strong> modal and the Tools-Hub Chart Statistics tool splits the workload between your two hands — <strong>left</strong> plays BT-A, BT-B and FX-L; <strong>right</strong> plays BT-C, BT-D and FX-R — and shows the share each hand does, so a lopsided chart is visible at a glance.'],
+      ['add', '<strong>The fourth honest axis, beside the other three.</strong> It joins the <strong>Green#</strong> reading window (how long you have to <em>read</em> a note), <strong>Peak&nbsp;NPS</strong> (how many notes <em>both</em> hands actuate per second) and <strong>Peak&nbsp;Jack</strong> (single-finger repeat). Each hand also gets its own <strong>peak NPS</strong> — the densest real second on that hand’s lanes alone — so a one-hand burst is measured, not just implied. A balance band reads it at a glance: <span style="color:#6fe08a">Balanced</span>, <span style="color:#66ddff">Slight lean</span>, <span style="color:#ff8a3d">One-hand heavy</span>, and the heavier hand is named. Onsets only (a hold counts once at its start); lasers are continuous knob motion, not presses, so they’re excluded — the same convention Peak&nbsp;NPS uses.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.handBalance(opts)</code> that reuses the exact onset-anchored sliding-window sweep <code>chart.notesPerSecond</code> uses (so each hand’s peak NPS agrees with the whole-chart figure by construction), and a shared <code>chart.handBalanceBand(share)</code> that drives the label and colour so the modal and the tool can never disagree. <code>computeChartStats</code> folds it in beside Peak&nbsp;Jack (guarded so a plain-object caller degrades to even/zero, never throws). The chart is never mutated.'],
+    ],
+  },
   {
     version: '0.0.74',
     title: 'Peak Jack — the honest single-finger stress number, the third physical-difficulty axis',
@@ -11328,6 +11337,17 @@ const DisclaimerGate = (function() {
           ? ` <span style="opacity:.6;font-size:.82em">${laneNm}${s.peakJackRun > 1 ? `, ${s.peakJackRun}-note run` : ''}</span>`
           : '';
         return `<strong>${(s.peakJps || 0).toFixed(1)}</strong> <span style="color:${band.color};font-weight:600">${band.label}</span>${detail}`;
+      })()),
+      // v0.0.75 — Hand Balance: the fourth physical-difficulty axis. How lopsided
+      // the two-hand workload is (L = BT-A/B + FX-L, R = BT-C/D + FX-R), banded via
+      // the shared handBalanceBand so the colour/label match the Tools stat panel.
+      row('Hand Balance (L / R)', (() => {
+        const band = handBalanceBand(s.handHeavierShare);
+        const heavy = s.handHeavier === 'left' ? 'L-heavy' : s.handHeavier === 'right' ? 'R-heavy' : '';
+        const split = `${Math.round(s.handLeftPct || 0)}% / ${Math.round(s.handRightPct || 0)}%`;
+        const peaks = ` <span style="opacity:.6;font-size:.82em">peak ${(s.handLeftPeakNps || 0).toFixed(1)} / ${(s.handRightPeakNps || 0).toFixed(1)} NPS</span>`;
+        const tag = heavy ? ` ${heavy}` : '';
+        return `<strong>${split}</strong> <span style="color:${band.color};font-weight:600">${band.label}${tag}</span>${peaks}`;
       })()),
     ].join('');
   }
