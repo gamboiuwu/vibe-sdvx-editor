@@ -122,6 +122,14 @@ export function computeChartStats(chart) {
     ? chart.jackStress({})
     : { peakJps: 0, peakLane: 0, peakTick: 0, peakRun: 0, longestRun: 0 };
 
+  // Honest hand-balance (v0.0.75) — how lopsided the two-hand workload is, plus
+  // each hand's peak NPS, from the v0.0.75 engine, surfaced beside Peak Jack as
+  // the fourth physical-difficulty axis. Reuses chart.handBalance as the single
+  // source of truth; guarded so a plain-object caller degrades to even/zero.
+  const handRes = (typeof chart.handBalance === 'function')
+    ? chart.handBalance({})
+    : { leftPeakNps: 0, rightPeakNps: 0, leftTotal: 0, rightTotal: 0, leftPct: 0, rightPct: 0, heavier: 'even', heavierShare: 0.5 };
+
   return {
     btChip, btHold, fxChip, fxHold,
     btTotal: btChip + btHold, fxTotal: fxChip + fxHold,
@@ -130,6 +138,10 @@ export function computeChartStats(chart) {
     peakNps: npsRes.peakNps, meanNps: npsRes.meanNps, peakNpsTick: npsRes.peakTick,
     peakJps: jackRes.peakJps, peakJackLane: jackRes.peakLane, peakJackTick: jackRes.peakTick,
     peakJackRun: jackRes.peakRun, longestJackRun: jackRes.longestRun,
+    handLeftPeakNps: handRes.leftPeakNps, handRightPeakNps: handRes.rightPeakNps,
+    handLeftTotal: handRes.leftTotal, handRightTotal: handRes.rightTotal,
+    handLeftPct: handRes.leftPct, handRightPct: handRes.rightPct,
+    handHeavier: handRes.heavier, handHeavierShare: handRes.heavierShare,
     coverL, coverR,
     bpmMin, bpmMax, bpmRange,
     bpmCount: chart.bpmEvents.length,
@@ -176,6 +188,22 @@ export function jackDifficultyBand(peakJps) {
   if (v >= 3)  return { key: 'moderate',label: 'Moderate',color: '#66ddff' };
   if (v > 0)   return { key: 'light',   label: 'Light',   color: '#6fe08a' };
   return { key: 'none', label: 'None', color: '#6fe08a' };
+}
+
+// ── Hand-balance band (v0.0.75) ───────────────────────────────────────────────
+// Classify how lopsided the two-hand workload is (chart.handBalance().heavierShare,
+// 0.5 = perfectly even .. 1.0 = one hand does everything) into a coarse band so
+// the number reads at a glance. A share up to ~55% is normal give-and-take between
+// hands; 55-65% is a noticeable lean one player feels in one arm; past ~65% the
+// chart is genuinely one-hand-heavy. Pure and DOM-free so the modal and the Tools
+// stat panel colour/label from ONE source of truth; matches the difficulty-band
+// palette (calm green → cyan → amber). Returns "Balanced" for an even or empty
+// chart so it never reads blank.
+export function handBalanceBand(heavierShare) {
+  const v = Math.max(0.5, Math.min(1, Number(heavierShare) || 0.5));
+  if (v >= 0.65) return { key: 'strong', label: 'One-hand heavy', color: '#ff8a3d' };
+  if (v >= 0.55) return { key: 'lean',   label: 'Slight lean',    color: '#66ddff' };
+  return { key: 'balanced', label: 'Balanced', color: '#6fe08a' };
 }
 
 // ── Quantize / Nudge engine ──────────────────────────────────────────────────
@@ -1226,6 +1254,67 @@ export class ChartData {
       peakJps, peakLane, peakTick, peakRun,
       longestRun, longestRunLane, longestRunTick,
       perLane, gapSec,
+    };
+  }
+
+  // ── Hand Balance (v0.0.75) ─────────────────────────────────────────────────
+  // The FOURTH honest physical-difficulty axis, beside the v0.0.56-70 green
+  // number (reading load), the v0.0.71-73 NPS (both-hands actuation) and the
+  // v0.0.74 jack (single-finger repeat). Hand balance answers a question none of
+  // those do: is the WORK split evenly between your two hands, or does one hand
+  // carry the chart? In SDVX the left hand plays BT-A, BT-B and FX-L; the right
+  // hand plays BT-C, BT-D and FX-R (the VOL knobs are the thumbs and, like the
+  // NPS axis, lasers are continuous knob motion — not discrete presses — so they
+  // are excluded here too). A stream that reads as a comfortable 8 NPS overall
+  // can be a brutal one-arm run if every note lands on the left three lanes — a
+  // lopsided chart no whole-chart NPS or jack number exposes.
+  //
+  // Reports each hand's PEAK NPS (the densest one wall-clock second on that hand's
+  // lanes, via the same onset-anchored sliding window notesPerSecond uses, so the
+  // two agree by construction) and each hand's TOTAL onset share. `heavier` /
+  // `heavierShare` name the busier hand and how lopsided the overall work is
+  // (0.5 = perfectly even, 1.0 = one hand does everything). BPM-independent,
+  // onsets only (a hold = one press at its start), DOM-free and unit-tested; the
+  // chart is never mutated.
+  handBalance(opts = {}) {
+    const windowSec = Math.max(0.05, Number(opts.windowSec) || 1.0);
+    // Left hand: BT-A, BT-B, FX-L.  Right hand: BT-C, BT-D, FX-R.
+    const leftLanes  = [this.bt[0], this.bt[1], this.fx[0]];
+    const rightLanes = [this.bt[2], this.bt[3], this.fx[1]];
+    const collect = lanes => {
+      const secs = [];
+      for (const lane of lanes) if (lane) for (const n of lane) secs.push(this.tickToSeconds(n.y));
+      secs.sort((a, b) => a - b);
+      return secs;
+    };
+    // Peak count in any window that STARTS at an onset — exact, the same proof as
+    // notesPerSecond (the count-maximising window can always slide left until its
+    // left edge meets an onset without dropping a note, so anchoring at onsets is
+    // exact). A single two-pointer sweep over the sorted onset seconds.
+    const peakNpsOf = secs => {
+      let peak = 0, j = 0;
+      for (let i = 0; i < secs.length; i++) {
+        if (j < i) j = i;
+        const limit = secs[i] + windowSec;
+        while (j < secs.length && secs[j] < limit) j++;
+        if (j - i > peak) peak = j - i;
+      }
+      return peak / windowSec;
+    };
+    const L = collect(leftLanes), R = collect(rightLanes);
+    const leftTotal = L.length, rightTotal = R.length;
+    const total = leftTotal + rightTotal;
+    const leftPct  = total ? (leftTotal  / total) * 100 : 0;
+    const rightPct = total ? (rightTotal / total) * 100 : 0;
+    let heavier = 'even', heavierShare = 0.5;
+    if (total > 0 && leftTotal !== rightTotal) {
+      heavier = leftTotal > rightTotal ? 'left' : 'right';
+      heavierShare = Math.max(leftTotal, rightTotal) / total;
+    }
+    return {
+      leftPeakNps: peakNpsOf(L), rightPeakNps: peakNpsOf(R),
+      leftTotal, rightTotal, total,
+      leftPct, rightPct, heavier, heavierShare, windowSec,
     };
   }
 

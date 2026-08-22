@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.74 · 2026</span>
+  <span class="version">v0.0.75 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.75</span>Hand Balance &mdash; the honest left-vs-right workload number, the fourth physical-difficulty axis</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Chart Statistics now shows whether one hand carries your chart.</strong> A stream that reads as a comfortable 8&nbsp;NPS overall can be a brutal one-arm run if every note lands on the left three lanes &mdash; and no number in the editor exposed it. A new <strong>Hand&nbsp;Balance (L&nbsp;/&nbsp;R)</strong> row in both the <strong>&#128202; Chart Statistics</strong> modal and the Tools-Hub Chart Statistics tool splits the workload between your two hands &mdash; <strong>left</strong> plays BT-A, BT-B and FX-L; <strong>right</strong> plays BT-C, BT-D and FX-R &mdash; and shows the share each hand does, so a lopsided chart is visible at a glance.</li>
+    <li><span class="tag add">add</span><strong>The fourth honest axis, beside the other three.</strong> It joins the <strong>Green#</strong> reading window (how long you have to <em>read</em> a note), <strong>Peak&nbsp;NPS</strong> (how many notes <em>both</em> hands actuate per second) and <strong>Peak&nbsp;Jack</strong> (single-finger repeat). Each hand also gets its own <strong>peak NPS</strong> &mdash; the densest real second on that hand&rsquo;s lanes alone &mdash; so a one-hand burst is measured, not just implied. A balance band reads it at a glance: <span style="color:#6fe08a">Balanced</span>, <span style="color:#66ddff">Slight lean</span>, <span style="color:#ff8a3d">One-hand heavy</span>, and the heavier hand is named. Onsets only (a hold counts once at its start); lasers are continuous knob motion, not presses, so they&rsquo;re excluded &mdash; the same convention Peak&nbsp;NPS uses.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.handBalance(opts)</code> that reuses the exact onset-anchored sliding-window sweep <code>chart.notesPerSecond</code> uses (so each hand&rsquo;s peak NPS agrees with the whole-chart figure by construction), and a shared <code>chart.handBalanceBand(share)</code> that drives the label and colour so the modal and the tool can never disagree. <code>computeChartStats</code> folds it in beside Peak&nbsp;Jack (guarded so a plain-object caller degrades to even/zero, never throws). The chart is never mutated.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.74</span>Peak Jack &mdash; the honest single-finger stress number, the third physical-difficulty axis</h4>

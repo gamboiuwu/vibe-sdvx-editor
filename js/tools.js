@@ -1,5 +1,5 @@
 import { chart, renderer, gameView, render, saveUndo, updateSeekbar, addChartAnnotation, _seekTo, sel, playing, audioBuffer, flipHorizontalRange, flipTemporalRange, updateStopEventList } from './app.js';
-import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, npsDifficultyBand, jackDifficultyBand, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick } from './chart.js';
+import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick } from './chart.js';
 import { Renderer } from './renderer.js';
 import { updateRadar } from './radar.js';
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -5880,6 +5880,16 @@ function _toolChartStats(c) {
         const laneNm = ['BT-A','BT-B','BT-C','BT-D','FX-L','FX-R'][st.peakJackLane] || '—';
         const det = st.peakJps > 0 ? ` <span style="opacity:.55">(${laneNm}${st.peakJackRun > 1 ? `, ×${st.peakJackRun}` : ''})</span>` : '';
         return `${(st.peakJps || 0).toFixed(1)} <span style="color:${jb.color};font-weight:600">${jb.label}</span>${det}`;
+      })() },
+      // v0.0.75 — Hand Balance: how lopsided the two-hand workload is (L = BT-A/B +
+      // FX-L, R = BT-C/D + FX-R), banded via the shared handBalanceBand so it
+      // matches the Chart Statistics modal.
+      { label: 'Hand Balance (L / R)', value: (() => {
+        const hb = handBalanceBand(st.handHeavierShare);
+        const heavy = st.handHeavier === 'left' ? ' L-heavy' : st.handHeavier === 'right' ? ' R-heavy' : '';
+        const split = `${Math.round(st.handLeftPct || 0)}% / ${Math.round(st.handRightPct || 0)}%`;
+        const peaks = ` <span style="opacity:.55">(peak ${(st.handLeftPeakNps || 0).toFixed(1)} / ${(st.handRightPeakNps || 0).toFixed(1)} NPS)</span>`;
+        return `${split} <span style="color:${hb.color};font-weight:600">${hb.label}${heavy}</span>${peaks}`;
       })() },
       { label: 'Total note events',    value: totalNoteEvents },
       { label: 'BPM events',           value: ch.bpmEvents.length },
