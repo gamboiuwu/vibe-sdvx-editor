@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.75';
+const APP_VERSION = '0.0.76';
 const CHANGELOG = [
+  {
+    version: '0.0.76',
+    title: 'Live Hand Balance in the preview — the L/R workload split, read at a glance while you play',
+    entries: [
+      ['add', '<strong>Hand Balance is now a live preview readout, not just a static stat.</strong> The <strong>v0.0.75</strong> Hand&nbsp;Balance metric — is the work split evenly between your two hands, or does one hand carry the chart? — lived only in the <strong>📊 Chart Statistics</strong> modal, where you can’t see it against the running chart. A new <strong>⇆ Hand</strong> toggle in the preview <strong>Density</strong> row (right beside <strong>⤒ NPS</strong>) shows it live: <strong>⇆ L 63%</strong> when one hand carries the chart, <strong>⇆ L=R</strong> when it’s balanced, colour-banded green → cyan → amber by the same <code>handBalanceBand</code> the modal uses, so the two can never disagree.'],
+      ['add', '<strong>Click to seek to the heavier hand’s hardest second.</strong> Just like the Peak&nbsp;NPS readout jumps to the densest burst, clicking the Hand readout seeks the editor straight to the start of the heavier hand’s densest one wall-clock second — so you go right to where one arm works hardest to check the pattern. Hover for the full split, each hand’s peak NPS and the named heavier hand.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Reuses <code>chart.handBalance()</code> unchanged (extended only with each hand’s peak-window tick for the seek), onset-signature cached so it’s a no-op when nothing changed, and folded into the same refresh path as the Peak&nbsp;NPS readout so it stays in lock-step with edits and chart switches. Off by default; the toggle persists via <strong>Save Config</strong> / prefs; i18n in all 5 locales. The chart is never mutated.'],
+    ],
+  },
   {
     version: '0.0.75',
     title: 'Hand Balance — the honest left-vs-right workload number, the fourth physical-difficulty axis',
@@ -2388,6 +2397,8 @@ let reactionRange   = false;   // v0.0.68 — chart-wide reaction-window min/max
 let readingStrip    = false;   // v0.0.69 — per-measure reaction-window sparkline (off by default)
 let npsReadout      = false;   // v0.0.71 — peak notes-per-second (wall-clock physical density) readout (off by default)
 let _npsCache       = null;    // v0.0.71 — { chart, sig, result }: skip the recompute when the chart is unchanged
+let handReadout     = false;   // v0.0.76 — live left-vs-right hand-balance readout in the preview Density row (off by default)
+let _handCache      = null;    // v0.0.76 — { chart, sig, result }: skip the recompute when the chart is unchanged
 
 // ── Green-Number Auto-Follow (v0.0.60) ────────────────────────────────────────
 // A lock that HOLDS the green number. Once the user has dialled a target
@@ -2632,6 +2643,68 @@ function toggleNpsReadout() {
   npsReadout = !npsReadout;
   prefs.npsReadout = npsReadout;   // mirror onto prefs so localStorage persists it
   updateNpsReadout();
+  savePrefsToLocalStorage();
+}
+
+// ── Live Hand-Balance readout (v0.0.76) ───────────────────────────────────────
+// Surfaces the v0.0.75 hand-balance metric LIVE in the preview Density row, beside
+// Peak NPS, so a lopsided left-vs-right workload is visible while you preview/edit
+// instead of only in the static Chart Statistics modal. Left hand = BT-A/B + FX-L,
+// right hand = BT-C/D + FX-R (the same split chart.handBalance uses); the readout
+// shows the heavier hand and its share, colour-banded by the shared handBalanceBand
+// so it can never disagree with the modal. Clicking seeks to the heavier hand's
+// densest second (chart.handBalance().heavierPeakTick). Onset-signature cached so
+// it's a no-op when nothing changed. Render-only — the chart is never mutated.
+function updateHandReadout() {
+  const lbl = document.getElementById('pvc-hand');
+  const btn = document.getElementById('pvc-hand-toggle');
+  if (btn) btn.classList.toggle('active', handReadout);
+  if (!lbl) return;
+  if (!handReadout || !chart || typeof chart.handBalance !== 'function') {
+    lbl.textContent = '–';
+    lbl.style.color = '';
+    lbl.title = '';
+    lbl.dataset.seekTick = '';
+    return;
+  }
+  // Cheap signature over onset ticks — recompute only when the notes changed.
+  let sum = 0, cnt = 0;
+  for (const lane of chart.bt) for (const n of lane) { sum += n.y; cnt++; }
+  for (const lane of chart.fx) for (const n of lane) { sum += n.y; cnt++; }
+  const sig = cnt + ':' + sum;
+  let res;
+  if (_handCache && _handCache.chart === chart && _handCache.sig === sig) {
+    res = _handCache.result;
+  } else {
+    res = chart.handBalance({ windowSec: 1.0 });
+    _handCache = { chart, sig, result: res };
+  }
+  const band = handBalanceBand(res.heavierShare);
+  if (res.total <= 0) {
+    lbl.textContent = '⇆ –';
+    lbl.style.color = '';
+    lbl.title = (typeof t === 'function' ? t('preview.handTipEmpty') : '') || 'Hand balance: no BT/FX notes in this chart.';
+    lbl.dataset.seekTick = '';
+    return;
+  }
+  const side = res.heavier === 'left' ? 'L' : res.heavier === 'right' ? 'R' : 'L=R';
+  const pct  = Math.round(res.heavierShare * 100);
+  // Balanced charts read "⇆ L=R"; a lean/heavy chart reads "⇆ L 63%".
+  lbl.textContent = res.heavier === 'even' ? '⇆ L=R' : `⇆ ${side} ${pct}%`;
+  lbl.style.color = band.color;
+  lbl.dataset.seekTick = String(res.heavierPeakTick);
+  const label = (typeof t === 'function' ? t('preview.handTip') : '') || 'Hand balance';
+  lbl.title = `${label}: ${band.label} — L ${Math.round(res.leftPct)}% / R ${Math.round(res.rightPct)}%. `
+            + `Peak NPS L ${res.leftPeakNps.toFixed(1)} / R ${res.rightPeakNps.toFixed(1)}. `
+            + (res.heavier === 'even' ? 'Both hands share the work evenly. ' : `Heavier hand: ${res.heavier}. `)
+            + 'Click to seek to the heavier hand’s densest second.';
+}
+
+// Toggle the hand-balance readout on/off.
+function toggleHandReadout() {
+  handReadout = !handReadout;
+  prefs.handReadout = handReadout;   // mirror onto prefs so localStorage persists it
+  updateHandReadout();
   savePrefsToLocalStorage();
 }
 
@@ -5231,6 +5304,7 @@ export function render() {
     if (typeof updateHeatmap   === 'function') updateHeatmap();
     if (typeof invalidateFxAuto === 'function') invalidateFxAuto();
     updateNpsReadout();   // v0.0.71 — keep the peak-NPS readout in sync with edits/switches (cached, no-op when unchanged)
+    updateHandReadout();  // v0.0.76 — keep the hand-balance readout in sync with edits/switches (cached, no-op when unchanged)
     _drawMinimap();
   });
 }
@@ -10250,6 +10324,23 @@ function _initProjectionControls() {
   }
   updateNpsReadout();        // sync readout + button to current state
 
+  // Live Hand-Balance readout (v0.0.76) — L/R workload split beside Peak NPS.
+  const handBtn = document.getElementById('pvc-hand-toggle');
+  if (handBtn && !handBtn._wired) {
+    handBtn._wired = true;
+    handBtn.addEventListener('click', toggleHandReadout);
+  }
+  const handLbl = document.getElementById('pvc-hand');
+  if (handLbl && !handLbl._wired) {
+    handLbl._wired = true;
+    handLbl.addEventListener('click', () => {
+      if (!handReadout) return;
+      const tk = parseInt(handLbl.dataset.seekTick, 10);
+      if (Number.isFinite(tk) && typeof _seekTo === 'function') _seekTo(tk);
+    });
+  }
+  updateHandReadout();       // sync readout + button to current state
+
   // Soflan runway markers toggle — faint on-lane labels at every tempo change.
   // Render-only; state persists on prefs so it composes with Save Config too.
   // The game-preview renderer reads the flag through window.prefs (the bridge it
@@ -10666,6 +10757,7 @@ function _initProjectionControls() {
     prefs.reactionRange     = reactionRange;   // v0.0.68 — chart-wide range readout toggle
     prefs.readingStrip      = readingStrip;    // v0.0.69 — per-measure reading-difficulty strip toggle
     prefs.npsReadout        = npsReadout;      // v0.0.71 — peak notes-per-second readout toggle
+    prefs.handReadout       = handReadout;     // v0.0.76 — live hand-balance readout toggle
     // Green-Number Auto-Follow hold + held target ms (render-only)
     prefs.greenFollowLock   = greenFollowLock;
     prefs.greenFollowTarget = greenFollowTarget;
@@ -10756,6 +10848,7 @@ function _initProjectionControls() {
   if (prefs.reactionRange != null)   { reactionRange   = !!prefs.reactionRange;   updateReactionRange(); }
   if (prefs.readingStrip != null)    { readingStrip    = !!prefs.readingStrip;    updateReadingStrip(); }
   if (prefs.npsReadout != null)      { npsReadout      = !!prefs.npsReadout;      updateNpsReadout(); }
+  if (prefs.handReadout != null)     { handReadout     = !!prefs.handReadout;     updateHandReadout(); }
   // Restore Green-Number Auto-Follow hold + held target (render-only). Reflect the
   // target into the →ms field so the UI shows what is being held, then snap.
   if (prefs.greenFollowTarget != null) {

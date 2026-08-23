@@ -128,7 +128,7 @@ export function computeChartStats(chart) {
   // source of truth; guarded so a plain-object caller degrades to even/zero.
   const handRes = (typeof chart.handBalance === 'function')
     ? chart.handBalance({})
-    : { leftPeakNps: 0, rightPeakNps: 0, leftTotal: 0, rightTotal: 0, leftPct: 0, rightPct: 0, heavier: 'even', heavierShare: 0.5 };
+    : { leftPeakNps: 0, rightPeakNps: 0, leftPeakTick: 0, rightPeakTick: 0, heavierPeakTick: 0, leftTotal: 0, rightTotal: 0, leftPct: 0, rightPct: 0, heavier: 'even', heavierShare: 0.5 };
 
   return {
     btChip, btHold, fxChip, fxHold,
@@ -1282,24 +1282,26 @@ export class ChartData {
     const leftLanes  = [this.bt[0], this.bt[1], this.fx[0]];
     const rightLanes = [this.bt[2], this.bt[3], this.fx[1]];
     const collect = lanes => {
-      const secs = [];
-      for (const lane of lanes) if (lane) for (const n of lane) secs.push(this.tickToSeconds(n.y));
-      secs.sort((a, b) => a - b);
-      return secs;
+      const rows = [];
+      for (const lane of lanes) if (lane) for (const n of lane) rows.push({ sec: this.tickToSeconds(n.y), tick: n.y });
+      rows.sort((a, b) => a.sec - b.sec || a.tick - b.tick);
+      return rows;
     };
     // Peak count in any window that STARTS at an onset — exact, the same proof as
     // notesPerSecond (the count-maximising window can always slide left until its
     // left edge meets an onset without dropping a note, so anchoring at onsets is
-    // exact). A single two-pointer sweep over the sorted onset seconds.
-    const peakNpsOf = secs => {
-      let peak = 0, j = 0;
-      for (let i = 0; i < secs.length; i++) {
+    // exact). A single two-pointer sweep over the sorted onsets. Also returns the
+    // tick of the onset that STARTS that densest window, so a live readout can seek
+    // to the heavier hand's busiest second exactly the way the Peak-NPS readout does.
+    const peakNpsOf = rows => {
+      let peak = 0, peakIdx = 0, j = 0;
+      for (let i = 0; i < rows.length; i++) {
         if (j < i) j = i;
-        const limit = secs[i] + windowSec;
-        while (j < secs.length && secs[j] < limit) j++;
-        if (j - i > peak) peak = j - i;
+        const limit = rows[i].sec + windowSec;
+        while (j < rows.length && rows[j].sec < limit) j++;
+        if (j - i > peak) { peak = j - i; peakIdx = i; }
       }
-      return peak / windowSec;
+      return { nps: peak / windowSec, tick: rows.length ? rows[peakIdx].tick : 0 };
     };
     const L = collect(leftLanes), R = collect(rightLanes);
     const leftTotal = L.length, rightTotal = R.length;
@@ -1311,8 +1313,16 @@ export class ChartData {
       heavier = leftTotal > rightTotal ? 'left' : 'right';
       heavierShare = Math.max(leftTotal, rightTotal) / total;
     }
+    const lPeak = peakNpsOf(L), rPeak = peakNpsOf(R);
+    // The tick to seek to: the start of the heavier hand's densest second (so a
+    // click on the live readout jumps straight to where that hand works hardest);
+    // an even/empty chart falls back to whichever hand has the denser burst.
+    const heavierPeakTick = heavier === 'right' ? rPeak.tick
+                          : heavier === 'left'  ? lPeak.tick
+                          : (rPeak.nps > lPeak.nps ? rPeak.tick : lPeak.tick);
     return {
-      leftPeakNps: peakNpsOf(L), rightPeakNps: peakNpsOf(R),
+      leftPeakNps: lPeak.nps, rightPeakNps: rPeak.nps,
+      leftPeakTick: lPeak.tick, rightPeakTick: rPeak.tick, heavierPeakTick,
       leftTotal, rightTotal, total,
       leftPct, rightPct, heavier, heavierShare, windowSec,
     };
