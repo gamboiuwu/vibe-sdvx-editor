@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.75 · 2026</span>
+  <span class="version">v0.0.76 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.76</span>Live Hand Balance in the preview &mdash; the L/R workload split, read at a glance while you play</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Hand Balance is now a live preview readout, not just a static stat.</strong> The <strong>v0.0.75</strong> Hand&nbsp;Balance metric &mdash; is the work split evenly between your two hands, or does one hand carry the chart? &mdash; lived only in the <strong>&#128202; Chart Statistics</strong> modal, where you can&rsquo;t see it against the running chart. A new <strong>&#8646; Hand</strong> toggle in the preview <strong>Density</strong> row (right beside <strong>&#10514; NPS</strong>) shows it live: <strong>&#8646; L&nbsp;63%</strong> when one hand carries the chart, <strong>&#8646; L=R</strong> when it&rsquo;s balanced, colour-banded <span style="color:#6fe08a">green</span> &rarr; <span style="color:#66ddff">cyan</span> &rarr; <span style="color:#ff8a3d">amber</span> by the same <code>handBalanceBand</code> the modal uses, so the two can never disagree.</li>
+    <li><span class="tag add">add</span><strong>Click to seek to the heavier hand&rsquo;s hardest second.</strong> Just like the Peak&nbsp;NPS readout jumps to the densest burst, clicking the Hand readout seeks the editor straight to the start of the heavier hand&rsquo;s densest one wall-clock second &mdash; so you go right to where one arm works hardest to check the pattern. Hover for the full split, each hand&rsquo;s peak NPS and the named heavier hand.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Reuses <code>chart.handBalance()</code> unchanged (extended only with each hand&rsquo;s peak-window tick for the seek), onset-signature cached so it&rsquo;s a no-op when nothing changed, and folded into the same refresh path as the Peak&nbsp;NPS readout so it stays in lock-step with edits and chart switches. Off by default; the toggle persists via <strong>Save Config</strong> / prefs; i18n in all 5 locales. The chart is never mutated.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.75</span>Hand Balance &mdash; the honest left-vs-right workload number, the fourth physical-difficulty axis</h4>
