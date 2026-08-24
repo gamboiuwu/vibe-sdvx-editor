@@ -130,6 +130,15 @@ export function computeChartStats(chart) {
     ? chart.handBalance({})
     : { leftPeakNps: 0, rightPeakNps: 0, leftTotal: 0, rightTotal: 0, leftPct: 0, rightPct: 0, heavier: 'even', heavierShare: 0.5 };
 
+  // Per-hand jack (v0.0.76) — which HAND carries the fastest same-lane repeat,
+  // the fifth physical-difficulty axis, surfaced beside Hand Balance. Reuses the
+  // jackRes already computed above (single source of truth: a hand's peak jack
+  // agrees with Peak Jack by construction) and is guarded so a plain-object
+  // caller degrades to even/zero rather than throwing.
+  const phJackRes = (typeof chart.perHandJack === 'function')
+    ? chart.perHandJack({ jack: jackRes })
+    : { leftPeakJps: 0, rightPeakJps: 0, leftJackLane: -1, rightJackLane: -1, leftLongestRun: 0, rightLongestRun: 0, jackHeavier: 'even' };
+
   return {
     btChip, btHold, fxChip, fxHold,
     btTotal: btChip + btHold, fxTotal: fxChip + fxHold,
@@ -142,6 +151,10 @@ export function computeChartStats(chart) {
     handLeftTotal: handRes.leftTotal, handRightTotal: handRes.rightTotal,
     handLeftPct: handRes.leftPct, handRightPct: handRes.rightPct,
     handHeavier: handRes.heavier, handHeavierShare: handRes.heavierShare,
+    phLeftPeakJps: phJackRes.leftPeakJps, phRightPeakJps: phJackRes.rightPeakJps,
+    phLeftJackLane: phJackRes.leftJackLane, phRightJackLane: phJackRes.rightJackLane,
+    phLeftLongestRun: phJackRes.leftLongestRun, phRightLongestRun: phJackRes.rightLongestRun,
+    phJackHeavier: phJackRes.jackHeavier,
     coverL, coverR,
     bpmMin, bpmMax, bpmRange,
     bpmCount: chart.bpmEvents.length,
@@ -1315,6 +1328,64 @@ export class ChartData {
       leftPeakNps: peakNpsOf(L), rightPeakNps: peakNpsOf(R),
       leftTotal, rightTotal, total,
       leftPct, rightPct, heavier, heavierShare, windowSec,
+    };
+  }
+
+  // ── Per-Hand Jack (v0.0.76) ────────────────────────────────────────────────
+  // The FIFTH honest physical-difficulty axis, and the piece the other four
+  // leave open. The v0.0.74 Peak Jack reports the single worst same-lane repeat
+  // ANYWHERE in the chart; the v0.0.75 Hand Balance reports how the whole
+  // WORKLOAD splits between the two hands. Neither answers the question a jack
+  // player actually asks: which HAND has to grind, and how hard? A chart can be
+  // perfectly hand-balanced by note count yet pile every fast jack onto one
+  // hand — brutal for that arm, invisible to Hand Balance (which counts onsets,
+  // not repeat speed) and flattened by Peak Jack (which reports only the single
+  // global worst, hiding whether the other hand is resting or matching it).
+  //
+  // Per-Hand Jack splits the single-finger stress by hand using the SAME L/R
+  // convention Hand Balance uses — left hand plays BT-A, BT-B and FX-L; right
+  // hand plays BT-C, BT-D and FX-R (lasers are continuous knob motion, not
+  // presses, so they are excluded, matching both siblings) — and reports each
+  // hand's fastest same-lane repeat (peak jack, jacks/second) and its longest
+  // unbroken jack run. `jackHeavier` names the hand carrying the faster jack.
+  //
+  // Single source of truth: this reuses chart.jackStress's already-computed
+  // per-lane figures rather than re-deriving anything, so a hand's peak jack
+  // agrees with Peak Jack by construction. Pass an existing jackStress result as
+  // opts.jack to avoid recomputing it (computeChartStats does); otherwise it
+  // computes one. BPM-independent (jacks/second via the shared tickToSeconds
+  // time model), onsets only, DOM-free and unit-tested; the chart is never
+  // mutated.
+  perHandJack(opts = {}) {
+    const jack = (opts.jack && Array.isArray(opts.jack.perLane))
+      ? opts.jack
+      : this.jackStress(opts);
+    const perLane = jack.perLane || [];
+    // Lane display indices: 0-3 BT-A..D, 4 FX-L, 5 FX-R.
+    const at = idx => perLane.find(p => p.lane === idx) || { peakJps: 0, longestRun: 0 };
+    const leftIdx = [0, 1, 4];   // BT-A, BT-B, FX-L
+    const rightIdx = [2, 3, 5];  // BT-C, BT-D, FX-R
+    // A hand's jack = the fastest same-lane repeat over ANY of its three lanes,
+    // plus the longest unbroken run over those lanes. peakLane stays -1 when the
+    // hand has no repeat at all, so a resting hand reads as "—", not lane BT-A.
+    const handOf = idxs => {
+      let peakJps = 0, peakLane = -1, longestRun = 0;
+      for (const i of idxs) {
+        const p = at(i);
+        if (p.peakJps > peakJps) { peakJps = p.peakJps; peakLane = i; }
+        if (p.longestRun > longestRun) longestRun = p.longestRun;
+      }
+      return { peakJps, peakLane, longestRun };
+    };
+    const L = handOf(leftIdx), R = handOf(rightIdx);
+    let jackHeavier = 'even';
+    if (L.peakJps > R.peakJps + 1e-9) jackHeavier = 'left';
+    else if (R.peakJps > L.peakJps + 1e-9) jackHeavier = 'right';
+    return {
+      leftPeakJps: L.peakJps, rightPeakJps: R.peakJps,
+      leftJackLane: L.peakLane, rightJackLane: R.peakLane,
+      leftLongestRun: L.longestRun, rightLongestRun: R.longestRun,
+      jackHeavier, gapSec: jack.gapSec,
     };
   }
 
