@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.75';
+const APP_VERSION = '0.0.76';
 const CHANGELOG = [
+  {
+    version: '0.0.76',
+    title: 'Per-Hand Jack — which hand carries the fastest jack, the fifth physical-difficulty axis',
+    entries: [
+      ['add', '<strong>Chart Statistics now shows which HAND has to grind.</strong> The v0.0.74 <strong>Peak&nbsp;Jack</strong> reports the single worst same-lane repeat <em>anywhere</em> in the chart; the v0.0.75 <strong>Hand&nbsp;Balance</strong> reports how the total <em>workload</em> splits between your two hands. Neither answers the question a jack player actually asks: <em>which hand has to grind, and how hard?</em> A chart can read as perfectly hand-balanced by note count yet pile every fast jack onto one hand — brutal for that arm, and invisible to both existing numbers. A new <strong>Per-Hand&nbsp;Jack (L&nbsp;/&nbsp;R)</strong> row in both the <strong>📊 Chart Statistics</strong> modal and the Tools-Hub Chart Statistics tool splits single-finger stress by hand — <strong>left</strong> plays BT-A, BT-B and FX-L; <strong>right</strong> plays BT-C, BT-D and FX-R — reporting each hand’s fastest same-lane repeat, the lane it lands on, and naming the hand that carries the faster jack.'],
+      ['add', '<strong>The fifth honest axis, beside the other four.</strong> It joins the <strong>Green#</strong> reading window (how long you have to <em>read</em> a note), <strong>Peak&nbsp;NPS</strong> (how many notes <em>both</em> hands actuate per second), <strong>Peak&nbsp;Jack</strong> (the single global worst same-finger repeat) and <strong>Hand&nbsp;Balance</strong> (how the workload splits). Each hand’s peak jack is coloured by the same difficulty band as Peak&nbsp;Jack — <span style="color:#6fe08a">Light</span>, <span style="color:#66ddff">Moderate</span>, <span style="color:#ffcc55">Tough</span>, <span style="color:#ff8a3d">Heavy</span>, <span style="color:#ff4d4d">Extreme</span> — so a chart whose two hands sit in different bands (a resting left, a shredding right) reads at a glance. Onsets only, BPM-independent (jacks per <em>real</em> second); lasers are continuous knob motion, not presses, so they’re excluded — the same convention Peak&nbsp;Jack and Hand&nbsp;Balance use.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.perHandJack(opts)</code> that <em>reuses</em> the exact per-lane figures the v0.0.74 <code>chart.jackStress</code> already computes (so a hand’s peak jack agrees with the whole-chart Peak&nbsp;Jack by construction), partitioned by the same L/R hand convention as Hand&nbsp;Balance. <code>computeChartStats</code> folds it in beside Hand&nbsp;Balance, passing the jack result it already has so nothing is recomputed (guarded so a plain-object caller degrades to even/zero, never throws). The chart is never mutated.'],
+    ],
+  },
   {
     version: '0.0.75',
     title: 'Hand Balance — the honest left-vs-right workload number, the fourth physical-difficulty axis',
@@ -11348,6 +11357,19 @@ const DisclaimerGate = (function() {
         const peaks = ` <span style="opacity:.6;font-size:.82em">peak ${(s.handLeftPeakNps || 0).toFixed(1)} / ${(s.handRightPeakNps || 0).toFixed(1)} NPS</span>`;
         const tag = heavy ? ` ${heavy}` : '';
         return `<strong>${split}</strong> <span style="color:${band.color};font-weight:600">${band.label}${tag}</span>${peaks}`;
+      })()),
+      // v0.0.76 — Per-Hand Jack: which HAND carries the fastest same-lane repeat,
+      // the fifth physical-difficulty axis. Each hand's peak jack is coloured by
+      // the shared jackDifficultyBand (same palette as Peak Jack), so a one-hand
+      // jack-heavy chart is visible even when Hand Balance reads even by count.
+      row('Per-Hand Jack (L / R)', (() => {
+        const laneNm = i => ['BT-A','BT-B','BT-C','BT-D','FX-L','FX-R'][i] || '—';
+        const bandL = jackDifficultyBand(s.phLeftPeakJps || 0);
+        const bandR = jackDifficultyBand(s.phRightPeakJps || 0);
+        const lDet = (s.phLeftPeakJps || 0) > 0 ? ` <span style="opacity:.55;font-size:.82em">${laneNm(s.phLeftJackLane)}</span>` : '';
+        const rDet = (s.phRightPeakJps || 0) > 0 ? ` <span style="opacity:.55;font-size:.82em">${laneNm(s.phRightJackLane)}</span>` : '';
+        const heavy = s.phJackHeavier === 'left' ? 'L-heavy' : s.phJackHeavier === 'right' ? 'R-heavy' : 'even';
+        return `<strong style="color:${bandL.color}">${(s.phLeftPeakJps || 0).toFixed(1)}</strong>${lDet} <span style="opacity:.5">/</span> <strong style="color:${bandR.color}">${(s.phRightPeakJps || 0).toFixed(1)}</strong>${rDet} <span style="opacity:.6;font-size:.82em">${heavy}</span>`;
       })()),
     ].join('');
   }
