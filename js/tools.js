@@ -5891,6 +5891,20 @@ function _toolChartStats(c) {
         const peaks = ` <span style="opacity:.55">(peak ${(st.handLeftPeakNps || 0).toFixed(1)} / ${(st.handRightPeakNps || 0).toFixed(1)} NPS)</span>`;
         return `${split} <span style="color:${hb.color};font-weight:600">${hb.label}${heavy}</span>${peaks}`;
       })() },
+      // v0.0.76 — Per-Hand Jack: each hand's fastest same-lane repeat, banded via
+      // the shared jackDifficultyBand so it matches the Chart Statistics modal and
+      // tells a one-hand jack-heavy chart apart from a one-hand stream-heavy one.
+      { label: 'Per-Hand Jack (L / R)', value: (() => {
+        const laneNm = ['BT-A','BT-B','BT-C','BT-D','FX-L','FX-R'];
+        const lb = jackDifficultyBand(st.handLeftPeakJps);
+        const rb = jackDifficultyBand(st.handRightPeakJps);
+        const lL = st.handLeftPeakJps > 0 ? ` <span style="opacity:.55">(${laneNm[st.handLeftJackLane] || '—'})</span>` : '';
+        const rL = st.handRightPeakJps > 0 ? ` <span style="opacity:.55">(${laneNm[st.handRightJackLane] || '—'})</span>` : '';
+        const heavy = st.handJackHeavier === 'left' ? ' L-heavy' : st.handJackHeavier === 'right' ? ' R-heavy' : '';
+        return `${(st.handLeftPeakJps || 0).toFixed(1)} <span style="color:${lb.color};font-weight:600">${lb.label}</span>${lL}`
+          + ` / ${(st.handRightPeakJps || 0).toFixed(1)} <span style="color:${rb.color};font-weight:600">${rb.label}</span>${rL}`
+          + (heavy ? `<span style="opacity:.55">${heavy}</span>` : '');
+      })() },
       { label: 'Total note events',    value: totalNoteEvents },
       { label: 'BPM events',           value: ch.bpmEvents.length },
       { label: 'Chart sections',       value: (ch.sections||[]).length },

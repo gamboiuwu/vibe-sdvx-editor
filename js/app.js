@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.75';
+const APP_VERSION = '0.0.76';
 const CHANGELOG = [
+  {
+    version: '0.0.76',
+    title: 'Per-Hand Jack — which hand owns the fastest finger, the fifth physical-difficulty refinement',
+    entries: [
+      ['add', '<strong>Chart Statistics now shows each hand’s fastest jack, not just the chart’s.</strong> The v0.0.74 <strong>Peak&nbsp;Jack</strong> row tells you the single fastest finger <em>anywhere</em> on the controller, and v0.0.75 <strong>Hand&nbsp;Balance</strong> tells you how the <em>volume</em> of work splits — but neither tells you how the <em>jack stress</em> splits. A chart can be balanced in total onsets yet pile every fast jack onto one hand. A new <strong>Per-Hand&nbsp;Jack (L&nbsp;/&nbsp;R)</strong> row in both the <strong>📊 Chart Statistics</strong> modal and the Tools-Hub Chart Statistics tool reports each hand’s fastest same-lane repeat separately — <strong>left</strong> = BT-A, BT-B, FX-L; <strong>right</strong> = BT-C, BT-D, FX-R — names the lane carrying it, and marks the heavier hand.'],
+      ['add', '<strong>It tells a one-hand jack-heavy chart apart from a one-hand stream-heavy one.</strong> Each hand’s figure is banded with the same jack palette the whole-chart Peak&nbsp;Jack uses — <span style="color:#6fe08a">Light</span>, <span style="color:#66ddff">Moderate</span>, <span style="color:#ffcc55">Tough</span>, <span style="color:#ff8a3d">Heavy</span>, <span style="color:#ff4d4d">Extreme</span> — so a hand that jacks hard while the other only streams reads at a glance. BPM-independent (jacks per <em>real</em> second), onsets only, lasers excluded — the same conventions the jack and NPS axes already use.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.perHandJack(opts)</code> that reduces <code>chart.jackStress</code>’s per-lane peaks by hand — so the busier hand’s figure IS the whole-chart Peak&nbsp;Jack by construction, the two can never disagree. <code>computeChartStats</code> folds it in beside Hand&nbsp;Balance (guarded so a plain-object caller degrades to even/zero, never throws). The chart is never mutated.'],
+    ],
+  },
   {
     version: '0.0.75',
     title: 'Hand Balance — the honest left-vs-right workload number, the fourth physical-difficulty axis',
@@ -11348,6 +11357,22 @@ const DisclaimerGate = (function() {
         const peaks = ` <span style="opacity:.6;font-size:.82em">peak ${(s.handLeftPeakNps || 0).toFixed(1)} / ${(s.handRightPeakNps || 0).toFixed(1)} NPS</span>`;
         const tag = heavy ? ` ${heavy}` : '';
         return `<strong>${split}</strong> <span style="color:${band.color};font-weight:600">${band.label}${tag}</span>${peaks}`;
+      })()),
+      // v0.0.76 — Per-Hand Jack: the fifth physical-difficulty refinement. Each
+      // hand's fastest same-lane repeat (L = BT-A/B + FX-L, R = BT-C/D + FX-R),
+      // banded via the shared jackDifficultyBand so a one-hand jack-heavy chart is
+      // told apart from a one-hand stream-heavy one. Reuses the Peak Jack engine.
+      row('Per-Hand Jack (L / R)', (() => {
+        const laneNm = ['BT-A','BT-B','BT-C','BT-D','FX-L','FX-R'];
+        const lb = jackDifficultyBand(s.handLeftPeakJps);
+        const rb = jackDifficultyBand(s.handRightPeakJps);
+        const lLane = s.handLeftPeakJps > 0 ? ` <span style="opacity:.6;font-size:.82em">${laneNm[s.handLeftJackLane] || '—'}</span>` : '';
+        const rLane = s.handRightPeakJps > 0 ? ` <span style="opacity:.6;font-size:.82em">${laneNm[s.handRightJackLane] || '—'}</span>` : '';
+        const heavy = s.handJackHeavier === 'left' ? ' · L-heavy' : s.handJackHeavier === 'right' ? ' · R-heavy' : '';
+        return `<strong>${(s.handLeftPeakJps || 0).toFixed(1)}</strong> <span style="color:${lb.color};font-weight:600">${lb.label}</span>${lLane}`
+          + ` <span style="opacity:.5">/</span> `
+          + `<strong>${(s.handRightPeakJps || 0).toFixed(1)}</strong> <span style="color:${rb.color};font-weight:600">${rb.label}</span>${rLane}`
+          + `<span style="opacity:.6;font-size:.82em">${heavy}</span>`;
       })()),
     ].join('');
   }

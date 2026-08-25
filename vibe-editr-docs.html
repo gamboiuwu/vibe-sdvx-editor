@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.75 · 2026</span>
+  <span class="version">v0.0.76 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.76</span>Per-Hand Jack &mdash; which hand owns the fastest finger, the fifth physical-difficulty refinement</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Chart Statistics now shows each hand&rsquo;s fastest jack, not just the chart&rsquo;s.</strong> The v0.0.74 <strong>Peak&nbsp;Jack</strong> row tells you the single fastest finger <em>anywhere</em> on the controller, and v0.0.75 <strong>Hand&nbsp;Balance</strong> tells you how the <em>volume</em> of work splits &mdash; but neither tells you how the <em>jack stress</em> splits. A chart can be balanced in total onsets yet pile every fast jack onto one hand. A new <strong>Per-Hand&nbsp;Jack (L&nbsp;/&nbsp;R)</strong> row in both the <strong>&#128202; Chart Statistics</strong> modal and the Tools-Hub Chart Statistics tool reports each hand&rsquo;s fastest same-lane repeat separately &mdash; <strong>left</strong> = BT-A, BT-B, FX-L; <strong>right</strong> = BT-C, BT-D, FX-R &mdash; names the lane carrying it, and marks the heavier hand.</li>
+    <li><span class="tag add">add</span><strong>It tells a one-hand jack-heavy chart apart from a one-hand stream-heavy one.</strong> Each hand&rsquo;s figure is banded with the same jack palette the whole-chart Peak&nbsp;Jack uses &mdash; <span style="color:#6fe08a">Light</span>, <span style="color:#66ddff">Moderate</span>, <span style="color:#ffcc55">Tough</span>, <span style="color:#ff8a3d">Heavy</span>, <span style="color:#ff4d4d">Extreme</span> &mdash; so a hand that jacks hard while the other only streams reads at a glance. BPM-independent (jacks per <em>real</em> second), onsets only, lasers excluded &mdash; the same conventions the jack and NPS axes already use.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.perHandJack(opts)</code> that reduces <code>chart.jackStress</code>&rsquo;s per-lane peaks by hand &mdash; so the busier hand&rsquo;s figure IS the whole-chart Peak&nbsp;Jack by construction, the two can never disagree. <code>computeChartStats</code> folds it in beside Hand&nbsp;Balance (guarded so a plain-object caller degrades to even/zero, never throws). The chart is never mutated.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.75</span>Hand Balance &mdash; the honest left-vs-right workload number, the fourth physical-difficulty axis</h4>

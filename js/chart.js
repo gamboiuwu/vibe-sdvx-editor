@@ -130,6 +130,15 @@ export function computeChartStats(chart) {
     ? chart.handBalance({})
     : { leftPeakNps: 0, rightPeakNps: 0, leftTotal: 0, rightTotal: 0, leftPct: 0, rightPct: 0, heavier: 'even', heavierShare: 0.5 };
 
+  // Honest per-hand jack (v0.0.76) — the fifth physical-difficulty refinement:
+  // each hand's fastest same-lane repeat, so a one-hand jack-heavy chart is told
+  // apart from a one-hand stream-heavy one. Reuses chart.perHandJack (itself
+  // backed by chart.jackStress) as the single source of truth; guarded so a
+  // plain-object caller degrades to even/zero rather than throwing.
+  const phJackRes = (typeof chart.perHandJack === 'function')
+    ? chart.perHandJack({})
+    : { leftPeakJps: 0, leftLane: 0, rightPeakJps: 0, rightLane: 2, heavier: 'even' };
+
   return {
     btChip, btHold, fxChip, fxHold,
     btTotal: btChip + btHold, fxTotal: fxChip + fxHold,
@@ -142,6 +151,9 @@ export function computeChartStats(chart) {
     handLeftTotal: handRes.leftTotal, handRightTotal: handRes.rightTotal,
     handLeftPct: handRes.leftPct, handRightPct: handRes.rightPct,
     handHeavier: handRes.heavier, handHeavierShare: handRes.heavierShare,
+    handLeftPeakJps: phJackRes.leftPeakJps, handLeftJackLane: phJackRes.leftLane,
+    handRightPeakJps: phJackRes.rightPeakJps, handRightJackLane: phJackRes.rightLane,
+    handJackHeavier: phJackRes.heavier,
     coverL, coverR,
     bpmMin, bpmMax, bpmRange,
     bpmCount: chart.bpmEvents.length,
@@ -1315,6 +1327,51 @@ export class ChartData {
       leftPeakNps: peakNpsOf(L), rightPeakNps: peakNpsOf(R),
       leftTotal, rightTotal, total,
       leftPct, rightPct, heavier, heavierShare, windowSec,
+    };
+  }
+
+  // ── Per-Hand Jack (v0.0.76) ────────────────────────────────────────────────
+  // Splits the v0.0.74 jack axis (fastest same-lane repeat) by hand, the way
+  // v0.0.75 Hand Balance split the NPS axis. The whole-chart Peak Jack tells you
+  // the single fastest finger ANYWHERE on the controller but not WHICH hand owns
+  // it — and Hand Balance measures how the *volume* of work splits, not how the
+  // *jack stress* splits. A chart can be balanced in total onsets yet pile every
+  // fast jack onto one hand (a one-hand jack-heavy chart), or spread its jacks
+  // evenly while one hand carries a long stream (one-hand stream-heavy). Neither
+  // Peak Jack nor Hand Balance separates those two; per-hand jack does.
+  //
+  // Left hand plays BT-A, BT-B, FX-L; right hand plays BT-C, BT-D, FX-R — the same
+  // grouping Hand Balance uses (VOL knobs are the thumbs and excluded, like the
+  // jack and NPS axes). Reuses chart.jackStress as the single source of truth —
+  // its perLane[].peakJps is each lane's fastest repeat — so the per-hand figures
+  // agree with whole-chart Peak Jack by construction (the busier hand's peak IS
+  // the chart's Peak Jack). Reduces each hand's lanes to that hand's fastest lane
+  // and its rate; `heavier` names the hand carrying the harder jack (or 'even').
+  // BPM-independent, DOM-free, unit-tested; the chart is never mutated.
+  perHandJack(opts = {}) {
+    const js = (typeof this.jackStress === 'function')
+      ? this.jackStress(opts)
+      : { perLane: [], gapSec: 0.5 };
+    const byIdx = {};
+    for (const l of (js.perLane || [])) byIdx[l.lane] = l;
+    // Reduce a set of lane indices to that hand's fastest lane + rate.
+    const handPeak = (idxs) => {
+      let peakJps = 0, lane = idxs[0];
+      for (const i of idxs) {
+        const p = byIdx[i] ? byIdx[i].peakJps : 0;
+        if (p > peakJps) { peakJps = p; lane = i; }
+      }
+      return { peakJps, lane };
+    };
+    const left  = handPeak([0, 1, 4]);   // BT-A, BT-B, FX-L
+    const right = handPeak([2, 3, 5]);   // BT-C, BT-D, FX-R
+    let heavier = 'even';
+    if (left.peakJps > right.peakJps)      heavier = 'left';
+    else if (right.peakJps > left.peakJps) heavier = 'right';
+    return {
+      leftPeakJps: left.peakJps,  leftLane: left.lane,
+      rightPeakJps: right.peakJps, rightLane: right.lane,
+      heavier, gapSec: js.gapSec,
     };
   }
 
