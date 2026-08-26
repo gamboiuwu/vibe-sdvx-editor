@@ -130,6 +130,15 @@ export function computeChartStats(chart) {
     ? chart.handBalance({})
     : { leftPeakNps: 0, rightPeakNps: 0, leftTotal: 0, rightTotal: 0, leftPct: 0, rightPct: 0, heavier: 'even', heavierShare: 0.5 };
 
+  // Honest multi-finger simultaneity (v0.0.76) — the hardest chord (most fingers
+  // struck on one tick) and the peak chord rate from the v0.0.76 engine, surfaced
+  // beside Hand Balance as the fifth physical-difficulty axis. Reuses
+  // chart.chordStress as the single source of truth; guarded so a plain-object
+  // caller (no method) degrades to zero rather than throwing.
+  const chordRes = (typeof chart.chordStress === 'function')
+    ? chart.chordStress({})
+    : { peakChordSize: 0, peakChordTick: 0, peakChordLanes: [], chordCount: 0, chordNotes: 0, peakChordRate: 0 };
+
   return {
     btChip, btHold, fxChip, fxHold,
     btTotal: btChip + btHold, fxTotal: fxChip + fxHold,
@@ -142,6 +151,9 @@ export function computeChartStats(chart) {
     handLeftTotal: handRes.leftTotal, handRightTotal: handRes.rightTotal,
     handLeftPct: handRes.leftPct, handRightPct: handRes.rightPct,
     handHeavier: handRes.heavier, handHeavierShare: handRes.heavierShare,
+    peakChordSize: chordRes.peakChordSize, peakChordTick: chordRes.peakChordTick,
+    peakChordLanes: chordRes.peakChordLanes, chordCount: chordRes.chordCount,
+    chordNotes: chordRes.chordNotes, peakChordRate: chordRes.peakChordRate,
     coverL, coverR,
     bpmMin, bpmMax, bpmRange,
     bpmCount: chart.bpmEvents.length,
@@ -204,6 +216,26 @@ export function handBalanceBand(heavierShare) {
   if (v >= 0.65) return { key: 'strong', label: 'One-hand heavy', color: '#ff8a3d' };
   if (v >= 0.55) return { key: 'lean',   label: 'Slight lean',    color: '#66ddff' };
   return { key: 'balanced', label: 'Balanced', color: '#6fe08a' };
+}
+
+// ── Chord difficulty band (v0.0.76) ───────────────────────────────────────────
+// Classify a peak chord SIZE (the most fingers struck on one tick, from
+// chart.chordStress) into a coarse multi-finger-coordination band, the chord twin
+// of npsDifficultyBand / jackDifficultyBand. Calibrated to SDVX physicality: 4 BT
+// + 2 FX = six lanes can sound at once but a hand only has so many fingers, so a
+// 2-note chord is everyday, a 3-note chord (a hand doing BT+BT+FX) is a real
+// coordination ask, a 4-note chord is heavy, and 5-6 simultaneous is extreme
+// multi-finger stress. Pure and DOM-free so the modal and the Tools stat panel
+// colour/label from ONE source of truth; matches the family palette (calm green →
+// cyan → amber → hot). Returns "None" for 0/1 (a chart with no chords never reads
+// blank).
+export function chordDifficultyBand(peakChordSize) {
+  const v = Math.max(0, Math.floor(Number(peakChordSize) || 0));
+  if (v >= 5) return { key: 'extreme',  label: 'Extreme',  color: '#ff4d4d' };
+  if (v >= 4) return { key: 'heavy',     label: 'Heavy',    color: '#ff8a3d' };
+  if (v >= 3) return { key: 'moderate',  label: 'Moderate', color: '#66ddff' };
+  if (v >= 2) return { key: 'light',     label: 'Light',    color: '#6fe08a' };
+  return { key: 'none', label: 'None', color: '#6fe08a' };
 }
 
 // ── Quantize / Nudge engine ──────────────────────────────────────────────────
@@ -1315,6 +1347,92 @@ export class ChartData {
       leftPeakNps: peakNpsOf(L), rightPeakNps: peakNpsOf(R),
       leftTotal, rightTotal, total,
       leftPct, rightPct, heavier, heavierShare, windowSec,
+    };
+  }
+
+  // ── Chord Stress (v0.0.76) ─────────────────────────────────────────────────
+  // The FIFTH honest physical-difficulty axis, beside the v0.0.56-70 green number
+  // (reading load), the v0.0.71-73 NPS (both-hands actuation rate), the v0.0.74
+  // jack (single-finger repeat rate) and the v0.0.75 hand balance (left/right
+  // workload split). Chord stress answers a question none of those do: how many
+  // buttons must be struck AT THE SAME INSTANT? A "chord" is two or more BT/FX
+  // notes on the same tick — a multi-finger press. The four existing axes are all
+  // blind to it: a lane can read as a comfortable 8 NPS whether those eight notes
+  // are a single-finger stream or four 2-note chords, and the jack/balance numbers
+  // don't see simultaneity at all. Peak chord size is the coordination demand a
+  // player feels in their fingers, not their wrists or their reading. This is the
+  // per-measure "CHORD" heuristic in the Hand-Position Optimizer promoted to a
+  // first-class, chart-wide, BPM-independent metric in the physical-difficulty
+  // family (the Optimizer's simScore counts multi-note moments within one measure;
+  // this reports the single hardest chord and the peak CHORD RATE across the whole
+  // chart, banded like its four siblings).
+  //
+  // A chord's SIZE is the number of DISTINCT lanes struck together (so a stray
+  // same-lane double on one tick can't inflate it past the six physical lanes).
+  // Notes within `jitterTicks` of the group's first onset chord together (default
+  // 0 = exact same tick, the SDVX convention; a small jitter absorbs quantization
+  // noise if a caller wants it). Onsets only (a hold counts once at its start,
+  // matching the whole family); lasers are continuous knob motion, not presses, so
+  // they are excluded — the same convention Peak NPS, Peak Jack and Hand Balance
+  // use. The chord RATE (chords ≥2 per real wall-clock second, peak over a sliding
+  // 1 s window via the same two-pointer sweep and tickToSeconds time model
+  // notesPerSecond uses) is BPM-independent, so a section of dense chords at 200
+  // BPM honestly outscores the identical tick pattern at 100. DOM-free and
+  // unit-tested; the chart is never mutated. Returns:
+  //   peakChordSize   most fingers struck on any one tick (0/1 = no chords)
+  //   peakChordTick   tick of that hardest chord
+  //   peakChordLanes  lane names of that hardest chord (e.g. ['BT-A','BT-C','FX-R'])
+  //   chordCount      number of chord moments (≥2 simultaneous notes)
+  //   chordNotes      total notes tied up in chords
+  //   totalOnsets     all BT+FX onsets scanned
+  //   peakChordRate   peak chords-per-second (≥2) in a 1 s window (BPM-independent)
+  //   windowSec       echoed back
+  chordStress(opts = {}) {
+    const windowSec = Math.max(0.05, Number(opts.windowSec) || 1.0);
+    const jitterTicks = Math.max(0, Number(opts.jitterTicks) || 0);
+    const LANE_NAMES = ['BT-A', 'BT-B', 'BT-C', 'BT-D', 'FX-L', 'FX-R'];
+    const rows = [];
+    for (let li = 0; li < this.bt.length; li++) for (const n of this.bt[li]) rows.push({ tick: n.y, lane: li });
+    for (let li = 0; li < this.fx.length; li++) for (const n of this.fx[li]) rows.push({ tick: n.y, lane: 4 + li });
+    if (rows.length === 0) {
+      return { peakChordSize: 0, peakChordTick: 0, peakChordLanes: [], chordCount: 0, chordNotes: 0, totalOnsets: 0, peakChordRate: 0, windowSec };
+    }
+    rows.sort((a, b) => a.tick - b.tick || a.lane - b.lane);
+    // Group consecutive onsets within jitterTicks of the group's first tick into a
+    // chord; SIZE = distinct lanes struck (a Set dedups a same-lane double so size
+    // can never exceed the six physical lanes).
+    const chords = [];
+    let i = 0;
+    while (i < rows.length) {
+      const startTick = rows[i].tick;
+      const lanesSet = new Set();
+      let j = i;
+      while (j < rows.length && (rows[j].tick - startTick) <= jitterTicks) { lanesSet.add(rows[j].lane); j++; }
+      const lanes = [...lanesSet].sort((a, b) => a - b);
+      chords.push({ tick: startTick, size: lanes.length, lanes, sec: this.tickToSeconds(startTick) });
+      i = j;
+    }
+    let peakChordSize = 0, peakIdx = 0;
+    for (let k = 0; k < chords.length; k++) if (chords[k].size > peakChordSize) { peakChordSize = chords[k].size; peakIdx = k; }
+    let chordCount = 0, chordNotes = 0;
+    for (const c of chords) if (c.size >= 2) { chordCount++; chordNotes += c.size; }
+    // Peak chord RATE: chords (≥2) per real second, exact via the same onset-anchored
+    // two-pointer sliding window notesPerSecond uses (the count-maximising window can
+    // always slide left until its left edge meets a chord, so anchoring is exact).
+    const chordSecs = chords.filter(c => c.size >= 2).map(c => c.sec).sort((a, b) => a - b);
+    let peakRate = 0, jj = 0;
+    for (let ii = 0; ii < chordSecs.length; ii++) {
+      if (jj < ii) jj = ii;
+      const limit = chordSecs[ii] + windowSec;
+      while (jj < chordSecs.length && chordSecs[jj] < limit) jj++;
+      if (jj - ii > peakRate) peakRate = jj - ii;
+    }
+    const peak = chords[peakIdx] || { tick: 0, size: 0, lanes: [] };
+    return {
+      peakChordSize, peakChordTick: peak.tick,
+      peakChordLanes: peak.lanes.map(l => LANE_NAMES[l]),
+      chordCount, chordNotes, totalOnsets: rows.length,
+      peakChordRate: peakRate / windowSec, windowSec,
     };
   }
 

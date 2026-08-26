@@ -1,4 +1,4 @@
-import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
+import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, chordDifficultyBand, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
 import { Renderer, C, laserColors, laserOpacity, laserWideMode, LASER_PRESETS, applyLaserPreset, setLaserColorCustom, buildLaneHeader, setLaserOpacity, setLaserWideMode } from './renderer.js';
 import { GameView } from './game.js';
 import { exportKsh, importKsh, downloadText } from './ksh.js';
@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.75';
+const APP_VERSION = '0.0.76';
 const CHANGELOG = [
+  {
+    version: '0.0.76',
+    title: 'Peak Chord — the honest multi-finger simultaneity number, the fifth physical-difficulty axis',
+    entries: [
+      ['add', '<strong>Chart Statistics now shows how hard your chart chords.</strong> A <em>chord</em> is two or more BT/FX notes struck on the <em>same tick</em> — a multi-finger press. The four existing physical axes are all blind to it: a lane can read as a comfortable 8&nbsp;NPS whether those notes are a single-finger stream or four 2-note chords, and the <strong>Peak&nbsp;Jack</strong> and <strong>Hand&nbsp;Balance</strong> numbers don’t see simultaneity at all. A new <strong>Peak&nbsp;Chord (fingers at once)</strong> row in both the <strong>📊 Chart Statistics</strong> modal and the Tools-Hub Chart Statistics tool reports the <em>hardest chord</em> in the chart — the most fingers struck on one tick — names the lanes it hits (e.g. <code>BT-A+BT-C+FX-R</code>), and shows how many chords the chart has and their <strong>peak rate</strong>, so multi-finger coordination load finally has an honest figure of its own.'],
+      ['add', '<strong>The fifth honest axis, beside the other four.</strong> It joins the <strong>Green#</strong> reading window (how long you have to <em>read</em> a note), <strong>Peak&nbsp;NPS</strong> (how many notes <em>both</em> hands actuate per second), <strong>Peak&nbsp;Jack</strong> (single-finger repeat) and <strong>Hand&nbsp;Balance</strong> (left-vs-right split). A chord’s <em>size</em> is the number of <strong>distinct lanes</strong> struck together, so a stray same-lane double can never inflate it past the six physical lanes. A difficulty band reads it at a glance — <span style="color:#6fe08a">Light</span> (2), <span style="color:#66ddff">Moderate</span> (3), <span style="color:#ff8a3d">Heavy</span> (4), <span style="color:#ff4d4d">Extreme</span> (5–6) — calibrated to SDVX physicality where a hand only has so many fingers. The <strong>chord rate</strong> (chords per <em>real</em> second, peak over a 1-second window) is BPM-independent, so a dense-chord section at 200&nbsp;BPM honestly outscores the identical tick pattern at 100. Onsets only (a hold counts once at its start); lasers are continuous knob motion, not presses, so they’re excluded — the same convention Peak&nbsp;NPS uses.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.chordStress(opts)</code> that groups every BT+FX onset by tick (via the same <code>tickToSeconds</code> time model the C-Mode scroll, the audio path, Peak&nbsp;NPS and Peak&nbsp;Jack all use), and a shared <code>chart.chordDifficultyBand(peakSize)</code> that drives the label and colour so the modal and the tool can never disagree. It promotes the per-measure “CHORD” heuristic from the Hand-Position Optimizer to a first-class, chart-wide metric. <code>computeChartStats</code> folds it in beside Hand&nbsp;Balance (guarded so a plain-object caller degrades to zero, never throws). The chart is never mutated.'],
+    ],
+  },
   {
     version: '0.0.75',
     title: 'Hand Balance — the honest left-vs-right workload number, the fourth physical-difficulty axis',
@@ -11348,6 +11357,18 @@ const DisclaimerGate = (function() {
         const peaks = ` <span style="opacity:.6;font-size:.82em">peak ${(s.handLeftPeakNps || 0).toFixed(1)} / ${(s.handRightPeakNps || 0).toFixed(1)} NPS</span>`;
         const tag = heavy ? ` ${heavy}` : '';
         return `<strong>${split}</strong> <span style="color:${band.color};font-weight:600">${band.label}${tag}</span>${peaks}`;
+      })()),
+      // v0.0.76 — Peak Chord: the hardest multi-finger press (most notes on one
+      // tick), BPM-independent, banded via the shared chordDifficultyBand so the
+      // colour/label match the Tools stat panel. The fifth physical-difficulty axis.
+      row('Peak Chord (fingers at once)', (() => {
+        const band = chordDifficultyBand(s.peakChordSize);
+        const size = s.peakChordSize || 0;
+        const lanes = (s.peakChordLanes && s.peakChordLanes.length) ? s.peakChordLanes.join('+') : '—';
+        const detail = size >= 2
+          ? ` <span style="opacity:.6;font-size:.82em">${lanes}, ${s.chordCount} chord${s.chordCount === 1 ? '' : 's'}, peak ${(s.peakChordRate || 0).toFixed(1)}/s</span>`
+          : ' <span style="opacity:.6;font-size:.82em">no simultaneous notes</span>';
+        return `<strong>${size}-note</strong> <span style="color:${band.color};font-weight:600">${band.label}</span>${detail}`;
       })()),
     ].join('');
   }

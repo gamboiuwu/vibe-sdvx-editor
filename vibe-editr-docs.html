@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.75 · 2026</span>
+  <span class="version">v0.0.76 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.76</span>Peak Chord &mdash; the honest multi-finger simultaneity number, the fifth physical-difficulty axis</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Chart Statistics now shows how hard your chart chords.</strong> A <em>chord</em> is two or more BT/FX notes struck on the <em>same tick</em> &mdash; a multi-finger press. The four existing physical axes are all blind to it: a lane reads as a comfortable 8&nbsp;NPS whether those notes are a single-finger stream or four 2-note chords, and the <strong>Peak&nbsp;Jack</strong> and <strong>Hand&nbsp;Balance</strong> numbers don&rsquo;t see simultaneity at all. A new <strong>Peak&nbsp;Chord (fingers at once)</strong> row in both the <strong>&#128202; Chart Statistics</strong> modal and the Tools-Hub Chart Statistics tool reports the hardest chord in the chart, names the lanes it hits (e.g. <code>BT-A+BT-C+FX-R</code>), and shows the chord count and their peak rate.</li>
+    <li><span class="tag add">add</span><strong>The fifth honest axis, beside the other four.</strong> It joins the <strong>Green#</strong> reading window, <strong>Peak&nbsp;NPS</strong> (both-hands actuation), <strong>Peak&nbsp;Jack</strong> (single-finger repeat) and <strong>Hand&nbsp;Balance</strong> (L/R split). A chord&rsquo;s <em>size</em> is the number of <strong>distinct lanes</strong> struck together, so a stray same-lane double can never inflate it past the six physical lanes. A band reads it at a glance &mdash; <span style="color:#6fe08a">Light</span> (2), <span style="color:#66ddff">Moderate</span> (3), <span style="color:#ff8a3d">Heavy</span> (4), <span style="color:#ff4d4d">Extreme</span> (5&ndash;6). The chord rate (chords per real second) is BPM-independent, so a dense-chord section at 200&nbsp;BPM honestly outscores the identical tick pattern at 100. Onsets only; lasers are excluded as continuous knob motion.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.chordStress(opts)</code> that groups every BT+FX onset by tick through the same <code>tickToSeconds</code> time model Peak&nbsp;NPS and Peak&nbsp;Jack use, and a shared <code>chart.chordDifficultyBand(peakSize)</code> so the modal and the tool can never disagree. It promotes the per-measure &ldquo;CHORD&rdquo; heuristic from the Hand-Position Optimizer to a first-class, chart-wide metric. <code>computeChartStats</code> folds it in beside Hand&nbsp;Balance (guarded so a plain-object caller degrades to zero, never throws). The chart is never mutated.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.75</span>Hand Balance &mdash; the honest left-vs-right workload number, the fourth physical-difficulty axis</h4>
