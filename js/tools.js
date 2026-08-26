@@ -1,5 +1,5 @@
 import { chart, renderer, gameView, render, saveUndo, updateSeekbar, addChartAnnotation, _seekTo, sel, playing, audioBuffer, flipHorizontalRange, flipTemporalRange, updateStopEventList } from './app.js';
-import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick } from './chart.js';
+import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, chordDifficultyBand, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick } from './chart.js';
 import { Renderer } from './renderer.js';
 import { updateRadar } from './radar.js';
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -5890,6 +5890,16 @@ function _toolChartStats(c) {
         const split = `${Math.round(st.handLeftPct || 0)}% / ${Math.round(st.handRightPct || 0)}%`;
         const peaks = ` <span style="opacity:.55">(peak ${(st.handLeftPeakNps || 0).toFixed(1)} / ${(st.handRightPeakNps || 0).toFixed(1)} NPS)</span>`;
         return `${split} <span style="color:${hb.color};font-weight:600">${hb.label}${heavy}</span>${peaks}`;
+      })() },
+      // v0.0.76 — Peak Chord: the hardest multi-finger press (most notes on one
+      // tick) + peak chord rate, banded via the shared chordDifficultyBand so it
+      // matches the Chart Statistics modal. The fifth physical-difficulty axis.
+      { label: 'Peak Chord (fingers)', value: (() => {
+        const cb = chordDifficultyBand(st.peakChordSize);
+        const size = st.peakChordSize || 0;
+        const lanes = (st.peakChordLanes && st.peakChordLanes.length) ? st.peakChordLanes.join('+') : '—';
+        const det = size >= 2 ? ` <span style="opacity:.55">(${lanes}, ${st.chordCount} chord${st.chordCount===1?'':'s'}, ${(st.peakChordRate||0).toFixed(1)}/s)</span>` : '';
+        return `${size}-note <span style="color:${cb.color};font-weight:600">${cb.label}</span>${det}`;
       })() },
       { label: 'Total note events',    value: totalNoteEvents },
       { label: 'BPM events',           value: ch.bpmEvents.length },
