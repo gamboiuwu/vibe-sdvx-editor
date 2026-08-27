@@ -130,6 +130,15 @@ export function computeChartStats(chart) {
     ? chart.handBalance({})
     : { leftPeakNps: 0, rightPeakNps: 0, leftTotal: 0, rightTotal: 0, leftPct: 0, rightPct: 0, heavier: 'even', heavierShare: 0.5 };
 
+  // Honest, BPM-independent knob load (v0.0.76) — the busiest wall-clock second of
+  // discrete VOL/laser actions (slams + reversals + grabs) from the v0.0.76
+  // engine, surfaced beside Hand Balance as the FIFTH physical-difficulty axis and
+  // the first that scores the Tsumami knobs. Reuses chart.knobStress as the single
+  // source of truth; guarded so a plain-object caller degrades to zero, never throws.
+  const knobRes = (typeof chart.knobStress === 'function')
+    ? chart.knobStress({})
+    : { peakKps: 0, peakTick: 0, meanKps: 0, total: 0, slams: 0, reversals: 0, grabs: 0 };
+
   return {
     btChip, btHold, fxChip, fxHold,
     btTotal: btChip + btHold, fxTotal: fxChip + fxHold,
@@ -142,6 +151,9 @@ export function computeChartStats(chart) {
     handLeftTotal: handRes.leftTotal, handRightTotal: handRes.rightTotal,
     handLeftPct: handRes.leftPct, handRightPct: handRes.rightPct,
     handHeavier: handRes.heavier, handHeavierShare: handRes.heavierShare,
+    peakKps: knobRes.peakKps, meanKps: knobRes.meanKps, peakKnobTick: knobRes.peakTick,
+    knobSlams: knobRes.slams, knobReversals: knobRes.reversals, knobGrabs: knobRes.grabs,
+    knobTotal: knobRes.total,
     coverL, coverR,
     bpmMin, bpmMax, bpmRange,
     bpmCount: chart.bpmEvents.length,
@@ -204,6 +216,29 @@ export function handBalanceBand(heavierShare) {
   if (v >= 0.65) return { key: 'strong', label: 'One-hand heavy', color: '#ff8a3d' };
   if (v >= 0.55) return { key: 'lean',   label: 'Slight lean',    color: '#66ddff' };
   return { key: 'balanced', label: 'Balanced', color: '#6fe08a' };
+}
+
+// ── Knob difficulty band (v0.0.76) ────────────────────────────────────────────
+// Classify a peak knob-actions-per-second value (the busiest wall-clock second of
+// discrete VOL/laser work — slams, direction reversals and grabs — from
+// chart.knobStress) into a coarse Tsumami-load band, the knob twin of
+// npsDifficultyBand / jackDifficultyBand. The four v0.0.56-75 axes all measure
+// hands and fingers on the BT/FX buttons and deliberately EXCLUDE the knobs; this
+// is the first honest number for the VOL axis itself. Thresholds are calibrated to
+// how knob work FEELS: a laser that just holds a line is ~0 actions/s; a lively
+// zig-zag or a scattering of slams sits around 4-8; a dense slam storm or 16th
+// wrist-flick run climbs past 12 and reads Extreme by ~18. Pure and DOM-free so
+// the modal and the Tools stat panel colour/label from ONE source of truth;
+// matches the difficulty-band palette (calm green → cyan → amber → hot). Returns
+// the lowest band ("None") for 0 / NaN so a chart with no lasers never reads blank.
+export function knobDifficultyBand(peakKps) {
+  const v = Math.max(0, Number(peakKps) || 0);
+  if (v >= 18) return { key: 'extreme', label: 'Extreme', color: '#ff4d4d' };
+  if (v >= 12) return { key: 'heavy',   label: 'Heavy',   color: '#ff8a3d' };
+  if (v >= 8)  return { key: 'busy',    label: 'Busy',    color: '#ffcc55' };
+  if (v >= 4)  return { key: 'moderate',label: 'Moderate',color: '#66ddff' };
+  if (v > 0)   return { key: 'light',   label: 'Light',   color: '#6fe08a' };
+  return { key: 'none', label: 'None', color: '#6fe08a' };
 }
 
 // ── Quantize / Nudge engine ──────────────────────────────────────────────────
@@ -1315,6 +1350,96 @@ export class ChartData {
       leftPeakNps: peakNpsOf(L), rightPeakNps: peakNpsOf(R),
       leftTotal, rightTotal, total,
       leftPct, rightPct, heavier, heavierShare, windowSec,
+    };
+  }
+
+  // ── Knob Stress / Tsumami Load (v0.0.76) ───────────────────────────────────
+  // The FIFTH honest physical-difficulty axis — the first one that measures the
+  // VOL knobs. The v0.0.56-70 green number (reading), v0.0.71-73 NPS (both-hands
+  // actuation), v0.0.74 jack (single-finger repeat) and v0.0.75 hand balance all
+  // score the BT/FX buttons and every one of them deliberately EXCLUDES lasers as
+  // "continuous knob motion, not a press" — so the entire Tsumami axis, a whole
+  // third of what an SDVX chart demands, had no honest difficulty number anywhere
+  // (radar.js's TSUMAMI vertex is a normalised, curve-shaped 0-1 polygon value,
+  // not a measured per-second figure). Knob difficulty is not "how long is a
+  // laser" — a slow line is trivial — it is how many discrete KNOB ACTIONS the
+  // wrist must execute per real second, so this counts three kinds of action:
+  //   • grab      — the first point of a laser section (you must catch the knob)
+  //   • slam      — a near-instant horizontal jump (adjacent points within
+  //                 LASER_SLAM_TICKS whose position differs by > LASER_SLAM_V_EPS);
+  //                 the flick a player actually feels, using the SAME slam
+  //                 convention as import/addLaserPoint so the count can't drift
+  //   • reversal  — an interior vertex where the knob's direction flips sign
+  //                 (both sides moving by > LASER_SLAM_V_EPS); a wrist change of
+  //                 direction. A vertex that is already a slam landing is not
+  //                 double-counted — the flick IS the action there.
+  // Each action is stamped at its absolute tick and converted to seconds through
+  // the same tickToSeconds time model the C-Mode scroll, the audio path and
+  // notesPerSecond all use, then a 1-second onset-anchored sliding window (the
+  // exact two-pointer sweep notesPerSecond uses, provably exact) finds the peak —
+  // so a slam storm at 240 BPM honestly outscores the identical tick pattern at
+  // 120, and the peak agrees in spirit with the note-side axes. BPM-independent,
+  // DOM-free and unit-tested; the chart is never mutated. Returns:
+  //   peakKps    busiest knob-actions-per-second anywhere (0 if no laser actions)
+  //   peakTick   tick of the first action in the busiest window (for seek)
+  //   peakTime   that action's time in seconds
+  //   meanKps    actions across the whole laser span / that span in seconds
+  //   total      total knob actions; slams / reversals / grabs their breakdown
+  knobStress(opts = {}) {
+    const windowSec = Math.max(0.05, Number(opts.windowSec) || 1.0);
+    const slamTicks = LASER_SLAM_TICKS;   // shared slam-gap convention (default 12)
+    const vEps = LASER_SLAM_V_EPS;        // shared min position delta (0.01)
+    const ticks = [];
+    let slams = 0, reversals = 0, grabs = 0;
+    const sides = Array.isArray(this.lasers) ? this.lasers : [];
+    for (let side = 0; side < sides.length; side++) {
+      const secs = sides[side] || [];
+      for (const sec of secs) {
+        const pts = sec.points || [];
+        if (!pts.length) continue;
+        // grab: the moment the player must take the knob onto this section.
+        ticks.push(sec.y + (pts[0].ry || 0)); grabs++;
+        for (let i = 1; i < pts.length; i++) {
+          const prev = pts[i - 1], cur = pts[i];
+          const dv = cur.v - prev.v;
+          const gap = (cur.ry || 0) - (prev.ry || 0);
+          const tick = sec.y + (cur.ry || 0);
+          if (gap <= slamTicks && Math.abs(dv) > vEps) {  // a slam (flick)
+            ticks.push(tick); slams++;
+            continue;                                     // the flick is the action
+          }
+          if (i < pts.length - 1) {                       // reversal at interior vertex
+            const nxt = pts[i + 1];
+            const d2 = nxt.v - cur.v;
+            if (Math.abs(dv) > vEps && Math.abs(d2) > vEps && Math.sign(dv) !== Math.sign(d2)) {
+              ticks.push(tick); reversals++;
+            }
+          }
+        }
+      }
+    }
+    const total = ticks.length;
+    if (total === 0) {
+      return { peakKps: 0, peakTick: 0, peakTime: 0, meanKps: 0, total: 0, slams: 0, reversals: 0, grabs: 0, spanSec: 0, windowSec };
+    }
+    const rows = ticks
+      .map(tick => ({ tick, sec: this.tickToSeconds(tick) }))
+      .sort((a, b) => a.sec - b.sec || a.tick - b.tick);
+    let peakCount = 0, peakIdx = 0, j = 0;
+    for (let i = 0; i < rows.length; i++) {
+      if (j < i) j = i;
+      const limit = rows[i].sec + windowSec;
+      while (j < rows.length && rows[j].sec < limit) j++;
+      const cnt = j - i;
+      if (cnt > peakCount) { peakCount = cnt; peakIdx = i; }
+    }
+    const spanSec = Math.max(0, rows[rows.length - 1].sec - rows[0].sec);
+    const meanKps = spanSec > 1e-6 ? total / spanSec : total / windowSec;
+    return {
+      peakKps: peakCount / windowSec,
+      peakTick: rows[peakIdx].tick,
+      peakTime: rows[peakIdx].sec,
+      meanKps, total, slams, reversals, grabs, spanSec, windowSec,
     };
   }
 

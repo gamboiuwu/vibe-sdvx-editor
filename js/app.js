@@ -1,4 +1,4 @@
-import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
+import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
 import { Renderer, C, laserColors, laserOpacity, laserWideMode, LASER_PRESETS, applyLaserPreset, setLaserColorCustom, buildLaneHeader, setLaserOpacity, setLaserWideMode } from './renderer.js';
 import { GameView } from './game.js';
 import { exportKsh, importKsh, downloadText } from './ksh.js';
@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.75';
+const APP_VERSION = '0.0.76';
 const CHANGELOG = [
+  {
+    version: '0.0.76',
+    title: 'Knob Load — the honest Tsumami / laser-density number, the fifth physical-difficulty axis',
+    entries: [
+      ['add', '<strong>Chart Statistics now scores the VOL knobs — the axis every other number ignored.</strong> The four honest difficulty axes so far — the <strong>Green#</strong> reading window, <strong>Peak&nbsp;NPS</strong>, <strong>Peak&nbsp;Jack</strong> and <strong>Hand&nbsp;Balance</strong> — all measure your fingers on the BT/FX buttons and every one of them deliberately <em>excludes</em> the lasers as “continuous knob motion, not a press.” That left a whole third of an SDVX chart — the Tsumami knobs — with no honest difficulty number anywhere. A new <strong>Knob&nbsp;Load (per second)</strong> row in both the <strong>📊 Chart Statistics</strong> modal and the Tools-Hub Chart Statistics tool finally puts a real figure on it.'],
+      ['add', '<strong>Counts what the wrist actually does, not how long a laser is.</strong> A slow laser line is trivial; difficulty is how many discrete <em>knob actions</em> you must execute per real second. Knob Load counts three: a <strong>grab</strong> (catching the knob at a section start), a <strong>slam</strong> (a near-instant flick, using the same slam convention as import), and a <strong>reversal</strong> (an interior vertex where the knob changes direction). A vertex that is already a slam isn’t double-counted. The busiest one wall-clock second sets the peak, banded at a glance — <span style="color:#6fe08a">Light</span>, <span style="color:#66ddff">Moderate</span>, <span style="color:#ffcc55">Busy</span>, <span style="color:#ff8a3d">Heavy</span>, <span style="color:#ff4d4d">Extreme</span> — with the slam and reversal counts shown alongside.'],
+      ['add', '<strong>BPM-independent, render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.knobStress(opts)</code> that stamps every knob action to seconds through the same <code>tickToSeconds</code> time model the C-Mode scroll, the audio path and <code>chart.notesPerSecond</code> all use, then slides the same provably-exact 1-second window — so a slam storm at 240&nbsp;BPM honestly outscores the identical tick pattern at 120. A shared <code>chart.knobDifficultyBand(peakKps)</code> drives the label and colour so the modal and the tool can never disagree. <code>computeChartStats</code> folds it in beside Hand&nbsp;Balance (guarded so a plain-object caller degrades to zero, never throws). The chart is never mutated.'],
+    ],
+  },
   {
     version: '0.0.75',
     title: 'Hand Balance — the honest left-vs-right workload number, the fourth physical-difficulty axis',
@@ -11348,6 +11357,17 @@ const DisclaimerGate = (function() {
         const peaks = ` <span style="opacity:.6;font-size:.82em">peak ${(s.handLeftPeakNps || 0).toFixed(1)} / ${(s.handRightPeakNps || 0).toFixed(1)} NPS</span>`;
         const tag = heavy ? ` ${heavy}` : '';
         return `<strong>${split}</strong> <span style="color:${band.color};font-weight:600">${band.label}${tag}</span>${peaks}`;
+      })()),
+      // v0.0.76 — Knob Load: the fifth physical-difficulty axis and the first for
+      // the VOL knobs. Busiest wall-clock second of discrete knob actions (slams +
+      // reversals + grabs), banded via the shared knobDifficultyBand so the colour
+      // and label match the Tools stat panel.
+      row('Knob Load (per second)', (() => {
+        const band = knobDifficultyBand(s.peakKps);
+        const detail = (s.knobTotal || 0) > 0
+          ? ` <span style="opacity:.6;font-size:.82em">${s.knobSlams || 0} slam${(s.knobSlams||0)!==1?'s':''}, ${s.knobReversals || 0} rev</span>`
+          : '';
+        return `<strong>${(s.peakKps || 0).toFixed(1)}</strong> <span style="color:${band.color};font-weight:600">${band.label}</span>${detail}`;
       })()),
     ].join('');
   }

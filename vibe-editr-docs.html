@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.75 · 2026</span>
+  <span class="version">v0.0.76 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.76</span>Knob Load &mdash; the honest Tsumami / laser-density number, the fifth physical-difficulty axis</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Chart Statistics now scores the VOL knobs &mdash; the axis every other number ignored.</strong> The four honest difficulty axes so far &mdash; the <strong>Green#</strong> reading window, <strong>Peak&nbsp;NPS</strong>, <strong>Peak&nbsp;Jack</strong> and <strong>Hand&nbsp;Balance</strong> &mdash; all measure your fingers on the BT/FX buttons, and every one of them deliberately <em>excludes</em> the lasers as &ldquo;continuous knob motion, not a press.&rdquo; That left a whole third of an SDVX chart &mdash; the Tsumami knobs &mdash; with no honest difficulty number anywhere (the radar&rsquo;s TSUMAMI vertex is a normalised, curve-shaped polygon value, not a measured per-second figure). A new <strong>Knob&nbsp;Load (per second)</strong> row in both the <strong>&#128202; Chart Statistics</strong> modal and the Tools-Hub Chart Statistics tool finally puts a real figure on it.</li>
+    <li><span class="tag add">add</span><strong>Counts what the wrist actually does, not how long a laser is.</strong> A slow laser line is trivial; difficulty is how many discrete <em>knob actions</em> you must execute per real second. Knob Load counts three: a <strong>grab</strong> (catching the knob at a section start), a <strong>slam</strong> (a near-instant flick, using the same slam convention as import so the count can&rsquo;t drift), and a <strong>reversal</strong> (an interior vertex where the knob changes direction). A vertex that is already a slam isn&rsquo;t double-counted &mdash; the flick <em>is</em> the action. The busiest one wall-clock second sets the peak, banded at a glance &mdash; <span style="color:#6fe08a">Light</span>, <span style="color:#66ddff">Moderate</span>, <span style="color:#ffcc55">Busy</span>, <span style="color:#ff8a3d">Heavy</span>, <span style="color:#ff4d4d">Extreme</span> &mdash; with the slam and reversal counts shown alongside.</li>
+    <li><span class="tag add">add</span><strong>BPM-independent, render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.knobStress(opts)</code> that stamps every knob action to seconds through the same <code>tickToSeconds</code> time model the C-Mode scroll, the audio path and <code>chart.notesPerSecond</code> all use, then slides the same provably-exact 1-second window &mdash; so a slam storm at 240&nbsp;BPM honestly outscores the identical tick pattern at 120. A shared <code>chart.knobDifficultyBand(peakKps)</code> drives the label and colour so the modal and the tool can never disagree. <code>computeChartStats</code> folds it in beside Hand&nbsp;Balance (guarded so a plain-object caller degrades to zero, never throws). The chart is never mutated.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.75</span>Hand Balance &mdash; the honest left-vs-right workload number, the fourth physical-difficulty axis</h4>
