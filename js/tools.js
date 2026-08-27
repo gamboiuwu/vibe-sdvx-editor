@@ -1,5 +1,5 @@
 import { chart, renderer, gameView, render, saveUndo, updateSeekbar, addChartAnnotation, _seekTo, sel, playing, audioBuffer, flipHorizontalRange, flipTemporalRange, updateStopEventList } from './app.js';
-import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick } from './chart.js';
+import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick } from './chart.js';
 import { Renderer } from './renderer.js';
 import { updateRadar } from './radar.js';
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -5890,6 +5890,15 @@ function _toolChartStats(c) {
         const split = `${Math.round(st.handLeftPct || 0)}% / ${Math.round(st.handRightPct || 0)}%`;
         const peaks = ` <span style="opacity:.55">(peak ${(st.handLeftPeakNps || 0).toFixed(1)} / ${(st.handRightPeakNps || 0).toFixed(1)} NPS)</span>`;
         return `${split} <span style="color:${hb.color};font-weight:600">${hb.label}${heavy}</span>${peaks}`;
+      })() },
+      // v0.0.76 — Knob Load: the busiest wall-clock second of discrete VOL/laser
+      // actions (slams + reversals + grabs), banded via the shared knobDifficultyBand
+      // so it matches the Chart Statistics modal. The fifth physical-difficulty axis
+      // and the first that scores the Tsumami knobs.
+      { label: 'Knob Load (per second)', value: (() => {
+        const kb = knobDifficultyBand(st.peakKps);
+        const det = (st.knobTotal || 0) > 0 ? ` <span style="opacity:.55">(${st.knobSlams || 0} slam${(st.knobSlams||0)!==1?'s':''}, ${st.knobReversals || 0} rev)</span>` : '';
+        return `${(st.peakKps || 0).toFixed(1)} <span style="color:${kb.color};font-weight:600">${kb.label}</span>${det}`;
       })() },
       { label: 'Total note events',    value: totalNoteEvents },
       { label: 'BPM events',           value: ch.bpmEvents.length },
