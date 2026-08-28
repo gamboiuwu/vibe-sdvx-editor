@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.76 · 2026</span>
+  <span class="version">v0.0.77 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.77</span>Honest Radar &mdash; the six measured difficulty axes as one shape</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Chart Statistics now draws the honest difficulty profile, not just lists it.</strong> Over the last week the editor grew six genuinely-<em>measured</em> difficulty numbers &mdash; the <strong>Green#</strong> reading window, <strong>Peak&nbsp;NPS</strong>, <strong>Avg&nbsp;NPS</strong> (stamina), <strong>Peak&nbsp;Jack</strong>, <strong>Hand&nbsp;Balance</strong> and <strong>Knob&nbsp;Load</strong> &mdash; but they only ever appeared as a column of text rows. The existing <strong>&#9672; Pattern Radar</strong> draws a shape, but that shape is a <em>stylised heuristic</em> tuned to look like the official SDVX Effect Radar (AI bonuses, tunable sliders). A new <strong>Honest Radar</strong> now sits at the top of the <strong>&#128202; Chart Statistics</strong> modal: a six-spoke polygon driven purely by the measured engines, so you can see at a glance which axis your chart leans on and compare two charts&rsquo; real profiles by shape.</li>
+    <li><span class="tag add">add</span><strong>Six honest spokes, each traced to a unit-tested engine.</strong> <strong>READ</strong> = reading load (the reference green-number window at the chart&rsquo;s peak BPM, through the same <code>reactionWindowMs</code> engine the live green number uses &mdash; a stable, HiSpeed-free chart property); <strong>PEAK</strong> = burst notes/sec; <strong>STAM</strong> = sustained notes/sec (endurance, distinct from the burst); <strong>JACK</strong> = fastest single-finger repeat; <strong>HAND</strong> = one-hand load; <strong>KNOB</strong> = Tsumami actions/sec. Each spoke is normalised so ~100 means &ldquo;Extreme for that axis&rdquo;, anchored on the <em>same</em> thresholds the per-axis difficulty bands use, so a spoke&rsquo;s reach agrees with the text row beside it. A caption names the dominant axis and an overall figure; a note-less chart reads truly empty (no notes &rArr; no reading demand).</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.honestRadarProfile(raw)</code> that takes the raw values <code>computeChartStats</code> already produces and maps them onto the common 0&ndash;100 scale, plus a shared <code>chart.honestRadarScoreColor(score)</code> so every spoke reads with the same calm-green &rarr; hot-red colour semantics as the difficulty rows. Guarded end-to-end (a missing/NaN axis degrades to 0, never throws); the chart is never mutated. Verified in a real browser: an all-left-hand chart lights <strong>HAND</strong> to 100, a 16th single-lane burst makes <strong>JACK</strong> dominant, with zero JS errors.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.76</span>Knob Load &mdash; the honest Tsumami / laser-density number, the fifth physical-difficulty axis</h4>

@@ -241,6 +241,107 @@ export function knobDifficultyBand(peakKps) {
   return { key: 'none', label: 'None', color: '#6fe08a' };
 }
 
+// ── Honest Radar (v0.0.77) ────────────────────────────────────────────────────
+// The MEASURED counterpart to the stylised Pattern Radar (radar.js). Over
+// v0.0.56–0.0.76 the editor grew six genuinely-measured, mostly BPM-independent
+// difficulty numbers — each with its own DOM-free, unit-tested engine and its own
+// difficulty band — but they only ever appeared as a column of text rows in Chart
+// Statistics. radar.js draws a shape, but that shape is a HEURISTIC calibrated to
+// look like the official SDVX Effect Radar (AI bonuses, tunable sliders). There
+// was no single at-a-glance shape driven purely by the honest numbers, and no way
+// to see which axis dominates a chart or to compare two charts' *measured*
+// profiles side by side.
+//
+// honestRadarProfile is that shape's single source of truth. It is a PURE
+// NORMALISER: it takes the raw axis values the six engines already produce (the
+// caller gathers them from computeChartStats + reactionWindowMs, so this stays
+// DOM-free and testable) and maps each onto a common 0..100 scale where ~100 means
+// "extreme for that axis", anchored on the SAME thresholds the per-axis difficulty
+// bands use, so the polygon's reach on each spoke agrees with the text row beside
+// it. The six axes:
+//   READING  — reading load; the reference green-number window at the chart's peak
+//              BPM (shorter window ⇒ higher score). Monotonic in bpmMax through the
+//              reactionWindowMs engine, so it's a stable, HiSpeed-free chart
+//              property good for comparison. Raw input: readingMs.
+//   PEAK     — burst density; notesPerSecond().peakNps.
+//   STAMINA  — sustained density; notesPerSecond().meanNps (endurance, distinct
+//              from the burst PEAK).
+//   JACK     — single-finger repeat; jackStress().peakJps.
+//   HAND     — one-hand load; handBalance().heavierShare (0.5 even .. 1 one-hand).
+//   KNOB     — Tsumami load; knobStress().peakKps.
+// Pure, DOM-free and never touches chart data. Guarded so any missing/NaN input
+// degrades that spoke to 0 rather than throwing. Returns { axes:[{key,label,short,
+// raw,score,color}…], overall, dominant, dominantScore }.
+
+// Per-axis normalisation anchors — the raw value that maps to a full-scale 100.
+// Each is set just above its per-axis difficulty band's top boundary so a chart
+// that reads "Extreme" on a row lands near (not past) the rim on that spoke.
+export const HONEST_RADAR_ANCHORS = Object.freeze({
+  // READING is expressed in ms of reference green window; SHORTER is harder, so it
+  // has an easy floor (→0) and a hard ceiling (→100) rather than a single anchor.
+  readingEasyMs: 650,   // a comfortable reference window ⇒ score 0
+  readingHardMs: 320,   // a punishing reference window   ⇒ score 100
+  peakNps:  30,   // npsDifficultyBand Extreme starts at 28
+  meanNps:  16,   // a sustained 16 nps is brutal endurance
+  peakJps:  14,   // jackDifficultyBand Extreme starts at 12
+  handHi:   0.85, // handBalance heavierShare: 0.5 even .. this ⇒ 100 (one-hand)
+  peakKps:  20,   // knobDifficultyBand Extreme starts at 18
+});
+
+// Reference visible-tick span for the READING axis. Chosen so the reference green
+// window lands in a realistic range (≈500 ms at 180 BPM), matching what a player
+// actually reads; the ABSOLUTE value is irrelevant to the radar — only the
+// relative mapping through the anchors is — but a realistic figure makes the
+// tooltip honest. reactionWindowMs(REF, bpm, 1) = REF/48 · 60000/bpm.
+export const HONEST_RADAR_READING_REF_TICKS = 72;
+
+// Map any axis score (0..100) to a colour on the shared difficulty-band ramp
+// (calm green → cyan → yellow → orange → hot red), so every spoke reads with the
+// same colour semantics as the Peak-NPS / Jack / Knob rows. Pure and DOM-free.
+export function honestRadarScoreColor(score) {
+  const v = Math.max(0, Math.min(100, Number(score) || 0));
+  if (v >= 88) return '#ff4d4d';
+  if (v >= 70) return '#ff8a3d';
+  if (v >= 50) return '#ffcc55';
+  if (v >= 30) return '#66ddff';
+  return '#6fe08a';
+}
+
+export function honestRadarProfile(raw = {}, opts = {}) {
+  const A = { ...HONEST_RADAR_ANCHORS, ...(opts.anchors || {}) };
+  const clamp100 = (x) => Math.max(0, Math.min(100, x));
+  const num = (x) => (Number.isFinite(Number(x)) ? Number(x) : 0);
+
+  // READING: shorter reference window ⇒ higher score. A missing/zero readingMs
+  // (no BPM data) degrades to 0 rather than reading as maximally hard.
+  const readingMs = num(raw.readingMs);
+  const readScore = readingMs > 0
+    ? clamp100((A.readingEasyMs - readingMs) / (A.readingEasyMs - A.readingHardMs) * 100)
+    : 0;
+
+  const peakNps  = Math.max(0, num(raw.peakNps));
+  const meanNps  = Math.max(0, num(raw.meanNps));
+  const peakJps  = Math.max(0, num(raw.peakJps));
+  const peakKps  = Math.max(0, num(raw.peakKps));
+  // heavierShare is defined on [0.5, 1]; anything below 0.5 is "even" ⇒ 0.
+  const share    = Math.max(0.5, Math.min(1, num(raw.heavierShare) || 0.5));
+
+  const axes = [
+    { key: 'reading', label: 'Reading', short: 'READ', raw: readingMs, score: readScore },
+    { key: 'peak',    label: 'Peak NPS', short: 'PEAK', raw: peakNps,  score: clamp100(peakNps / A.peakNps * 100) },
+    { key: 'stamina', label: 'Stamina',  short: 'STAM', raw: meanNps,  score: clamp100(meanNps / A.meanNps * 100) },
+    { key: 'knob',    label: 'Knob',     short: 'KNOB', raw: peakKps,  score: clamp100(peakKps / A.peakKps * 100) },
+    { key: 'hand',    label: 'Hand',     short: 'HAND', raw: share,    score: clamp100((share - 0.5) / (A.handHi - 0.5) * 100) },
+    { key: 'jack',    label: 'Jack',     short: 'JACK', raw: peakJps,  score: clamp100(peakJps / A.peakJps * 100) },
+  ];
+  for (const ax of axes) { ax.score = Math.round(ax.score * 10) / 10; ax.color = honestRadarScoreColor(ax.score); }
+
+  let dominant = axes[0], overall = 0;
+  for (const ax of axes) { overall += ax.score; if (ax.score > dominant.score) dominant = ax; }
+  overall = Math.round(overall / axes.length * 10) / 10;
+  return { axes, overall, dominant: dominant.key, dominantScore: dominant.score };
+}
+
 // ── Quantize / Nudge engine ──────────────────────────────────────────────────
 // Shared, side-effect-isolated tick math used by the Tools Hub "Quantize" tool.
 // Kept here (not in tools.js) so it can be unit-tested without a DOM, and so any
