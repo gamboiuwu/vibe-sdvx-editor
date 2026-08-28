@@ -1,4 +1,4 @@
-import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
+import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestRadarProfile, honestRadarScoreColor, HONEST_RADAR_READING_REF_TICKS, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
 import { Renderer, C, laserColors, laserOpacity, laserWideMode, LASER_PRESETS, applyLaserPreset, setLaserColorCustom, buildLaneHeader, setLaserOpacity, setLaserWideMode } from './renderer.js';
 import { GameView } from './game.js';
 import { exportKsh, importKsh, downloadText } from './ksh.js';
@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.76';
+const APP_VERSION = '0.0.77';
 const CHANGELOG = [
+  {
+    version: '0.0.77',
+    title: 'Honest Radar — the six measured difficulty axes as one shape',
+    entries: [
+      ['add', '<strong>Chart Statistics now draws the honest difficulty profile, not just lists it.</strong> Over the last week the editor grew six genuinely-<em>measured</em> difficulty numbers — the <strong>Green#</strong> reading window, <strong>Peak&nbsp;NPS</strong>, <strong>Avg&nbsp;NPS</strong> (stamina), <strong>Peak&nbsp;Jack</strong>, <strong>Hand&nbsp;Balance</strong> and <strong>Knob&nbsp;Load</strong> — but they only ever appeared as a column of text rows. The existing <strong>◈ Pattern Radar</strong> draws a shape, but that shape is a <em>stylised heuristic</em> tuned to look like the official SDVX Effect Radar (AI bonuses, tunable sliders). A new <strong>Honest Radar</strong> now sits at the top of the <strong>📊 Chart Statistics</strong> modal: a six-spoke polygon driven purely by the measured engines, so you can see at a glance which axis your chart leans on and compare two charts’ real profiles by shape.'],
+      ['add', '<strong>Six honest spokes, each traced to a unit-tested engine.</strong> <strong>READ</strong> = reading load (the reference green-number window at the chart’s peak BPM, through the same <code>reactionWindowMs</code> engine the live green number uses — a stable, HiSpeed-free chart property); <strong>PEAK</strong> = burst notes/sec; <strong>STAM</strong> = sustained notes/sec (endurance, distinct from the burst); <strong>JACK</strong> = fastest single-finger repeat; <strong>HAND</strong> = one-hand load; <strong>KNOB</strong> = Tsumami actions/sec. Each spoke is normalised so ~100 means “Extreme for that axis”, anchored on the <em>same</em> thresholds the per-axis difficulty bands use, so a spoke’s reach agrees with the text row beside it. A caption names the dominant axis and an overall figure; a note-less chart reads truly empty (no notes ⇒ no reading demand).'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.honestRadarProfile(raw)</code> that takes the raw values <code>computeChartStats</code> already produces and maps them onto the common 0–100 scale, plus a shared <code>chart.honestRadarScoreColor(score)</code> so every spoke reads with the same calm-green → hot-red colour semantics as the difficulty rows. Guarded end-to-end (a missing/NaN axis degrades to 0, never throws); the chart is never mutated. Verified in a real browser: an all-left-hand chart lights <strong>HAND</strong> to 100, a 16th single-lane burst makes <strong>JACK</strong> dominant, with zero JS errors.'],
+    ],
+  },
   {
     version: '0.0.76',
     title: 'Knob Load — the honest Tsumami / laser-density number, the fifth physical-difficulty axis',
@@ -11295,6 +11304,92 @@ const DisclaimerGate = (function() {
   const sub   = document.getElementById('cs-subtitle');
   const btnOpen  = document.getElementById('btn-chart-stats');
   const btnClose = document.getElementById('cs-close');
+  const radarCanvas  = document.getElementById('cs-radar');
+  const radarCaption = document.getElementById('cs-radar-caption');
+
+  // v0.0.77 — Honest Radar. Draw the six measured difficulty axes as one polygon
+  // from the SAME numbers the text rows below use, via the DOM-free
+  // chart.honestRadarProfile normaliser (single source of truth). Render-only;
+  // the chart is never touched. Guarded end-to-end so a chart with no method
+  // engines (a plain object) still draws an empty hexagon rather than throwing.
+  function drawRadar(s) {
+    if (!radarCanvas) return;
+    const ctx = radarCanvas.getContext('2d');
+    if (!ctx) return;
+    const W = radarCanvas.width, H = radarCanvas.height;
+    ctx.clearRect(0, 0, W, H);
+    if (!s) { if (radarCaption) radarCaption.textContent = '—'; return; }
+
+    // READING axis: the reference green-number window at the chart's PEAK bpm,
+    // through the same reactionWindowMs engine the live green number uses — a
+    // stable, HiSpeed-free chart property (shorter window ⇒ harder reading).
+    // Reading load only means something when there are notes to read — a
+    // note-less chart has a defined BPM but no reading demand, so its reading
+    // spoke stays at 0 and the whole radar reads truly empty.
+    const bpmMax = s.bpmMax || 120;
+    const readingMs = ((s.totalNotes || 0) > 0 && chart && typeof chart.reactionWindowMs === 'function')
+      ? chart.reactionWindowMs(HONEST_RADAR_READING_REF_TICKS, bpmMax, 1)
+      : 0;
+    const prof = honestRadarProfile({
+      readingMs,
+      peakNps: s.peakNps, meanNps: s.meanNps, peakJps: s.peakJps,
+      heavierShare: s.handHeavierShare, peakKps: s.peakKps,
+    });
+
+    const cx = W / 2, cy = H / 2 + 6, R = Math.min(W, H) * 0.34;
+    const N = prof.axes.length;
+    // Clockwise from top (12 o'clock = -90°).
+    const ang = i => (-Math.PI / 2) + i * (2 * Math.PI / N);
+    const pt = (i, r) => [cx + Math.cos(ang(i)) * r, cy + Math.sin(ang(i)) * r];
+
+    // Grid rings + spokes.
+    ctx.strokeStyle = 'rgba(120,124,180,0.22)';
+    ctx.lineWidth = 1;
+    for (const frac of [0.25, 0.5, 0.75, 1.0]) {
+      ctx.beginPath();
+      for (let i = 0; i < N; i++) { const [x, y] = pt(i, R * frac); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+      ctx.closePath(); ctx.stroke();
+    }
+    ctx.strokeStyle = 'rgba(120,124,180,0.30)';
+    for (let i = 0; i < N; i++) { const [x, y] = pt(i, R); ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(x, y); ctx.stroke(); }
+
+    // Filled data polygon.
+    ctx.beginPath();
+    for (let i = 0; i < N; i++) { const [x, y] = pt(i, R * (prof.axes[i].score / 100)); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+    ctx.closePath();
+    const domColor = honestRadarScoreColor(prof.dominantScore);
+    ctx.fillStyle = domColor + '33';
+    ctx.fill();
+    ctx.strokeStyle = domColor;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Per-axis vertex dots + labels.
+    ctx.font = '600 10px system-ui, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (let i = 0; i < N; i++) {
+      const ax = prof.axes[i];
+      const [dx, dy] = pt(i, R * (ax.score / 100));
+      ctx.beginPath(); ctx.arc(dx, dy, 2.6, 0, Math.PI * 2);
+      ctx.fillStyle = ax.color; ctx.fill();
+      const [lx, ly] = pt(i, R + 18);
+      ctx.fillStyle = ax.color;
+      ctx.fillText(ax.short, lx, ly - 5);
+      ctx.fillStyle = 'rgba(180,184,220,0.85)';
+      ctx.font = '500 9px system-ui, sans-serif';
+      ctx.fillText(String(Math.round(ax.score)), lx, ly + 5);
+      ctx.font = '600 10px system-ui, sans-serif';
+    }
+
+    if (radarCaption) {
+      const dom = prof.axes.find(a => a.key === prof.dominant);
+      radarCaption.innerHTML = prof.overall > 0
+        ? `Overall <strong style="color:${honestRadarScoreColor(prof.overall)}">${prof.overall.toFixed(0)}</strong>` +
+          ` · dominant <strong style="color:${dom.color}">${dom.short}</strong> ${Math.round(dom.score)}` +
+          ` <span style="opacity:.55">— measured axes only, 100 = extreme</span>`
+        : 'No notes yet — the six measured axes will fill in as you chart.';
+    }
+  }
   if (!modal || !grid) return;
 
   function row(k, v) {
@@ -11308,7 +11403,8 @@ const DisclaimerGate = (function() {
 
   function render() {
     const s = compute();
-    if (!s) { grid.innerHTML = '<div class="cs-row"><span>No chart loaded.</span></div>'; return; }
+    if (!s) { grid.innerHTML = '<div class="cs-row"><span>No chart loaded.</span></div>'; drawRadar(null); return; }
+    drawRadar(s);
     const title = (chart.meta?.title || 'Untitled') + (chart.meta?.artist ? ' — ' + chart.meta.artist : '');
     sub.textContent = title;
     grid.innerHTML = [
