@@ -342,6 +342,67 @@ export function honestRadarProfile(raw = {}, opts = {}) {
   return { axes, overall, dominant: dominant.key, dominantScore: dominant.score };
 }
 
+// Classify an estimated 1..20 level into a coarse intensity tier + colour, on the
+// SAME calm-green → hot-red ramp every honest-difficulty band uses, so the level
+// chip reads with the same colour semantics as the radar spokes and stat rows.
+// Neutral intensity words (not SDVX chart-slot names like NOV/EXH/MXM, which are
+// difficulty SLOTS, not level ranges) so the label describes how hard the chart
+// plays, never which slot it belongs to. Pure and DOM-free.
+export function honestLevelBand(level) {
+  const L = Math.max(1, Math.min(20, Math.round(Number(level) || 1)));
+  if (L >= 18) return { label: 'Extreme',      color: '#ff4d4d' };
+  if (L >= 15) return { label: 'Expert',       color: '#ff8a3d' };
+  if (L >= 12) return { label: 'Advanced',     color: '#ffcc55' };
+  if (L >= 8)  return { label: 'Intermediate', color: '#66ddff' };
+  return             { label: 'Beginner',      color: '#6fe08a' };
+}
+
+// v0.0.78 — Honest Level Estimate. The capstone of the measured-difficulty family
+// (v0.0.71–77): it turns the six honest radar axes into a single estimated SDVX
+// level 1..20 — the "what level did I just make?" answer. It is deliberately NOT
+// the volatility heuristic the Volatility density tool carries (that scores column
+// variance plus raw note / VOL density); this reads ONLY the same measured axes
+// the Honest Radar draws (READ / PEAK / STAM / JACK / HAND / KNOB), so the number
+// and the radar SHAPE agree by construction — the level is literally a reduction
+// of the polygon. The blend is peak-weighted because an SDVX level tracks the
+// single hardest demand a chart makes, with sustained breadth lifting it:
+//   composite = 0.6·(hardest axis score) + 0.4·(mean of all axis scores)
+// on the same 0..100 scale where ~100 = "Extreme for that axis", then mapped
+// linearly onto 1..20. So a chart Extreme on EVERY axis lands at 20, a one-
+// dimensional gimmick (one axis maxed, the rest near 0) sits mid-scale, and an
+// all-zero chart is 1 (the caller should gate the display on "has notes", since a
+// note-less chart has no level rather than "level 1"). PURE and DOM-free — reuses
+// honestRadarProfile, never touches the chart. Returns
+//   { level, levelFloat, composite, peakScore, meanScore, peakAxis, driver,
+//     band, color, axes }.
+export function honestLevelEstimate(raw = {}, opts = {}) {
+  const prof = honestRadarProfile(raw, opts);
+  const axes = prof.axes;
+  const n = axes.length || 1;
+  let peakScore = 0, sum = 0, peakAxis = axes[0] || null;
+  for (const ax of axes) {
+    sum += ax.score;
+    if (ax.score > peakScore) { peakScore = ax.score; peakAxis = ax; }
+  }
+  const meanScore = sum / n;
+  const composite = 0.6 * peakScore + 0.4 * meanScore;               // 0..100
+  const levelFloat = Math.max(1, Math.min(20, 1 + (composite / 100) * 19));
+  const level = Math.max(1, Math.min(20, Math.round(levelFloat)));
+  const band = honestLevelBand(level);
+  return {
+    level,
+    levelFloat: Math.round(levelFloat * 10) / 10,
+    composite:  Math.round(composite * 10) / 10,
+    peakScore:  Math.round(peakScore * 10) / 10,
+    meanScore:  Math.round(meanScore * 10) / 10,
+    peakAxis:   peakAxis ? peakAxis.key : null,
+    driver:     peakAxis ? peakAxis.short : null,
+    band:       band.label,
+    color:      band.color,
+    axes,
+  };
+}
+
 // ── Quantize / Nudge engine ──────────────────────────────────────────────────
 // Shared, side-effect-isolated tick math used by the Tools Hub "Quantize" tool.
 // Kept here (not in tools.js) so it can be unit-tested without a DOM, and so any

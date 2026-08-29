@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.77 · 2026</span>
+  <span class="version">v0.0.78 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.78</span>Honest Level Estimate &mdash; the six measured axes reduced to one SDVX level</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Chart Statistics now answers &ldquo;what level did I just make?&rdquo; from the measured axes.</strong> The <strong>v0.0.77 Honest Radar</strong> drew the six genuinely-<em>measured</em> difficulty numbers as one shape; a new <strong>Est.&nbsp;level</strong> line sits directly under it in the <strong>&#128202; Chart Statistics</strong> modal and reduces those same six spokes to a single estimated <strong>SDVX level 1&ndash;20</strong>, names the axis driving it, and colours it on the same calm-green &rarr; hot-red ramp. It is deliberately <em>not</em> the volatility heuristic buried in the Density tool (which scores column variance and raw note/VOL counts) &mdash; it reads only the honest measured axes, so the headline number and the radar shape can never disagree.</li>
+    <li><span class="tag add">add</span><strong>Peak-weighted, because a level tracks the hardest thing you must do.</strong> The estimate is <code>composite = 0.6&middot;(hardest&nbsp;axis) + 0.4&middot;(mean&nbsp;of&nbsp;all&nbsp;axes)</code> on the shared 0&ndash;100 scale where ~100 = &ldquo;Extreme for that axis&rdquo;, mapped linearly onto 1&ndash;20. A chart Extreme on <em>every</em> axis lands at 20, a one-dimensional gimmick sits mid-scale rather than topping out, and a note-less chart shows no level at all rather than a false &ldquo;1&rdquo;. A <span style="color:#6fe08a">Beginner</span> / <span style="color:#66ddff">Intermediate</span> / <span style="color:#ffcc55">Advanced</span> / <span style="color:#ff8a3d">Expert</span> / <span style="color:#ff4d4d">Extreme</span> band reads it at a glance, and the hover tooltip shows the exact composite arithmetic &mdash; it is honestly labelled an <em>estimate, not a verdict</em>.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.honestLevelEstimate(raw)</code> that reuses <code>chart.honestRadarProfile</code> internally (so the level is literally a reduction of the polygon the radar draws), plus a shared <code>chart.honestLevelBand(level)</code> for the label and colour. Guarded end-to-end (NaN/negative/undefined axes degrade to 0, never throw; over-anchor inputs clamp at 20); the chart is never mutated. Verified with 28 Node unit tests and a real-browser run: an empty chart shows &ldquo;&mdash;&rdquo;, a 16th single-lane stamina chart reads <strong>level 17 Expert</strong> with zero JS errors.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.77</span>Honest Radar &mdash; the six measured difficulty axes as one shape</h4>

@@ -1401,9 +1401,11 @@
   <div class="modal-box" style="min-width:420px;max-width:520px">
     <h3 style="margin-bottom:4px">Chart Statistics</h3>
     <div id="cs-subtitle" style="font-size:11px;color:#6668a0;margin-bottom:14px">—</div>
-    <!-- Honest Radar (v0.0.77) — the six measured difficulty axes as one shape -->
+    <!-- Honest Radar (v0.0.77) — the six measured difficulty axes as one shape;
+         cs-level (v0.0.78) reduces those same axes to one estimated SDVX level -->
     <div id="cs-radar-wrap" style="display:flex;flex-direction:column;align-items:center;margin-bottom:14px">
       <canvas id="cs-radar" width="360" height="252" style="max-width:100%"></canvas>
+      <div id="cs-level" style="font-size:13px;margin-top:5px;text-align:center;line-height:1.35">—</div>
       <div id="cs-radar-caption" style="font-size:11px;color:#8a8cc0;margin-top:2px;text-align:center">—</div>
     </div>
     <div id="cs-grid" class="cs-grid"></div>
