@@ -1,4 +1,4 @@
-import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestRadarProfile, honestRadarScoreColor, HONEST_RADAR_READING_REF_TICKS, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
+import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestRadarProfile, honestRadarScoreColor, honestLevelEstimate, honestLevelBand, HONEST_RADAR_READING_REF_TICKS, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
 import { Renderer, C, laserColors, laserOpacity, laserWideMode, LASER_PRESETS, applyLaserPreset, setLaserColorCustom, buildLaneHeader, setLaserOpacity, setLaserWideMode } from './renderer.js';
 import { GameView } from './game.js';
 import { exportKsh, importKsh, downloadText } from './ksh.js';
@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.77';
+const APP_VERSION = '0.0.78';
 const CHANGELOG = [
+  {
+    version: '0.0.78',
+    title: 'Honest Level Estimate — the six measured axes, reduced to one SDVX level',
+    entries: [
+      ['add', '<strong>Chart Statistics now answers &ldquo;what level did I just make?&rdquo; from the measured axes.</strong> Over the last week the editor grew six genuinely-<em>measured</em> difficulty numbers and, in v0.0.77, drew them as the <strong>Honest Radar</strong> shape. A new <strong>Est. level</strong> line sits directly under that radar in the <strong>📊 Chart Statistics</strong> modal: it reduces the same six spokes to a single estimated <strong>SDVX level 1&ndash;20</strong>, names the axis driving it, and colours it on the same calm-green &rarr; hot-red ramp. It is deliberately <em>not</em> the volatility heuristic buried in the Density tool (which scores column variance and raw note/VOL counts) &mdash; it reads only the honest measured axes, so the headline number and the radar shape can never disagree.'],
+      ['add', '<strong>Peak-weighted, because a level tracks the hardest thing you must do.</strong> The estimate is <code>composite = 0.6&middot;(hardest&nbsp;axis) + 0.4&middot;(mean&nbsp;of&nbsp;all&nbsp;axes)</code> on the shared 0&ndash;100 scale where ~100 = &ldquo;Extreme for that axis&rdquo;, mapped linearly onto 1&ndash;20. So a chart that is Extreme on <em>every</em> axis lands at 20, a one-dimensional gimmick (one axis maxed, the rest quiet) sits mid-scale rather than topping out, and a note-less chart shows no level at all rather than a false &ldquo;1&rdquo;. A <span style="color:#6fe08a">Beginner</span> / <span style="color:#66ddff">Intermediate</span> / <span style="color:#ffcc55">Advanced</span> / <span style="color:#ff8a3d">Expert</span> / <span style="color:#ff4d4d">Extreme</span> band reads it at a glance, and the hover tooltip shows the exact composite arithmetic so the number is never a black box &mdash; it is honestly labelled an <em>estimate, not a verdict</em>.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.honestLevelEstimate(raw)</code> that reuses <code>chart.honestRadarProfile</code> internally (so the level is literally a reduction of the polygon the radar draws), plus a shared <code>chart.honestLevelBand(level)</code> for the label and colour. Guarded end-to-end (NaN/negative/undefined axes degrade to 0, never throw; over-anchor inputs clamp at 20); the chart is never mutated. Verified with 28 Node unit tests and a real-browser run: an empty chart shows &ldquo;&mdash;&rdquo;, a 16th single-lane stamina chart reads <strong>level 17 Expert</strong> with zero JS errors.'],
+    ],
+  },
   {
     version: '0.0.77',
     title: 'Honest Radar — the six measured difficulty axes as one shape',
@@ -11306,6 +11315,7 @@ const DisclaimerGate = (function() {
   const btnClose = document.getElementById('cs-close');
   const radarCanvas  = document.getElementById('cs-radar');
   const radarCaption = document.getElementById('cs-radar-caption');
+  const levelReadout = document.getElementById('cs-level');
 
   // v0.0.77 — Honest Radar. Draw the six measured difficulty axes as one polygon
   // from the SAME numbers the text rows below use, via the DOM-free
@@ -11318,7 +11328,11 @@ const DisclaimerGate = (function() {
     if (!ctx) return;
     const W = radarCanvas.width, H = radarCanvas.height;
     ctx.clearRect(0, 0, W, H);
-    if (!s) { if (radarCaption) radarCaption.textContent = '—'; return; }
+    if (!s) {
+      if (radarCaption) radarCaption.textContent = '—';
+      if (levelReadout) levelReadout.textContent = '—';
+      return;
+    }
 
     // READING axis: the reference green-number window at the chart's PEAK bpm,
     // through the same reactionWindowMs engine the live green number uses — a
@@ -11330,11 +11344,12 @@ const DisclaimerGate = (function() {
     const readingMs = ((s.totalNotes || 0) > 0 && chart && typeof chart.reactionWindowMs === 'function')
       ? chart.reactionWindowMs(HONEST_RADAR_READING_REF_TICKS, bpmMax, 1)
       : 0;
-    const prof = honestRadarProfile({
+    const raw = {
       readingMs,
       peakNps: s.peakNps, meanNps: s.meanNps, peakJps: s.peakJps,
       heavierShare: s.handHeavierShare, peakKps: s.peakKps,
-    });
+    };
+    const prof = honestRadarProfile(raw);
 
     const cx = W / 2, cy = H / 2 + 6, R = Math.min(W, H) * 0.34;
     const N = prof.axes.length;
@@ -11379,6 +11394,34 @@ const DisclaimerGate = (function() {
       ctx.font = '500 9px system-ui, sans-serif';
       ctx.fillText(String(Math.round(ax.score)), lx, ly + 5);
       ctx.font = '600 10px system-ui, sans-serif';
+    }
+
+    // v0.0.78 — Honest Level Estimate. Reduce the SAME six measured axes (the
+    // exact `raw` the radar polygon is drawn from) to one estimated SDVX level
+    // 1..20, via the DOM-free chart.honestLevelEstimate — so the headline number
+    // and the shape can never disagree. A note-less chart has no level to
+    // estimate (its axes are all 0), so the readout stays blank until there are
+    // notes, matching how the reading spoke is gated.
+    if (levelReadout) {
+      const hasNotes = (s.totalNotes || 0) > 0;
+      if (!hasNotes) {
+        levelReadout.textContent = '—';
+      } else {
+        const est = honestLevelEstimate(raw);
+        const driver = est.axes.find(a => a.key === est.peakAxis);
+        const drvName = driver ? driver.short : (est.driver || '—');
+        const drvCol  = driver ? driver.color : est.color;
+        levelReadout.innerHTML =
+          `Est. level <strong style="color:${est.color};font-size:17px">${est.level}</strong>` +
+          ` <span style="color:${est.color};opacity:.9">${est.band}</span>` +
+          ` <span style="opacity:.6;font-size:11px">— driven by</span>` +
+          ` <strong style="color:${drvCol}">${drvName}</strong>`;
+        levelReadout.title =
+          `Estimated SDVX level from the six measured Honest-Radar axes (not the ` +
+          `volatility heuristic). composite ${est.composite.toFixed(1)}/100 = ` +
+          `0.6·peak(${est.peakScore.toFixed(0)}) + 0.4·mean(${est.meanScore.toFixed(0)}) ` +
+          `→ ${est.levelFloat.toFixed(1)}, rounded to ${est.level}. An estimate, not a verdict.`;
+      }
     }
 
     if (radarCaption) {
