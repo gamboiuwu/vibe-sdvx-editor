@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.78';
+const APP_VERSION = '0.0.79';
 const CHANGELOG = [
+  {
+    version: '0.0.79',
+    title: 'Knob Load readout — the honest Tsumami difficulty, live in the Game Preview',
+    entries: [
+      ['add', '<strong>The Game Preview side panel now shows your VOL / knob difficulty live.</strong> Every button-based physical number in the editor — <strong>Peak&nbsp;NPS</strong> (v0.0.71), <strong>Peak&nbsp;Jack</strong> (v0.0.74), <strong>Hand&nbsp;Balance</strong> (v0.0.75) — deliberately <em>excludes</em> the lasers as &ldquo;continuous knob motion, not a press,&rdquo; and the <strong>Knob&nbsp;Load</strong> number (v0.0.76) lived only in the static <strong>📊 Chart Statistics</strong> modal. A new <strong>◒ Knob</strong> toggle sits in the preview <strong>Density</strong> row, right beside the <strong>⤒ NPS</strong> readout, and shows the honest, BPM-independent <strong>peak knob-actions/second</strong> — the Tsumami twin of Peak&nbsp;NPS — so the one axis the button numbers ignore finally reads live during playback.'],
+      ['add', '<strong>Click to jump to the busiest knob burst.</strong> Clicking the readout seeks the editor to the densest one-second run of knob work, so you can go straight to the hardest laser passage to check spacing or slam ergonomics. The number is coloured on the shared <span style="color:#6fe08a">Light</span> / <span style="color:#66ddff">Moderate</span> / <span style="color:#ffcc55">Busy</span> / <span style="color:#ff8a3d">Heavy</span> / <span style="color:#ff4d4d">Extreme</span> band, and hovering it reads the peak, the band name, the chart-wide average and the grab / slam / reversal breakdown. A chart with no lasers reads a calm dash.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Driven by the same DOM-free, unit-tested <code>chart.knobStress()</code> engine and <code>chart.knobDifficultyBand()</code> the Chart Statistics modal uses, so the live readout and the modal can never disagree; every knob action is stamped to real wall-clock seconds through the same <code>tickToSeconds</code> time model the C-mode scroll and audio path use, so a slam storm at 240&nbsp;BPM honestly outscores the identical tick pattern at 120. A cheap laser-signature cache skips the recompute on frames where the lasers are unchanged. The chart is never mutated. Persists via <strong>Save Config</strong> / prefs; i18n in all 5 locales.'],
+    ],
+  },
   {
     version: '0.0.78',
     title: 'Honest Level Estimate — the six measured axes, reduced to one SDVX level',
@@ -2415,6 +2424,8 @@ let reactionRange   = false;   // v0.0.68 — chart-wide reaction-window min/max
 let readingStrip    = false;   // v0.0.69 — per-measure reaction-window sparkline (off by default)
 let npsReadout      = false;   // v0.0.71 — peak notes-per-second (wall-clock physical density) readout (off by default)
 let _npsCache       = null;    // v0.0.71 — { chart, sig, result }: skip the recompute when the chart is unchanged
+let knobReadout     = false;   // v0.0.79 — peak knob actions-per-second (wall-clock Tsumami load) readout (off by default)
+let _knobCache      = null;    // v0.0.79 — { chart, sig, result }: skip the recompute when the lasers are unchanged
 
 // ── Green-Number Auto-Follow (v0.0.60) ────────────────────────────────────────
 // A lock that HOLDS the green number. Once the user has dialled a target
@@ -2659,6 +2670,70 @@ function toggleNpsReadout() {
   npsReadout = !npsReadout;
   prefs.npsReadout = npsReadout;   // mirror onto prefs so localStorage persists it
   updateNpsReadout();
+  savePrefsToLocalStorage();
+}
+
+// ── Knob Load readout (v0.0.79) ───────────────────────────────────────────────
+// The Tsumami twin of the Peak NPS readout. Every button-based physical number in
+// the editor — Peak NPS, Peak Jack, Hand Balance — deliberately EXCLUDES the
+// lasers as "continuous knob motion, not a press," so the VOL/knob axis had a
+// figure only in the Chart Statistics modal (v0.0.76 Knob Load), never live in the
+// preview. This surfaces the honest, BPM-independent peak knob-actions-per-second
+// right beside the NPS readout, driven by the DOM-free chart.knobStress engine
+// (grabs + slams + reversals, stamped to real wall-clock seconds through the same
+// tickToSeconds time model the C-mode scroll and audio path use) so it can never
+// disagree with the modal's number. The colour follows the shared
+// chart.knobDifficultyBand palette. Clicking seeks to the busiest knob burst. Knob
+// load depends only on the chart's lasers (not HiSpeed / rate / cover / playhead),
+// so a cheap laser-signature cache skips the recompute on frames where nothing
+// changed. Render-only — never touches chart data.
+function updateKnobReadout() {
+  const lbl = document.getElementById('pvc-knob');
+  const btn = document.getElementById('pvc-knob-toggle');
+  if (btn) btn.classList.toggle('active', knobReadout);
+  if (!lbl) return;
+  if (!knobReadout || !chart || typeof chart.knobStress !== 'function') {
+    lbl.textContent = '–';
+    lbl.style.color = '';
+    lbl.title = '';
+    lbl.dataset.seekTick = '';
+    return;
+  }
+  // Cheap signature over laser section starts + point counts — recompute only when
+  // the lasers actually changed (the NPS readout signs over BT/FX; this signs over
+  // the VOL sides so an edit to one never forces the other to recompute).
+  let sum = 0, cnt = 0;
+  const sides = Array.isArray(chart.lasers) ? chart.lasers : [];
+  for (const secs of sides) for (const sec of (secs || [])) { sum += (sec.y || 0) + (sec.points ? sec.points.length : 0); cnt++; }
+  const sig = cnt + ':' + sum;
+  let res;
+  if (_knobCache && _knobCache.chart === chart && _knobCache.sig === sig) {
+    res = _knobCache.result;
+  } else {
+    res = chart.knobStress({ windowSec: 1.0 });
+    _knobCache = { chart, sig, result: res };
+  }
+  const peak = res.peakKps, mean = res.meanKps;
+  // knobDifficultyBand is a free export (the SAME one the Chart Statistics modal
+  // uses), not a chart method — call it directly so the live readout and the modal
+  // can never disagree on the label or colour.
+  const band = (typeof knobDifficultyBand === 'function')
+    ? knobDifficultyBand(peak)
+    : { label: '', color: '#66ddff' };
+  lbl.textContent = `◒ ${peak.toFixed(1)}`;   // ◒ knob glyph, mirrors the ⤒ NPS glyph beside it
+  lbl.style.color = band.color || '#66ddff';
+  lbl.dataset.seekTick = String(res.peakTick);
+  const label = (typeof t === 'function' ? t('preview.knobTip') : '') || 'Peak knob actions-per-second';
+  lbl.title = res.total > 0
+    ? `${label}: ${peak.toFixed(1)} KPS peak (${band.label}) · ${mean.toFixed(1)} avg · ${res.total} actions (${res.grabs} grab / ${res.slams} slam / ${res.reversals} rev) over ${Math.round(res.spanSec)}s. Click to seek to the busiest knob burst.`
+    : `${label}: no lasers in this chart.`;
+}
+
+// Toggle the knob-load readout on/off.
+function toggleKnobReadout() {
+  knobReadout = !knobReadout;
+  prefs.knobReadout = knobReadout;   // mirror onto prefs so localStorage persists it
+  updateKnobReadout();
   savePrefsToLocalStorage();
 }
 
@@ -5258,6 +5333,7 @@ export function render() {
     if (typeof updateHeatmap   === 'function') updateHeatmap();
     if (typeof invalidateFxAuto === 'function') invalidateFxAuto();
     updateNpsReadout();   // v0.0.71 — keep the peak-NPS readout in sync with edits/switches (cached, no-op when unchanged)
+    updateKnobReadout();  // v0.0.79 — keep the knob-load readout in sync with edits/switches (cached, no-op when unchanged)
     _drawMinimap();
   });
 }
@@ -10277,6 +10353,22 @@ function _initProjectionControls() {
   }
   updateNpsReadout();        // sync readout + button to current state
 
+  const knobBtn = document.getElementById('pvc-knob-toggle');
+  if (knobBtn && !knobBtn._wired) {
+    knobBtn._wired = true;
+    knobBtn.addEventListener('click', toggleKnobReadout);
+  }
+  const knobLbl = document.getElementById('pvc-knob');
+  if (knobLbl && !knobLbl._wired) {
+    knobLbl._wired = true;
+    knobLbl.addEventListener('click', () => {
+      if (!knobReadout) return;
+      const tk = parseInt(knobLbl.dataset.seekTick, 10);
+      if (Number.isFinite(tk) && typeof _seekTo === 'function') _seekTo(tk);
+    });
+  }
+  updateKnobReadout();       // sync readout + button to current state
+
   // Soflan runway markers toggle — faint on-lane labels at every tempo change.
   // Render-only; state persists on prefs so it composes with Save Config too.
   // The game-preview renderer reads the flag through window.prefs (the bridge it
@@ -10693,6 +10785,7 @@ function _initProjectionControls() {
     prefs.reactionRange     = reactionRange;   // v0.0.68 — chart-wide range readout toggle
     prefs.readingStrip      = readingStrip;    // v0.0.69 — per-measure reading-difficulty strip toggle
     prefs.npsReadout        = npsReadout;      // v0.0.71 — peak notes-per-second readout toggle
+    prefs.knobReadout       = knobReadout;     // v0.0.79 — peak knob actions-per-second readout toggle
     // Green-Number Auto-Follow hold + held target ms (render-only)
     prefs.greenFollowLock   = greenFollowLock;
     prefs.greenFollowTarget = greenFollowTarget;
@@ -10783,6 +10876,7 @@ function _initProjectionControls() {
   if (prefs.reactionRange != null)   { reactionRange   = !!prefs.reactionRange;   updateReactionRange(); }
   if (prefs.readingStrip != null)    { readingStrip    = !!prefs.readingStrip;    updateReadingStrip(); }
   if (prefs.npsReadout != null)      { npsReadout      = !!prefs.npsReadout;      updateNpsReadout(); }
+  if (prefs.knobReadout != null)     { knobReadout     = !!prefs.knobReadout;     updateKnobReadout(); }
   // Restore Green-Number Auto-Follow hold + held target (render-only). Reflect the
   // target into the →ms field so the UI shows what is being held, then snap.
   if (prefs.greenFollowTarget != null) {
