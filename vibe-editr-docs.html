@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.78 · 2026</span>
+  <span class="version">v0.0.79 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.79</span>Knob Load readout &mdash; the honest Tsumami difficulty, live in the Game Preview</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>The Game Preview side panel now shows your VOL / knob difficulty live.</strong> Every button-based physical number in the editor &mdash; <strong>Peak&nbsp;NPS</strong> (v0.0.71), <strong>Peak&nbsp;Jack</strong> (v0.0.74), <strong>Hand&nbsp;Balance</strong> (v0.0.75) &mdash; deliberately <em>excludes</em> the lasers as &ldquo;continuous knob motion, not a press,&rdquo; and the <strong>Knob&nbsp;Load</strong> number (v0.0.76) lived only in the static <strong>&#128202; Chart Statistics</strong> modal. A new <strong>&#9691; Knob</strong> toggle sits in the preview <strong>Density</strong> row, right beside the <strong>&#10514; NPS</strong> readout, and shows the honest, BPM-independent <strong>peak knob-actions/second</strong> &mdash; the Tsumami twin of Peak&nbsp;NPS &mdash; so the one axis the button numbers ignore finally reads live during playback.</li>
+    <li><span class="tag add">add</span><strong>Click to jump to the busiest knob burst.</strong> Clicking the readout seeks the editor to the densest one-second run of knob work, so you can go straight to the hardest laser passage to check spacing or slam ergonomics. The number is coloured on the shared <span style="color:#6fe08a">Light</span> / <span style="color:#66ddff">Moderate</span> / <span style="color:#ffcc55">Busy</span> / <span style="color:#ff8a3d">Heavy</span> / <span style="color:#ff4d4d">Extreme</span> band, and hovering it reads the peak, the band name, the chart-wide average and the grab / slam / reversal breakdown. A chart with no lasers reads a calm dash.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Driven by the same DOM-free, unit-tested <code>chart.knobStress()</code> engine and <code>chart.knobDifficultyBand()</code> the Chart Statistics modal uses, so the live readout and the modal can never disagree; every knob action is stamped to real wall-clock seconds through the same <code>tickToSeconds</code> time model the C-mode scroll and audio path use, so a slam storm at 240&nbsp;BPM honestly outscores the identical tick pattern at 120. A cheap laser-signature cache skips the recompute on frames where the lasers are unchanged. The chart is never mutated. Persists via <strong>Save Config</strong> / prefs; i18n in all 5 locales. Verified in a real browser: a 16th all-slam laser at 180&nbsp;BPM reads <strong>&#9691; 26.0 Extreme</strong> (red) with the grab/slam breakdown, and an empty chart reads a calm dash &mdash; zero JS errors.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.78</span>Honest Level Estimate &mdash; the six measured axes reduced to one SDVX level</h4>
