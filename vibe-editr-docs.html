@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.78 · 2026</span>
+  <span class="version">v0.0.79 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.79</span>Honest Level in the Tools Hub + declared-vs-measured meta-nudge</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>The measured level now lives in the Tools&#8209;Hub Chart Statistics tool too, and both places flag a dishonest slot.</strong> v0.0.78 added the <strong>Est.&nbsp;level</strong> line (the six measured Honest&#8209;Radar axes reduced to one SDVX level) to the <strong>&#128202; Chart Statistics</strong> modal, but not to the <em>tool</em> that mirrors every other stat. A new <strong>Est.&nbsp;Level&nbsp;(measured)</strong> row now sits in the Tools&#8209;Hub Chart Statistics tool, built from the exact same <code>honestLevelEstimate</code> engine and the same <code>raw</code> the modal&rsquo;s radar uses, so the number, band and driving axis read identically in both.</li>
+    <li><span class="tag add">add</span><strong>A new declared-vs-measured nudge: does your Level field match what you actually charted?</strong> Every SDVX chart carries a human-declared <strong>Level (1&ndash;20)</strong>, but nothing ever checked it against the chart&rsquo;s real difficulty. Both the modal and the tool now compare the measured estimate to the declared <code>meta.level</code> and call out the gap: a chart declared 8 that measures 17 reads <strong style="color:#ff4d4d">&#9650; far under-rated (+9)</strong>, one declared too high reads <strong style="color:#66ddff">&#9660; over-rated</strong>, and a chart within 1 of its label reads <strong style="color:#6fe08a">= matches declared</strong>. It is deliberately tolerant &mdash; SDVX levels are coarse and the estimate is an estimate, so only a 2+&nbsp;gap is flagged and 4+ is &ldquo;far&rdquo; &mdash; and it colours on the same calm-green &rarr; hot-red ramp the level band uses (a cool blue for &ldquo;easier than labelled&rdquo;).</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.honestLevelMetaNudge(measured, declared)</code> shared by the modal and the tool so they can never disagree; a declared level outside 1&ndash;20 (or missing / NaN) simply omits the nudge rather than inventing a comparison. Guarded end-to-end (measured clamps to 1&ndash;20, invalid inputs degrade rather than throw); the chart is never mutated. Verified with 27 Node unit tests and a real-browser run: a 180&nbsp;BPM 16th stamina chart declared level&nbsp;8 renders &ldquo;<strong>Est. level 17 Expert &mdash; driven by HAND &middot; declared 8 &#9650; far under-rated (+9)</strong>&rdquo; identically in the modal and the Tools-Hub tool, with zero JS errors.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.78</span>Honest Level Estimate &mdash; the six measured axes reduced to one SDVX level</h4>

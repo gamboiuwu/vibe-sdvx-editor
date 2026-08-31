@@ -1,5 +1,5 @@
 import { chart, renderer, gameView, render, saveUndo, updateSeekbar, addChartAnnotation, _seekTo, sel, playing, audioBuffer, flipHorizontalRange, flipTemporalRange, updateStopEventList } from './app.js';
-import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick } from './chart.js';
+import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestLevelEstimate, honestLevelBand, honestLevelMetaNudge, HONEST_RADAR_READING_REF_TICKS, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick } from './chart.js';
 import { Renderer } from './renderer.js';
 import { updateRadar } from './radar.js';
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -5899,6 +5899,36 @@ function _toolChartStats(c) {
         const kb = knobDifficultyBand(st.peakKps);
         const det = (st.knobTotal || 0) > 0 ? ` <span style="opacity:.55">(${st.knobSlams || 0} slam${(st.knobSlams||0)!==1?'s':''}, ${st.knobReversals || 0} rev)</span>` : '';
         return `${(st.peakKps || 0).toFixed(1)} <span style="color:${kb.color};font-weight:600">${kb.label}</span>${det}`;
+      })() },
+      // v0.0.78/79 — Est. Level: the six measured axes reduced to one SDVX level
+      // (honestLevelEstimate, the same engine + raw the Chart Statistics modal's
+      // radar uses, so the tool and the modal can never disagree), plus the v0.0.79
+      // meta-nudge comparing it against the chart's DECLARED meta.level so a
+      // dishonest slot (declared 15 but measured 18) is flagged. Gated on notes>0 —
+      // a note-less chart has no level to estimate.
+      { label: 'Est. Level (measured)', value: (() => {
+        if ((totalNoteEvents || 0) <= 0) return '<span style="opacity:.5">—</span>';
+        const bpmMax = st.bpmMax || 120;
+        const readingMs = (typeof ch.reactionWindowMs === 'function')
+          ? ch.reactionWindowMs(HONEST_RADAR_READING_REF_TICKS, bpmMax, 1) : 0;
+        const raw = { readingMs, peakNps: st.peakNps, meanNps: st.meanNps,
+          peakJps: st.peakJps, heavierShare: st.handHeavierShare, peakKps: st.peakKps };
+        const est = honestLevelEstimate(raw);
+        const drv = est.axes.find(a => a.key === est.peakAxis);
+        const drvName = drv ? drv.short : (est.driver || '—');
+        let out = `<strong style="color:${est.color};font-size:15px">${est.level}</strong>` +
+                  ` <span style="color:${est.color};font-weight:600">${est.band}</span>` +
+                  ` <span style="opacity:.55">(driven by ${drvName})</span>`;
+        // v0.0.79 meta-nudge — declared vs measured.
+        const nudge = honestLevelMetaNudge(est.level, ch.meta && ch.meta.level);
+        if (nudge.show) {
+          const arrow = nudge.direction === 'match' ? '=' : (nudge.delta > 0 ? '▲' : '▼');
+          const sign = nudge.delta > 0 ? `+${nudge.delta}` : `${nudge.delta}`;
+          out += ` <span style="opacity:.55">· declared ${nudge.declared}</span>` +
+                 ` <span style="color:${nudge.color};font-weight:600">${arrow} ${nudge.label}` +
+                 (nudge.direction !== 'match' ? ` (${sign})` : '') + `</span>`;
+        }
+        return out;
       })() },
       { label: 'Total note events',    value: totalNoteEvents },
       { label: 'BPM events',           value: ch.bpmEvents.length },
