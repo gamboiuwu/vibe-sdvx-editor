@@ -1,4 +1,4 @@
-import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestRadarProfile, honestRadarScoreColor, honestLevelEstimate, honestLevelBand, HONEST_RADAR_READING_REF_TICKS, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
+import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestRadarProfile, honestRadarScoreColor, honestLevelEstimate, honestLevelBand, honestLevelMetaNudge, HONEST_RADAR_READING_REF_TICKS, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
 import { Renderer, C, laserColors, laserOpacity, laserWideMode, LASER_PRESETS, applyLaserPreset, setLaserColorCustom, buildLaneHeader, setLaserOpacity, setLaserWideMode } from './renderer.js';
 import { GameView } from './game.js';
 import { exportKsh, importKsh, downloadText } from './ksh.js';
@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.78';
+const APP_VERSION = '0.0.79';
 const CHANGELOG = [
+  {
+    version: '0.0.79',
+    title: 'Honest Level in the Tools Hub + declared-vs-measured meta-nudge',
+    entries: [
+      ['add', '<strong>The measured level now lives in the Tools&#8209;Hub Chart Statistics tool too, and both places flag a dishonest slot.</strong> v0.0.78 added the <strong>Est.&nbsp;level</strong> line (the six measured Honest&#8209;Radar axes reduced to one SDVX level) to the <strong>📊 Chart Statistics</strong> modal, but not to the <em>tool</em> that mirrors every other stat &mdash; so the two disagreed by omission. A new <strong>Est.&nbsp;Level&nbsp;(measured)</strong> row now sits in the Tools&#8209;Hub Chart Statistics tool, built from the exact same <code>honestLevelEstimate</code> engine and the same <code>raw</code> the modal&rsquo;s radar uses, so the number, band and driving axis read identically in both.'],
+      ['add', '<strong>A new declared-vs-measured nudge: does your Level field match what you actually charted?</strong> Every SDVX chart carries a human-declared <strong>Level (1&ndash;20)</strong>, but nothing in the editor ever checked it against the chart&rsquo;s real difficulty. Both the modal and the tool now compare the measured estimate to the declared <code>meta.level</code> and call out the gap: a chart declared 8 that measures 17 reads <strong style="color:#ff4d4d">▲ far under-rated (+9)</strong>, one declared too high reads <strong style="color:#66ddff">▼ over-rated</strong>, and a chart within 1 of its label reads <strong style="color:#6fe08a">= matches declared</strong>. It is deliberately tolerant &mdash; SDVX levels are coarse and the estimate is an estimate, so only a 2+&nbsp;gap is flagged and 4+ is &ldquo;far&rdquo; &mdash; and it colours on the same calm-green&nbsp;&rarr;&nbsp;hot-red ramp the level band uses (a cool blue for &ldquo;easier than labelled&rdquo;).'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.honestLevelMetaNudge(measured, declared)</code> shared by the modal and the tool so they can never disagree; a declared level outside 1&ndash;20 (or missing / NaN) simply omits the nudge rather than inventing a comparison. Guarded end-to-end (measured clamps to 1&ndash;20, invalid inputs degrade rather than throw); the chart is never mutated. Verified with 27 Node unit tests and a real-browser run: a 180&nbsp;BPM 16th stamina chart declared level&nbsp;8 renders &ldquo;<strong>Est. level 17 Expert &mdash; driven by HAND · declared 8 ▲ far under-rated (+9)</strong>&rdquo; identically in the modal and the Tools-Hub tool, with zero JS errors.'],
+    ],
+  },
   {
     version: '0.0.78',
     title: 'Honest Level Estimate — the six measured axes, reduced to one SDVX level',
@@ -11411,11 +11420,25 @@ const DisclaimerGate = (function() {
         const driver = est.axes.find(a => a.key === est.peakAxis);
         const drvName = driver ? driver.short : (est.driver || '—');
         const drvCol  = driver ? driver.color : est.color;
+        // v0.0.79 — meta-nudge: compare the measured level against the chart's
+        // DECLARED meta.level via the shared engine so a dishonest slot is flagged
+        // right here. Omitted when there is no valid declared level to compare.
+        const nudge = honestLevelMetaNudge(est.level, chart && chart.meta && chart.meta.level);
+        let nudgeHtml = '';
+        if (nudge.show) {
+          const arrow = nudge.direction === 'match' ? '=' : (nudge.delta > 0 ? '▲' : '▼');
+          const sign = nudge.delta > 0 ? `+${nudge.delta}` : `${nudge.delta}`;
+          nudgeHtml =
+            `<div style="font-size:11px;margin-top:2px;opacity:.95">` +
+            `<span style="opacity:.6">declared</span> ${nudge.declared} ` +
+            `<span style="color:${nudge.color};font-weight:600">${arrow} ${nudge.label}` +
+            (nudge.direction !== 'match' ? ` (${sign})` : '') + `</span></div>`;
+        }
         levelReadout.innerHTML =
           `Est. level <strong style="color:${est.color};font-size:17px">${est.level}</strong>` +
           ` <span style="color:${est.color};opacity:.9">${est.band}</span>` +
           ` <span style="opacity:.6;font-size:11px">— driven by</span>` +
-          ` <strong style="color:${drvCol}">${drvName}</strong>`;
+          ` <strong style="color:${drvCol}">${drvName}</strong>` + nudgeHtml;
         levelReadout.title =
           `Estimated SDVX level from the six measured Honest-Radar axes (not the ` +
           `volatility heuristic). composite ${est.composite.toFixed(1)}/100 = ` +
