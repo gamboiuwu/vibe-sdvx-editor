@@ -403,6 +403,72 @@ export function honestLevelEstimate(raw = {}, opts = {}) {
   };
 }
 
+// v0.0.79 — Declared-vs-Measured Level Check. A chart carries a DECLARED level in
+// its metadata (chart.meta.level, 1..20) that the chartist types by hand, and — as
+// of v0.0.78 — a MEASURED honest level read straight from the six radar axes. When
+// those two disagree the chart is mislabelled: a "15" that actually plays like an
+// 18 sandbags players, a "18" that plays like a 14 disappoints them. This is the
+// reconciliation between the two numbers. It reuses honestLevelEstimate as its
+// single source of truth (so the measured half can never drift from the radar /
+// level readout), takes the SAME raw object drawRadar already builds, and returns a
+// verdict + human message + colour. delta = measured − declared, so a POSITIVE
+// delta means the chart plays HARDER than its label (under-rated), a negative delta
+// means it plays EASIER (over-rated). Bands: |delta|≤1 "matches", |delta|=2
+// "slightly off", |delta|≥3 "mismatch". A note-less chart (no measured demand on
+// any axis) reports 'no-data' rather than a false comparison, and a chart with no
+// valid declared level reports 'no-declared'. PURE and DOM-free — never touches the
+// chart. Returns { declared, measured, delta, measurable, verdict, direction,
+// label, message, color, estimate }.
+export function levelMatchCheck(declaredLevel, raw = {}, opts = {}) {
+  const est = honestLevelEstimate(raw, opts);
+  const measured = est.level;
+  const measurable = est.axes.some(a => (Number(a.score) || 0) > 0);
+
+  // Guard BEFORE coercion: Number(null) and Number('') are both 0, which would
+  // masquerade as a valid (clamped-to-1) declared level, so reject empties first.
+  const declEmpty = declaredLevel == null || declaredLevel === '';
+  const declRaw = Number(declaredLevel);
+  const declared = (!declEmpty && Number.isFinite(declRaw) && declRaw >= 1)
+    ? Math.max(1, Math.min(20, Math.round(declRaw)))
+    : null;
+
+  const NEUTRAL = '#8a8cc0';
+  if (declared == null) {
+    return { declared: null, measured, delta: null, measurable, verdict: 'no-declared',
+      direction: 'none', label: 'No level', color: NEUTRAL,
+      message: 'This chart has no declared level to compare against.', estimate: est };
+  }
+  if (!measurable) {
+    return { declared, measured: null, delta: null, measurable: false, verdict: 'no-data',
+      direction: 'none', label: 'No data', color: NEUTRAL,
+      message: 'Not enough notes yet to measure a difficulty to compare.', estimate: est };
+  }
+
+  const delta = measured - declared;
+  const mag = Math.abs(delta);
+  const direction = delta > 0 ? 'under-rated' : (delta < 0 ? 'over-rated' : 'exact');
+  // "under-rated" = the label undersells the chart (plays harder than stated);
+  // "over-rated"  = the label oversells it (plays easier than stated).
+  const dirWord = delta > 0 ? 'harder' : 'easier';
+
+  let verdict, label, color, message;
+  if (mag <= 1) {
+    verdict = 'match'; label = 'Matches'; color = '#6fe08a';
+    message = delta === 0
+      ? `Declared level ${declared} matches the measured difficulty.`
+      : `Declared level ${declared} is within a level of the measured ${measured} — a good match.`;
+  } else if (mag === 2) {
+    verdict = 'slightly-off'; label = 'Slightly off'; color = '#ffcc55';
+    message = `Declared ${declared}, measures ~${measured} — plays two levels ${dirWord} than labelled (${direction}).`;
+  } else {
+    verdict = 'mismatch'; label = 'Mismatch'; color = '#ff6a5a';
+    message = `Declared ${declared}, measures ~${measured} — plays ${mag} levels ${dirWord} than labelled; likely ${direction}.`;
+  }
+
+  return { declared, measured, delta, measurable: true, verdict, direction,
+    label, color, message, estimate: est };
+}
+
 // ── Quantize / Nudge engine ──────────────────────────────────────────────────
 // Shared, side-effect-isolated tick math used by the Tools Hub "Quantize" tool.
 // Kept here (not in tools.js) so it can be unit-tested without a DOM, and so any
