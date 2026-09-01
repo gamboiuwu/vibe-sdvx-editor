@@ -1406,6 +1406,9 @@
     <div id="cs-radar-wrap" style="display:flex;flex-direction:column;align-items:center;margin-bottom:14px">
       <canvas id="cs-radar" width="360" height="252" style="max-width:100%"></canvas>
       <div id="cs-level" style="font-size:13px;margin-top:5px;text-align:center;line-height:1.35">—</div>
+      <!-- v0.0.79 — Declared-vs-Measured Level Check: compares chart.meta.level
+           against the honest measured level and flags a mislabelled difficulty -->
+      <div id="cs-level-match" style="font-size:11px;margin-top:3px;text-align:center;line-height:1.3"></div>
       <div id="cs-radar-caption" style="font-size:11px;color:#8a8cc0;margin-top:2px;text-align:center">—</div>
     </div>
     <div id="cs-grid" class="cs-grid"></div>

@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.78 · 2026</span>
+  <span class="version">v0.0.79 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.79</span>Declared-vs-Measured Level Check &mdash; catch a mislabelled difficulty before you ship it</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Chart Statistics now reconciles the level you <em>typed</em> with the level you actually <em>made</em>.</strong> Every chart carries a hand-typed <strong>declared level</strong> in its metadata (<code>meta.level</code>, 1&ndash;20), and &mdash; since v0.0.78 &mdash; a <strong>measured</strong> honest level read straight from the six radar axes. A new line directly under the <strong>Est.&nbsp;level</strong> readout in the <strong>&#128202; Chart Statistics</strong> modal compares the two: a matched chart shows a quiet green <span style="color:#6fe08a">&check; declared 15 matches measured 15</span>, a mislabelled one flags the gap in colour &mdash; e.g. <span style="color:#ff6a5a">&#9888; declared 15 vs measured 18 (+3) &mdash; likely under-rated</span>. A positive delta means the chart plays <em>harder</em> than its label (sandbagging players); a negative delta means it plays <em>easier</em>.</li>
+    <li><span class="tag add">add</span><strong>Also a pre-flight warning, so it is caught before export.</strong> Both the <strong>Chart Validity Checker</strong> and the <strong>Export Validator</strong> now carry a warn-only <em>&ldquo;Declared level &asymp; measured&rdquo;</em> row that flags when the two are three or more levels apart, beside the existing &ldquo;Level is 1&ndash;20&rdquo; range check. It only ever warns &mdash; a deliberate off-label chart still exports &mdash; but a typo like a &ldquo;12&rdquo; that plays like a &ldquo;17&rdquo; no longer slips through silently.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.levelMatchCheck(declared, raw)</code> that reuses <code>chart.honestLevelEstimate</code> internally (so the measured half can never drift from the radar or the level readout it sits under). Guarded end-to-end: a note-less chart reports <em>no data</em>, a chart with no valid declared level reports <em>no declared level</em>, and empty/NaN/negative inputs never throw. Verified with 24 Node unit tests and two real-browser runs (an under-rated chart lights the red warning with the exact delta, an exact match shows the green tick), zero JS errors. The chart is never mutated.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.78</span>Honest Level Estimate &mdash; the six measured axes reduced to one SDVX level</h4>

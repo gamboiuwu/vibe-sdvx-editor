@@ -1,5 +1,5 @@
 import { chart, renderer, gameView, render, saveUndo, updateSeekbar, addChartAnnotation, _seekTo, sel, playing, audioBuffer, flipHorizontalRange, flipTemporalRange, updateStopEventList } from './app.js';
-import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick } from './chart.js';
+import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, levelMatchCheck, HONEST_RADAR_READING_REF_TICKS, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick } from './chart.js';
 import { Renderer } from './renderer.js';
 import { updateRadar } from './radar.js';
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -5790,6 +5790,22 @@ function _toolChartValidator(c) {
       chk('Laser sections ≥2 points',   !hasLaserBad,                         false,  hasLaserBad?'Bad sections found':'OK');
       chk('Laser v values in [0,1]',    !hasVBad,                             false,  hasVBad?'Out-of-range values':'OK');
       chk('Level is 1–20',              ch.meta.level>=1&&ch.meta.level<=20,  false,  `Level: ${ch.meta.level}`);
+      // v0.0.79 — Declared-vs-Measured Level Check (warn-only). Shared engine.
+      try {
+        const _st = computeChartStats(ch);
+        if (_st && _st.totalNotes > 0) {
+          const _readMs = (typeof ch.reactionWindowMs === 'function')
+            ? ch.reactionWindowMs(HONEST_RADAR_READING_REF_TICKS, _st.bpmMax || 120, 1) : 0;
+          const _lc = levelMatchCheck(ch.meta.level, {
+            readingMs: _readMs, peakNps: _st.peakNps, meanNps: _st.meanNps,
+            peakJps: _st.peakJps, heavierShare: _st.handHeavierShare, peakKps: _st.peakKps,
+          });
+          if (_lc.verdict === 'match' || _lc.verdict === 'slightly-off')
+            chk('Declared level ≈ measured', true, false, `declared ${_lc.declared} · measured ${_lc.measured}`);
+          else if (_lc.verdict === 'mismatch')
+            chk('Declared level ≈ measured', false, true, `declared ${_lc.declared} vs measured ${_lc.measured} — likely ${_lc.direction}`);
+        }
+      } catch (_) { /* skip if engines absent */ }
       chk('totalMeasures > 0',          ch.totalMeasures>0,                   false,  `${ch.totalMeasures} measures`);
       chk('Audio file specified',        !!ch.meta.music,                     true,   ch.meta.music||'(none)');
       chk('No impossibly short notes',   !hasShortNotes,                      false,  hasShortNotes?'Notes < 3 ticks found':'OK');
@@ -6146,6 +6162,29 @@ function _toolExportValidate(c) {
     chk('Laser sections ≥2 points',  !hasLaserBad,                         false,  hasLaserBad ? 'Bad sections found' : 'OK');
     chk('Laser v values in [0,1]',   !hasVBad,                             false,  hasVBad ? 'Out-of-range values' : 'OK');
     chk('Level is 1–20',             ch.meta.level >= 1 && ch.meta.level <= 20, false, `Level: ${ch.meta.level}`);
+    // v0.0.79 — Declared-vs-Measured Level Check. Warn (never error) when the
+    // declared meta.level is 3+ levels off the honest measured level, so a
+    // mislabelled chart is caught before export. Built from the SAME raw axes the
+    // Honest Radar / Level readout use, via the shared chart.levelMatchCheck.
+    try {
+      const _st = computeChartStats(ch);
+      if (_st && _st.totalNotes > 0) {
+        const _bpmMax = _st.bpmMax || 120;
+        const _readMs = (typeof ch.reactionWindowMs === 'function')
+          ? ch.reactionWindowMs(HONEST_RADAR_READING_REF_TICKS, _bpmMax, 1) : 0;
+        const _lc = levelMatchCheck(ch.meta.level, {
+          readingMs: _readMs, peakNps: _st.peakNps, meanNps: _st.meanNps,
+          peakJps: _st.peakJps, heavierShare: _st.handHeavierShare, peakKps: _st.peakKps,
+        });
+        if (_lc.verdict === 'match' || _lc.verdict === 'slightly-off') {
+          chk('Declared level ≈ measured', true, false,
+            `declared ${_lc.declared} · measured ${_lc.measured}`);
+        } else if (_lc.verdict === 'mismatch') {
+          chk('Declared level ≈ measured', false, true,
+            `declared ${_lc.declared} vs measured ${_lc.measured} — likely ${_lc.direction}`);
+        }
+      }
+    } catch (_) { /* metric engines absent — skip the check, never block export */ }
     chk('totalMeasures > 0',         ch.totalMeasures > 0,                 false,  `${ch.totalMeasures} measures`);
     chk('Audio file specified',       !!ch.meta.music,                     true,   ch.meta.music || '(none)');
     chk('No impossibly short notes',  !hasShortNotes,                      false,  hasShortNotes ? 'Notes < 3 ticks found' : 'OK');
