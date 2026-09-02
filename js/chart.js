@@ -403,6 +403,58 @@ export function honestLevelEstimate(raw = {}, opts = {}) {
   };
 }
 
+// v0.0.79 — Level Check (the "meta nudge"). The Honest Level Estimate (v0.0.78)
+// answers "what level did I just make?" from the six measured axes. This closes
+// the loop: it compares that MEASURED level against the level the chartist
+// DECLARED in the chart metadata (meta.level, the 1..20 SDVX slot number) and
+// returns a verdict, so a chart whose label disagrees with what it actually plays
+// like is flagged — the single most common SDVX-charting quality slip
+// (a "15" that plays like an 18, or a padded "18" that plays like a 15).
+//
+// It is deliberately advisory, never prescriptive: the measured level is an
+// estimate, so a small gap is expected and is reported as a MATCH. Only a real
+// divergence is called out, with a direction:
+//   delta = measured - declared
+//   |delta| <= 1  → Matches       (the label agrees with the measured difficulty)
+//   |delta| == 2  → Slightly off  (worth a look, within estimate noise)
+//   |delta| >= 3  → under-rated (measured harder than the label) or
+//                   over-rated  (measured easier than the label)
+// Colours ride the SAME calm-green → hot-red ramp every honest-difficulty band
+// uses, so the verdict reads with the same semantics as the level chip and the
+// radar spokes. PURE and DOM-free — never touches the chart. Returns
+//   { ok, delta, magnitude, direction, verdict, detail, color }.
+// `ok` is null when there is nothing to compare (no measured level, or no valid
+// declared level), true on a Match, false on any flagged divergence.
+export function levelMatchReport(measuredLevel, declaredLevel) {
+  const m = Number(measuredLevel);
+  const d = Number(declaredLevel);
+  const validM = Number.isFinite(m) && m >= 1;
+  const validD = Number.isFinite(d) && d >= 1 && d <= 20;
+  if (!validM || !validD) {
+    return { ok: null, delta: 0, magnitude: 0, direction: 'none',
+             verdict: 'No comparison', detail: '', color: '#8a8fb0' };
+  }
+  const mi = Math.round(m), di = Math.round(d);
+  const delta = mi - di;                 // + = measured harder than declared
+  const mag = Math.abs(delta);
+  const direction = delta > 0 ? 'under' : delta < 0 ? 'over' : 'none';
+  if (mag <= 1) {
+    return { ok: true, delta, magnitude: mag, direction: 'none',
+             verdict: 'Matches', detail: `declared ${di}, measured ${mi}`,
+             color: '#6fe08a' };
+  }
+  if (mag === 2) {
+    return { ok: false, delta, magnitude: mag, direction,
+             verdict: 'Slightly off',
+             detail: `declared ${di}, measured ${mi} (${direction === 'under' ? 'under' : 'over'}-rated by ${mag})`,
+             color: '#ffcc55' };
+  }
+  return { ok: false, delta, magnitude: mag, direction,
+           verdict: direction === 'under' ? 'Under-rated' : 'Over-rated',
+           detail: `declared ${di}, measured ${mi} (${direction === 'under' ? 'under' : 'over'}-rated by ${mag})`,
+           color: direction === 'under' ? '#ff4d4d' : '#ff8a3d' };
+}
+
 // ── Quantize / Nudge engine ──────────────────────────────────────────────────
 // Shared, side-effect-isolated tick math used by the Tools Hub "Quantize" tool.
 // Kept here (not in tools.js) so it can be unit-tested without a DOM, and so any
