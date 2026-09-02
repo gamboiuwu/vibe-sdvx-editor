@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.78 · 2026</span>
+  <span class="version">v0.0.79 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.79</span>Level Check &mdash; does your chart play like the difficulty you labelled it?</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Chart Statistics now flags a mislabelled difficulty.</strong> The <strong>v0.0.78 Honest Level Estimate</strong> answered &ldquo;what level did I just make?&rdquo; from the six measured axes. A new <strong>Level&nbsp;Check</strong> closes the loop: it compares that <em>measured</em> level against the level you <em>declared</em> in the chart metadata and shows a verdict &mdash; <span style="color:#6fe08a">&#10003;&nbsp;Matches</span>, <span style="color:#ffcc55">Slightly&nbsp;off</span>, or a flagged <span style="color:#ff4d4d">Under-rated</span>&nbsp;/&nbsp;<span style="color:#ff8a3d">Over-rated</span> &mdash; so a &ldquo;15&rdquo; that actually plays like an 18, or a padded &ldquo;18&rdquo; that plays like a 15, is caught before you submit. It sits directly under the Est.&nbsp;level line in the <strong>&#128202; Chart Statistics</strong> modal and as a <strong>Level check</strong> row in the Tools-Hub Chart Statistics tool, the way every measured metric lives in both places.</li>
+    <li><span class="tag add">add</span><strong>Advisory, never prescriptive &mdash; and honest about its own margin.</strong> Because the measured level is an <em>estimate</em>, a gap of one level is expected and reads as a <strong>Match</strong>; a gap of two is <strong>Slightly&nbsp;off</strong> (within estimate noise); only a divergence of three or more is called out as genuinely under- or over-rated, with the direction and the exact numbers (&ldquo;declared&nbsp;12, measured&nbsp;17 &mdash; under-rated by&nbsp;5&rdquo;). The chart is never changed &mdash; it is a nudge to re-check your slot number, not an edit. When no level is declared, the row says so plainly instead of guessing.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.levelMatchReport(measured,&nbsp;declared)</code> that returns the signed delta, a direction and a banded verdict on the same calm-green &rarr; hot-red ramp every honest-difficulty number uses. Both the modal and the tool build the measured level from the <em>identical</em> raw object &mdash; the same six axes the Honest Radar draws, through <code>chart.honestLevelEstimate</code> &mdash; so the estimate, the radar shape and the verdict can never disagree. Verified with 12 Node unit tests and a five-scenario real-browser run with zero JS errors.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.78</span>Honest Level Estimate &mdash; the six measured axes reduced to one SDVX level</h4>

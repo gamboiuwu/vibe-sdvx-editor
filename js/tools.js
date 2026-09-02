@@ -1,5 +1,5 @@
 import { chart, renderer, gameView, render, saveUndo, updateSeekbar, addChartAnnotation, _seekTo, sel, playing, audioBuffer, flipHorizontalRange, flipTemporalRange, updateStopEventList } from './app.js';
-import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick } from './chart.js';
+import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestLevelEstimate, levelMatchReport, HONEST_RADAR_READING_REF_TICKS, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick } from './chart.js';
 import { Renderer } from './renderer.js';
 import { updateRadar } from './radar.js';
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -5816,6 +5816,23 @@ function _toolChartValidator(c) {
   updateTabs();
 }
 
+// Build the exact same `raw` object the Chart Statistics modal feeds its Honest
+// Radar / Level Estimate from (computeChartStats output + the reference green
+// window at peak BPM), then return chart.honestLevelEstimate(raw). Kept here as
+// one helper so the tool's "Est. level" and "Level check" rows can never build a
+// different raw than the modal does — single source of truth for the number.
+function _honestEst(ch, st) {
+  const bpmMax = st.bpmMax || 120;
+  const readingMs = ((st.totalNotes || 0) > 0 && ch && typeof ch.reactionWindowMs === 'function')
+    ? ch.reactionWindowMs(HONEST_RADAR_READING_REF_TICKS, bpmMax, 1)
+    : 0;
+  return honestLevelEstimate({
+    readingMs,
+    peakNps: st.peakNps, meanNps: st.meanNps, peakJps: st.peakJps,
+    heavierShare: st.handHeavierShare, peakKps: st.peakKps,
+  });
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    22. Chart Statistics — note counts, density, laser coverage
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -5899,6 +5916,29 @@ function _toolChartStats(c) {
         const kb = knobDifficultyBand(st.peakKps);
         const det = (st.knobTotal || 0) > 0 ? ` <span style="opacity:.55">(${st.knobSlams || 0} slam${(st.knobSlams||0)!==1?'s':''}, ${st.knobReversals || 0} rev)</span>` : '';
         return `${(st.peakKps || 0).toFixed(1)} <span style="color:${kb.color};font-weight:600">${kb.label}</span>${det}`;
+      })() },
+      // v0.0.78/79 — the Honest Level Estimate (the six measured axes reduced to
+      // one SDVX level 1..20) is built from the SAME `raw` object the Chart
+      // Statistics modal's radar uses, through the shared chart.honestLevelEstimate,
+      // so the tool and the modal can never disagree. A note-less chart has no
+      // level to estimate, so the row reads "—".
+      { label: 'Est. level (1-20)',   value: (() => {
+        if ((st.totalNotes || 0) <= 0) return '<span style="opacity:.5">—</span>';
+        const est = _honestEst(ch, st);
+        return `<strong style="color:${est.color}">${est.level}</strong> <span style="color:${est.color};font-weight:600">${est.band}</span>` +
+               ` <span style="opacity:.55">— driven by ${est.driver || '—'}</span>`;
+      })() },
+      // v0.0.79 — Level Check (the meta nudge): compare that measured level against
+      // the level the chartist DECLARED in the chart metadata, and flag a real
+      // divergence (a "15" that plays like an 18). Shared chart.levelMatchReport so
+      // the verdict banding matches everywhere it is surfaced.
+      { label: 'Level check',          value: (() => {
+        if ((st.totalNotes || 0) <= 0) return '<span style="opacity:.5">— (no notes)</span>';
+        const declared = Number(ch.meta && ch.meta.level);
+        if (!(declared >= 1 && declared <= 20)) return '<span style="opacity:.5">— (no declared level)</span>';
+        const est = _honestEst(ch, st);
+        const rep = levelMatchReport(est.level, declared);
+        return `<span style="color:${rep.color};font-weight:600">${rep.verdict}</span> <span style="opacity:.6">${rep.detail}</span>`;
       })() },
       { label: 'Total note events',    value: totalNoteEvents },
       { label: 'BPM events',           value: ch.bpmEvents.length },
