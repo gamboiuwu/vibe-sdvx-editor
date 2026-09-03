@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.78 · 2026</span>
+  <span class="version">v0.0.79 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.79</span>Difficulty Spike Detector &mdash; the pacing axis, the difficulty walls no peak number shows</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Chart Statistics now flags where your chart slams the player with no run-up.</strong> Every honest number so far &mdash; <strong>Peak&nbsp;NPS</strong>, <strong>Peak&nbsp;Jack</strong>, <strong>Hand&nbsp;Balance</strong>, <strong>Knob&nbsp;Load</strong> and the v0.0.78 <strong>level</strong> &mdash; measures how hard a chart is in <em>absolute</em> terms. None of them says anything about <em>pacing</em>: whether that difficulty arrives gradually or as a wall. A new <strong>Pacing</strong> readout under the Honest Radar (and a <strong>Difficulty spikes</strong> row in both the <strong>&#128202; Chart Statistics</strong> modal and the Tools-Hub Chart Statistics tool) counts the <strong>difficulty spikes</strong> &mdash; measures whose honest notes/sec jump sharply above the calm section right before them &mdash; and names the worst one. <strong>Click the readout to jump straight to it.</strong></li>
+    <li><span class="tag add">add</span><strong>A spike is RELATIVE by construction &mdash; which is exactly why no absolute axis catches it.</strong> A 16&nbsp;NPS burst is a brutal wall after a calm 2&nbsp;NPS lead-in, but the same burst inside a sustained 16&nbsp;NPS stream is just the stream. The detector takes each measure&rsquo;s honest density against the <em>median</em> of the measures before it, and flags a spike only on the <em>rising edge</em> of the jump &mdash; so a long stream flags once at its onset, not every measure &mdash; and only when the jump clears both a relative ratio and an absolute floor, so a tiny chart drifting 1&rarr;3&nbsp;NPS never reads as a wall. The worst spike is banded <span style="color:#66ddff">Build</span> / <span style="color:#ffcc55">Step-up</span> / <span style="color:#ff8a3d">Wall</span> / <span style="color:#ff4d4d">Blindside</span> by how abruptly it hits.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth, BPM-independent.</strong> Backed by a new DOM-free, unit-tested <code>chart.difficultySpikes(opts)</code> that reuses <code>chart.measureDensityNps</code> (so the density it reads is the same honest, wall-clock notes/sec the heatmap and Peak&nbsp;NPS use &mdash; a 200-BPM wall and its 100-BPM twin score differently, honestly), plus a shared <code>chart.spikeSeverityBand(ratio)</code> for the label and colour. <code>computeChartStats</code> folds it in beside Knob&nbsp;Load (guarded so a plain-object caller degrades to &ldquo;no spikes&rdquo;, never throws); the chart is never mutated. Verified with 22 Node unit tests and a real-browser run with zero JS errors.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.78</span>Honest Level Estimate &mdash; the six measured axes reduced to one SDVX level</h4>
