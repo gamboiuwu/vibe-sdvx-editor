@@ -139,6 +139,14 @@ export function computeChartStats(chart) {
     ? chart.knobStress({})
     : { peakKps: 0, peakTick: 0, meanKps: 0, total: 0, slams: 0, reversals: 0, grabs: 0 };
 
+  // Difficulty spikes (v0.0.79) — the PACING axis: measures whose honest density
+  // jumps sharply above the calm section right before them ("difficulty walls").
+  // Reuses chart.difficultySpikes as the single source of truth; guarded so a
+  // plain-object caller (no method) degrades to no spikes rather than throwing.
+  const spikeRes = (typeof chart.difficultySpikes === 'function')
+    ? chart.difficultySpikes({ totalMeasures: totalMeas })
+    : { count: 0, biggest: null, spikes: [] };
+
   return {
     btChip, btHold, fxChip, fxHold,
     btTotal: btChip + btHold, fxTotal: fxChip + fxHold,
@@ -154,6 +162,9 @@ export function computeChartStats(chart) {
     peakKps: knobRes.peakKps, meanKps: knobRes.meanKps, peakKnobTick: knobRes.peakTick,
     knobSlams: knobRes.slams, knobReversals: knobRes.reversals, knobGrabs: knobRes.grabs,
     knobTotal: knobRes.total,
+    spikeCount: spikeRes.count,
+    biggestSpike: spikeRes.biggest,
+    spikes: spikeRes.spikes,
     coverL, coverR,
     bpmMin, bpmMax, bpmRange,
     bpmCount: chart.bpmEvents.length,
@@ -239,6 +250,29 @@ export function knobDifficultyBand(peakKps) {
   if (v >= 4)  return { key: 'moderate',label: 'Moderate',color: '#66ddff' };
   if (v > 0)   return { key: 'light',   label: 'Light',   color: '#6fe08a' };
   return { key: 'none', label: 'None', color: '#6fe08a' };
+}
+
+// ── Spike-severity band (v0.0.79) ─────────────────────────────────────────────
+// Classify a difficulty-spike RATIO (a measure's honest NPS ÷ the calm baseline
+// just before it, from chart.difficultySpikes) into a coarse pacing-severity band.
+// Every axis so far measures how hard a chart is in ABSOLUTE terms; this is the
+// first PACING number — how abruptly the difficulty JUMPS. A wall the player has
+// no run-up into is unfair in a way no absolute peak exposes: a chart can sit at a
+// calm 4 NPS and then, with no warning, throw a 16 NPS burst — a ×4 spike. The
+// bands read the jump the way a player feels it: up to ×2 is a normal build, ×2–3
+// is a noticeable step up, ×3–4 is a hard wall, and past ×4 is a blindside. Pure
+// and DOM-free so the modal and any future caller colour/label from ONE source of
+// truth; matches the shared calm-green → hot-red difficulty ramp. A non-finite
+// ratio (a jump out of true silence, baseline 0) is the most severe. Returns the
+// lowest band for ≤1 / NaN so a flat chart never reads blank.
+export function spikeSeverityBand(ratio) {
+  const v = Number(ratio);
+  if (!Number.isFinite(v)) return { key: 'blindside', label: 'Blindside', color: '#ff4d4d' };
+  if (v >= 4)   return { key: 'blindside', label: 'Blindside', color: '#ff4d4d' };
+  if (v >= 3)   return { key: 'wall',      label: 'Wall',      color: '#ff8a3d' };
+  if (v >= 2)   return { key: 'step',      label: 'Step-up',   color: '#ffcc55' };
+  if (v > 1)    return { key: 'build',     label: 'Build',     color: '#66ddff' };
+  return { key: 'flat', label: 'Flat', color: '#6fe08a' };
 }
 
 // ── Honest Radar (v0.0.77) ────────────────────────────────────────────────────
@@ -1636,6 +1670,84 @@ export class ChartData {
       if (nps > peak) { peak = nps; peakMeasure = m; }
     }
     return { perMeasure, peak, peakMeasure, totalMeasures };
+  }
+
+  // ── Difficulty Spike Detector (v0.0.79) ────────────────────────────────────
+  // The v0.0.71-78 family all measure how hard a chart is in ABSOLUTE terms — its
+  // peak NPS, its jacks, its hand load, and (v0.0.78) the one level those reduce
+  // to. None of them says anything about PACING: whether that difficulty arrives
+  // gradually or slams in with no run-up. A difficulty SPIKE (a "wall") is a
+  // measure whose honest density jumps sharply above the calm section right before
+  // it — the classic unfair pattern a player has no time to react to. It is a
+  // RELATIVE number by construction (a burst is only a spike against a quiet
+  // baseline; the same burst inside a sustained stream is just the stream), which
+  // is exactly why no absolute axis exposes it.
+  //
+  // Reuses measureDensityNps (one source of truth for per-measure honest,
+  // BPM-independent NPS) and walks it left-to-right. For each measure m it takes
+  // the calm baseline as the MEDIAN of the preceding `window` measures (median, so
+  // one loud measure in the run-up doesn't hide a wall), and flags m as a spike
+  // when ALL of:
+  //   • cur ≥ minNps            — the measure is actually dense (not 0.5→1.5 noise)
+  //   • cur ≥ baseline × ratio  — the RELATIVE jump clears the threshold
+  //   • cur − baseline ≥ minJump— the ABSOLUTE jump clears a floor (a tiny chart
+  //                               climbing 1→3 NPS is a ×3 ratio but not a wall)
+  //   • prev < cur × edgeFrac   — it is the RISING EDGE, not the middle of a
+  //                               sustained hard run (so a long stream flags once
+  //                               at its onset, not every measure)
+  // Onsets only, via measureDensityNps; DOM-free and unit-tested; the chart is
+  // never mutated. opts: { totalMeasures, window(4), ratio(2), minNps(4),
+  // minJump(3), edgeFrac(0.75) }. Returns
+  //   { spikes:[{ measure, tick, nps, baseline, jump, ratio, band, color }…],
+  //     count, biggest, perMeasure, totalMeasures }.
+  difficultySpikes(opts = {}) {
+    const TPM = TICKS_PER_MEASURE;
+    const win      = Math.max(1, Math.round(Number(opts.window)   || 4));
+    const ratio    = Math.max(1, Number(opts.ratio)   || 2);
+    const minNps   = Math.max(0, opts.minNps  == null ? 4 : Number(opts.minNps));
+    const minJump  = Math.max(0, opts.minJump == null ? 3 : Number(opts.minJump));
+    const edgeFrac = Math.max(0, Math.min(1, opts.edgeFrac == null ? 0.75 : Number(opts.edgeFrac)));
+    const dens = (typeof this.measureDensityNps === 'function')
+      ? this.measureDensityNps({ totalMeasures: opts.totalMeasures })
+      : { perMeasure: [], totalMeasures: 0 };
+    const pm = dens.perMeasure || [];
+    const totalMeasures = dens.totalMeasures || pm.length;
+
+    const median = (arr) => {
+      if (!arr.length) return 0;
+      const s = [...arr].sort((a, b) => a - b);
+      const mid = s.length >> 1;
+      return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+    };
+
+    const spikes = [];
+    for (let m = 1; m < pm.length; m++) {
+      const cur = pm[m] || 0;
+      if (cur < minNps) continue;
+      const lo = Math.max(0, m - win);
+      const baseline = median(pm.slice(lo, m));       // calm context [lo, m)
+      const prev = pm[m - 1] || 0;
+      if (cur < baseline * ratio) continue;           // relative jump too small
+      if (cur - baseline < minJump) continue;         // absolute jump too small
+      if (prev >= cur * edgeFrac) continue;           // not the rising edge
+      const r = baseline > 1e-6 ? cur / baseline : Infinity;
+      const band = spikeSeverityBand(r);
+      spikes.push({
+        measure: m, tick: m * TPM,
+        nps: cur, baseline, jump: cur - baseline,
+        ratio: r, band: band.label, color: band.color, bandKey: band.key,
+      });
+    }
+    // Biggest = the most severe wall, ranked by ratio then absolute jump so an
+    // out-of-silence spike (ratio ∞) always leads, ties broken by raw jump.
+    let biggest = null;
+    for (const sp of spikes) {
+      if (!biggest) { biggest = sp; continue; }
+      const better = (sp.ratio > biggest.ratio) ||
+                     (sp.ratio === biggest.ratio && sp.jump > biggest.jump);
+      if (better) biggest = sp;
+    }
+    return { spikes, count: spikes.length, biggest, perMeasure: pm, totalMeasures };
   }
 
   // ── Solve cover for a target green number (v0.0.63) ────────────────────────

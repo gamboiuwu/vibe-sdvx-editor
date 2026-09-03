@@ -1,4 +1,4 @@
-import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestRadarProfile, honestRadarScoreColor, honestLevelEstimate, honestLevelBand, HONEST_RADAR_READING_REF_TICKS, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
+import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestRadarProfile, honestRadarScoreColor, honestLevelEstimate, honestLevelBand, spikeSeverityBand, HONEST_RADAR_READING_REF_TICKS, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
 import { Renderer, C, laserColors, laserOpacity, laserWideMode, LASER_PRESETS, applyLaserPreset, setLaserColorCustom, buildLaneHeader, setLaserOpacity, setLaserWideMode } from './renderer.js';
 import { GameView } from './game.js';
 import { exportKsh, importKsh, downloadText } from './ksh.js';
@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.78';
+const APP_VERSION = '0.0.79';
 const CHANGELOG = [
+  {
+    version: '0.0.79',
+    title: 'Difficulty Spike Detector — the pacing axis, the difficulty walls no peak number shows',
+    entries: [
+      ['add', '<strong>Chart Statistics now flags where your chart slams the player with no run-up.</strong> Every honest number so far — <strong>Peak&nbsp;NPS</strong>, <strong>Peak&nbsp;Jack</strong>, <strong>Hand&nbsp;Balance</strong>, <strong>Knob&nbsp;Load</strong> and the v0.0.78 <strong>level</strong> — measures how hard a chart is in <em>absolute</em> terms. None of them says anything about <em>pacing</em>: whether that difficulty arrives gradually or as a wall. A new <strong>Pacing</strong> readout under the Honest Radar (and a <strong>Difficulty spikes</strong> row in both the <strong>📊 Chart Statistics</strong> modal and the Tools-Hub Chart Statistics tool) counts the <strong>difficulty spikes</strong> — measures whose honest notes/sec jump sharply above the calm section right before them — and names the worst one. <strong>Click the readout to jump straight to it.</strong>'],
+      ['add', '<strong>A spike is RELATIVE by construction — which is exactly why no absolute axis catches it.</strong> A 16&nbsp;NPS burst is a brutal wall after a calm 2&nbsp;NPS lead-in, but the same burst inside a sustained 16&nbsp;NPS stream is just the stream. The detector takes each measure’s honest density against the <em>median</em> of the measures before it, and flags a spike only on the <em>rising edge</em> of the jump — so a long stream flags once at its onset, not every measure — and only when the jump clears both a relative ratio and an absolute floor, so a tiny chart drifting 1→3&nbsp;NPS never reads as a wall. The worst spike is banded <span style="color:#66ddff">Build</span> / <span style="color:#ffcc55">Step-up</span> / <span style="color:#ff8a3d">Wall</span> / <span style="color:#ff4d4d">Blindside</span> by how abruptly it hits.'],
+      ['add', '<strong>Render-only, one source of truth, BPM-independent.</strong> Backed by a new DOM-free, unit-tested <code>chart.difficultySpikes(opts)</code> that reuses <code>chart.measureDensityNps</code> (so the density it reads is the same honest, wall-clock notes/sec the heatmap and Peak&nbsp;NPS use — a 200-BPM wall and its 100-BPM twin score differently, honestly), plus a shared <code>chart.spikeSeverityBand(ratio)</code> for the label and colour. <code>computeChartStats</code> folds it in beside Knob&nbsp;Load (guarded so a plain-object caller degrades to “no spikes”, never throws); the chart is never mutated. Verified with 22 Node unit tests (a calm→wall chart flags exactly the onset measure, a sustained run flags once, a gradual build and a flat chart flag nothing, a burst out of silence reads Blindside, the min-NPS and min-jump floors both hold) and a real-browser run with zero JS errors.'],
+    ],
+  },
   {
     version: '0.0.78',
     title: 'Honest Level Estimate — the six measured axes, reduced to one SDVX level',
@@ -11316,6 +11325,17 @@ const DisclaimerGate = (function() {
   const radarCanvas  = document.getElementById('cs-radar');
   const radarCaption = document.getElementById('cs-radar-caption');
   const levelReadout = document.getElementById('cs-level');
+  const spikesReadout = document.getElementById('cs-spikes');
+  // v0.0.79 — the biggest difficulty spike's tick, so clicking the readout seeks
+  // the editor straight to the worst wall. Held here so the click handler bound
+  // once (below) always reads the latest render's target.
+  let _biggestSpikeTick = null;
+  if (spikesReadout) {
+    spikesReadout.style.cursor = 'default';
+    spikesReadout.addEventListener('click', () => {
+      if (_biggestSpikeTick != null && typeof _seekTo === 'function') _seekTo(_biggestSpikeTick);
+    });
+  }
 
   // v0.0.77 — Honest Radar. Draw the six measured difficulty axes as one polygon
   // from the SAME numbers the text rows below use, via the DOM-free
@@ -11331,6 +11351,7 @@ const DisclaimerGate = (function() {
     if (!s) {
       if (radarCaption) radarCaption.textContent = '—';
       if (levelReadout) levelReadout.textContent = '—';
+      if (spikesReadout) { spikesReadout.textContent = ''; _biggestSpikeTick = null; }
       return;
     }
 
@@ -11424,6 +11445,48 @@ const DisclaimerGate = (function() {
       }
     }
 
+    // v0.0.79 — Difficulty Spike Detector. The PACING readout, under the level:
+    // measures whose honest density jumps sharply above the calm section right
+    // before them ("difficulty walls"). Reuses the DOM-free chart.difficultySpikes
+    // folded into computeChartStats (s.spikeCount / s.biggestSpike), so the count
+    // and the modal can never disagree. Render-only; the chart is never touched.
+    // Clicking the readout seeks the editor to the worst wall.
+    if (spikesReadout) {
+      const hasNotes = (s.totalNotes || 0) > 0;
+      const big = s.biggestSpike;
+      _biggestSpikeTick = big ? big.tick : null;
+      if (!hasNotes) {
+        spikesReadout.textContent = '';
+        spikesReadout.style.cursor = 'default';
+        spikesReadout.removeAttribute('title');
+      } else if (!s.spikeCount || !big) {
+        spikesReadout.innerHTML =
+          `<span style="opacity:.55;font-size:11px">No difficulty spikes — the chart paces evenly.</span>`;
+        spikesReadout.style.cursor = 'default';
+        spikesReadout.title =
+          'A difficulty spike is a measure whose honest notes/sec jumps sharply above ' +
+          'the calm section right before it — a "wall" the player has no run-up into. ' +
+          'None found: every dense section here is built up to.';
+      } else {
+        const ratioStr = Number.isFinite(big.ratio) ? `×${big.ratio.toFixed(1)}` : 'from silence';
+        const plural = s.spikeCount === 1 ? 'spike' : 'spikes';
+        spikesReadout.innerHTML =
+          `<span style="opacity:.7;font-size:11px">Pacing:</span> ` +
+          `<strong style="color:${big.color}">${s.spikeCount}</strong> ` +
+          `<span style="opacity:.85">difficulty ${plural}</span>` +
+          ` <span style="opacity:.6;font-size:11px">— worst</span> ` +
+          `<strong style="color:${big.color}">${big.band} ${ratioStr}</strong>` +
+          ` <span style="opacity:.6;font-size:11px">@ m${big.measure + 1}</span>`;
+        spikesReadout.style.cursor = 'pointer';
+        spikesReadout.title =
+          `${s.spikeCount} difficulty ${plural} (a measure whose honest notes/sec jumps ` +
+          `sharply above the calm run-up before it — a "wall"). Worst: measure ${big.measure + 1}, ` +
+          `${big.nps.toFixed(1)} nps vs a ${big.baseline.toFixed(1)} nps baseline` +
+          `${Number.isFinite(big.ratio) ? ` (${big.ratio.toFixed(1)}× jump)` : ' (out of silence)'}. ` +
+          `Click to jump there. A pacing cue, not a verdict.`;
+      }
+    }
+
     if (radarCaption) {
       const dom = prof.axes.find(a => a.key === prof.dominant);
       radarCaption.innerHTML = prof.overall > 0
@@ -11507,6 +11570,20 @@ const DisclaimerGate = (function() {
           ? ` <span style="opacity:.6;font-size:.82em">${s.knobSlams || 0} slam${(s.knobSlams||0)!==1?'s':''}, ${s.knobReversals || 0} rev</span>`
           : '';
         return `<strong>${(s.peakKps || 0).toFixed(1)}</strong> <span style="color:${band.color};font-weight:600">${band.label}</span>${detail}`;
+      })()),
+      // v0.0.79 — Pacing: difficulty spikes (walls). The first RELATIVE axis —
+      // measures whose honest NPS jumps sharply above the calm run-up before them,
+      // banded via the shared spikeSeverityBand so the colour/label match the
+      // readout under the radar and the Tools stat panel.
+      section('Pacing'),
+      row('Difficulty spikes', (() => {
+        const n = s.spikeCount || 0;
+        const big = s.biggestSpike;
+        if (!n || !big) return `<strong>0</strong> <span style="color:#6fe08a;font-weight:600">Even</span>`;
+        const band = spikeSeverityBand(big.ratio);
+        const ratioStr = Number.isFinite(big.ratio) ? `×${big.ratio.toFixed(1)}` : 'from silence';
+        const detail = ` <span style="opacity:.6;font-size:.82em">worst m${big.measure + 1}, ${big.nps.toFixed(1)} vs ${big.baseline.toFixed(1)} nps</span>`;
+        return `<strong>${n}</strong> <span style="color:${band.color};font-weight:600">${band.label} ${ratioStr}</span>${detail}`;
       })()),
     ].join('');
   }
