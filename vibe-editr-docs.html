@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.78 · 2026</span>
+  <span class="version">v0.0.79 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.79</span>Live Knob Load &mdash; the honest Tsumami axis, surfaced in the Game Preview</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>The Game Preview now shows your live knob workload beside the live note density.</strong> v0.0.71 put the honest <strong>Peak&nbsp;NPS</strong> readout in the preview <strong>Density</strong> row &mdash; how many BT/FX presses your fingers hit at the chart&rsquo;s densest real second &mdash; and v0.0.76 built a measured <strong>Knob&nbsp;Load</strong> number, but it only ever lived inside the <strong>&#128202; Chart Statistics</strong> modal. A new <strong>&#9673; Knob</strong> toggle sits directly beside the NPS readout: the NPS number measures your <em>fingers on the buttons</em>, the Knob number measures your <em>wrist on the VOL knobs</em>, so during playback you read both halves of an SDVX chart&rsquo;s physical load at a glance.</li>
+    <li><span class="tag add">add</span><strong>Wall-clock honest, banded, and click-to-seek.</strong> It shows the peak <strong>knob actions per real second</strong> &mdash; a <em>grab</em> (taking a laser), a <em>slam</em> (a near-instant flick) or a <em>reversal</em> (an interior vertex where the knob changes direction) &mdash; so a slam storm at 240&nbsp;BPM outscores the same tick pattern at 120. The number is coloured on the shared <span style="color:#6fe08a">Light</span> / <span style="color:#66ddff">Moderate</span> / <span style="color:#ffcc55">Busy</span> / <span style="color:#ff8a3d">Heavy</span> / <span style="color:#ff4d4d">Extreme</span> band, the hover tooltip breaks out the slam / reversal / grab counts, and clicking the readout seeks the editor straight to the busiest knob burst. A chart with no lasers reads a calm <code>&#9673; 0.0</code>, never blank.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by the existing DOM-free, unit-tested <code>chart.knobStress()</code> (v0.0.76) and the shared <code>chart.knobDifficultyBand()</code> &mdash; the same engine the Chart Statistics Knob&nbsp;Load row and the honest radar&rsquo;s KNOB spoke already use, so the live readout, the modal and the radar can never disagree. A cheap laser-signature cache skips the recompute on the frames where the knobs are unchanged, exactly as the NPS readout does. The chart is never mutated; the toggle persists via <strong>Save Config</strong> / prefs; i18n in all 5 locales.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.78</span>Honest Level Estimate &mdash; the six measured axes reduced to one SDVX level</h4>
