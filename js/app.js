@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.78';
+const APP_VERSION = '0.0.79';
 const CHANGELOG = [
+  {
+    version: '0.0.79',
+    title: 'Level HUD — the measured SDVX level, live on the preview panel',
+    entries: [
+      ['add', '<strong>The estimated level is now visible while you chart, not just buried in a modal.</strong> The <strong>v0.0.78 Honest Level Estimate</strong> answered &ldquo;what level did I just make?&rdquo; — but only inside the <strong>📊 Chart Statistics</strong> window, so you had to stop, open it and close it. A new <strong>Level</strong> readout now sits in the <strong>Game Preview side context panel</strong>, right beside the <strong>Green#</strong> reading readout and the <strong>Peak NPS</strong> physical-load readout: it shows the estimated <strong>SDVX level 1&ndash;20</strong> (<code>◆ N</code>) live, coloured on the same calm-green &rarr; hot-red ramp and banded <span style="color:#6fe08a">Beginner</span> / <span style="color:#66ddff">Intermediate</span> / <span style="color:#ffcc55">Advanced</span> / <span style="color:#ff8a3d">Expert</span> / <span style="color:#ff4d4d">Extreme</span>. Toggle it with the <strong>◆ Est</strong> button; click the number to open the full Chart Statistics with the Honest Radar that explains it. The choice persists via <strong>Save Config</strong> / prefs.'],
+      ['add', '<strong>One canonical source, so the HUD and the modal can never disagree.</strong> Both surfaces now read a single new DOM-free, unit-tested <code>chart.measuredDifficulty()</code> that assembles the six Honest-Radar axes (reading window at peak BPM, Peak/Avg NPS, Jack, Hand Balance, Knob Load) into one <code>{ raw, profile, estimate }</code>. The Chart Statistics modal was refactored to consume it too, so the radar shape, the modal&rsquo;s <strong>Est. level</strong> line and the live HUD are literally the same computation. Especially useful in <strong>multi-chart split view</strong>, whose documented purpose is analysing difficulty differences — the measured level is now on screen as you compare.'],
+      ['add', '<strong>Render-only, cached, guarded.</strong> The level depends only on the chart (not HiSpeed / rate / cover / playhead), so a cheap onset + BPM + laser signature cache skips the recompute on the many frames where nothing changed; a note-less chart reads blank rather than a false level. The chart is never mutated. Verified with Node unit tests (empty ⇒ hasNotes:false no throw; a 16th single-lane stamina chart ⇒ Expert; <code>measuredDifficulty().raw</code> equals the modal&rsquo;s former inline assembly) and a real-browser run with zero JS errors.'],
+    ],
+  },
   {
     version: '0.0.78',
     title: 'Honest Level Estimate — the six measured axes, reduced to one SDVX level',
@@ -2662,6 +2671,76 @@ function toggleNpsReadout() {
   savePrefsToLocalStorage();
 }
 
+// ── Est. Level HUD (v0.0.79) ──────────────────────────────────────────────────
+// The v0.0.78 Honest Level Estimate answers "what level did I just make?" but
+// only inside the Chart Statistics modal — you have to stop, open it and close
+// it. This surfaces the SAME estimate live in the preview side context panel,
+// beside the Green# reading readout and the Peak-NPS physical-load readout, so
+// the single-number difficulty is visible while you chart and (crucially for the
+// documented "analyse difficulty differences" split-view use) while you compare.
+// It reads the ONE canonical chart.measuredDifficulty() — the exact { estimate }
+// the modal's radar + Est-level line draw — so the HUD and the modal can never
+// disagree. The level depends only on the chart (not HiSpeed / rate / cover /
+// playhead), so a cheap onset+bpm signature cache skips the recompute on the many
+// render() frames where nothing changed. Clicking opens the full Chart Statistics
+// (the level has no single tick to seek to; the radar there explains the number).
+// Render-only — never touches chart data.
+let levelReadoutHud = false;   // v0.0.79 — est-level HUD (off by default)
+let _levelCache     = null;    // { chart, sig, md }: skip recompute when unchanged
+function updateLevelReadout() {
+  const lbl = document.getElementById('pvc-level');
+  const btn = document.getElementById('pvc-level-toggle');
+  if (btn) btn.classList.toggle('active', levelReadoutHud);
+  if (!lbl) return;
+  if (!levelReadoutHud || !chart || typeof chart.measuredDifficulty !== 'function') {
+    lbl.textContent = '–';
+    lbl.style.color = '';
+    lbl.title = 'Estimated SDVX level from the six measured axes. Click to open Chart Statistics.';
+    return;
+  }
+  // Cheap signature over onset ticks + BPM events — recompute only on real change.
+  let sum = 0, cnt = 0;
+  for (const lane of chart.bt) for (const n of lane) { sum += n.y; cnt++; }
+  for (const lane of chart.fx) for (const n of lane) { sum += n.y; cnt++; }
+  let bsig = 0; for (const e of (chart.bpmEvents || [])) bsig += (e.y || 0) + (e.bpm || 0) * 1e-3;
+  // Lasers feed the KNOB axis — fold a light laser signature in so knob-load
+  // changes also invalidate the cache.
+  let lsig = 0;
+  for (const side of (chart.lasers || [])) for (const sec of side) { lsig += (sec.y || 0); lsig += (sec.points || []).length; }
+  const sig = cnt + ':' + sum + ':' + bsig.toFixed(3) + ':' + lsig;
+  let md;
+  if (_levelCache && _levelCache.chart === chart && _levelCache.sig === sig) {
+    md = _levelCache.md;
+  } else {
+    md = chart.measuredDifficulty();
+    _levelCache = { chart, sig, md };
+  }
+  if (!md.hasNotes) {
+    lbl.textContent = '–';
+    lbl.style.color = '';
+    lbl.title = 'No BT/FX notes yet — the estimated level fills in as you chart. Click to open Chart Statistics.';
+    return;
+  }
+  const est = md.estimate;
+  lbl.textContent = `◆ ${est.level}`;
+  lbl.style.color = est.color;
+  const drv = est.driver || '—';
+  lbl.title =
+    `Estimated SDVX level ${est.level} (${est.band}) — driven by ${drv}. `
+    + `composite ${est.composite.toFixed(1)}/100 = 0.6·peak(${est.peakScore.toFixed(0)}) `
+    + `+ 0.4·mean(${est.meanScore.toFixed(0)}) → ${est.levelFloat.toFixed(1)}. `
+    + `Reduced from the six MEASURED honest-radar axes, not the volatility heuristic. `
+    + `An estimate, not a verdict. Click to open the full Chart Statistics.`;
+}
+
+// Toggle the est-level HUD on/off.
+function toggleLevelReadout() {
+  levelReadoutHud = !levelReadoutHud;
+  prefs.levelReadout = levelReadoutHud;   // mirror onto prefs so localStorage persists it
+  updateLevelReadout();
+  savePrefsToLocalStorage();
+}
+
 // ── Reading-difficulty strip hover tooltip (v0.0.70) ──────────────────────────
 // The strip (v0.0.69) draws the reaction window per measure but reads only as a
 // coloured curve — you can see WHERE a spike sits but not its exact numbers. On
@@ -5258,6 +5337,7 @@ export function render() {
     if (typeof updateHeatmap   === 'function') updateHeatmap();
     if (typeof invalidateFxAuto === 'function') invalidateFxAuto();
     updateNpsReadout();   // v0.0.71 — keep the peak-NPS readout in sync with edits/switches (cached, no-op when unchanged)
+    updateLevelReadout(); // v0.0.79 — keep the est-level HUD in sync with edits/switches (cached, no-op when unchanged)
     _drawMinimap();
   });
 }
@@ -10277,6 +10357,23 @@ function _initProjectionControls() {
   }
   updateNpsReadout();        // sync readout + button to current state
 
+  // Est-level HUD toggle + click-to-open-stats (v0.0.79) — the measured level, live.
+  const lvlBtn = document.getElementById('pvc-level-toggle');
+  if (lvlBtn && !lvlBtn._wired) {
+    lvlBtn._wired = true;
+    lvlBtn.addEventListener('click', toggleLevelReadout);
+  }
+  const lvlLbl = document.getElementById('pvc-level');
+  if (lvlLbl && !lvlLbl._wired) {
+    lvlLbl._wired = true;
+    lvlLbl.addEventListener('click', () => {
+      if (!levelReadoutHud) return;
+      const openBtn = document.getElementById('btn-chart-stats');
+      if (openBtn) openBtn.click();   // the full Honest Radar explains the number
+    });
+  }
+  updateLevelReadout();      // sync readout + button to current state
+
   // Soflan runway markers toggle — faint on-lane labels at every tempo change.
   // Render-only; state persists on prefs so it composes with Save Config too.
   // The game-preview renderer reads the flag through window.prefs (the bridge it
@@ -10693,6 +10790,7 @@ function _initProjectionControls() {
     prefs.reactionRange     = reactionRange;   // v0.0.68 — chart-wide range readout toggle
     prefs.readingStrip      = readingStrip;    // v0.0.69 — per-measure reading-difficulty strip toggle
     prefs.npsReadout        = npsReadout;      // v0.0.71 — peak notes-per-second readout toggle
+    prefs.levelReadout      = levelReadoutHud; // v0.0.79 — est-level HUD toggle
     // Green-Number Auto-Follow hold + held target ms (render-only)
     prefs.greenFollowLock   = greenFollowLock;
     prefs.greenFollowTarget = greenFollowTarget;
@@ -10783,6 +10881,7 @@ function _initProjectionControls() {
   if (prefs.reactionRange != null)   { reactionRange   = !!prefs.reactionRange;   updateReactionRange(); }
   if (prefs.readingStrip != null)    { readingStrip    = !!prefs.readingStrip;    updateReadingStrip(); }
   if (prefs.npsReadout != null)      { npsReadout      = !!prefs.npsReadout;      updateNpsReadout(); }
+  if (prefs.levelReadout != null)    { levelReadoutHud = !!prefs.levelReadout;   updateLevelReadout(); }
   // Restore Green-Number Auto-Follow hold + held target (render-only). Reflect the
   // target into the →ms field so the UI shows what is being held, then snap.
   if (prefs.greenFollowTarget != null) {
@@ -11334,22 +11433,31 @@ const DisclaimerGate = (function() {
       return;
     }
 
-    // READING axis: the reference green-number window at the chart's PEAK bpm,
-    // through the same reactionWindowMs engine the live green number uses — a
-    // stable, HiSpeed-free chart property (shorter window ⇒ harder reading).
-    // Reading load only means something when there are notes to read — a
-    // note-less chart has a defined BPM but no reading demand, so its reading
-    // spoke stays at 0 and the whole radar reads truly empty.
-    const bpmMax = s.bpmMax || 120;
-    const readingMs = ((s.totalNotes || 0) > 0 && chart && typeof chart.reactionWindowMs === 'function')
-      ? chart.reactionWindowMs(HONEST_RADAR_READING_REF_TICKS, bpmMax, 1)
-      : 0;
-    const raw = {
-      readingMs,
-      peakNps: s.peakNps, meanNps: s.meanNps, peakJps: s.peakJps,
-      heavierShare: s.handHeavierShare, peakKps: s.peakKps,
-    };
-    const prof = honestRadarProfile(raw);
+    // v0.0.79 — the six measured axes now come from the ONE canonical assembler,
+    // chart.measuredDifficulty(): the exact same { raw, profile, estimate } the
+    // live Game-Preview Level HUD reads, so the modal's radar shape / Est-level
+    // line and the HUD number can never disagree. (Before v0.0.79 this `raw` was
+    // assembled inline here; that mapping now lives in chart.js as a single source
+    // of truth.) READING is still the reference green-number window at the chart's
+    // PEAK bpm — a stable, HiSpeed-free property gated on there being notes to
+    // read. Guarded so a legacy/plain chart without the method still draws.
+    const md = (chart && typeof chart.measuredDifficulty === 'function')
+      ? chart.measuredDifficulty()
+      : {
+          hasNotes: (s.totalNotes || 0) > 0,
+          raw: {
+            readingMs: 0,
+            peakNps: s.peakNps, meanNps: s.meanNps, peakJps: s.peakJps,
+            heavierShare: s.handHeavierShare, peakKps: s.peakKps,
+          },
+          profile: honestRadarProfile({
+            readingMs: 0,
+            peakNps: s.peakNps, meanNps: s.meanNps, peakJps: s.peakJps,
+            heavierShare: s.handHeavierShare, peakKps: s.peakKps,
+          }),
+        };
+    const raw = md.raw;
+    const prof = md.profile;
 
     const cx = W / 2, cy = H / 2 + 6, R = Math.min(W, H) * 0.34;
     const N = prof.axes.length;
@@ -11403,11 +11511,11 @@ const DisclaimerGate = (function() {
     // estimate (its axes are all 0), so the readout stays blank until there are
     // notes, matching how the reading spoke is gated.
     if (levelReadout) {
-      const hasNotes = (s.totalNotes || 0) > 0;
+      const hasNotes = md.hasNotes;
       if (!hasNotes) {
         levelReadout.textContent = '—';
       } else {
-        const est = honestLevelEstimate(raw);
+        const est = md.estimate || honestLevelEstimate(raw);
         const driver = est.axes.find(a => a.key === est.peakAxis);
         const drvName = driver ? driver.short : (est.driver || '—');
         const drvCol  = driver ? driver.color : est.color;
