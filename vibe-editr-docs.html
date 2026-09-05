@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.78 · 2026</span>
+  <span class="version">v0.0.79 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.79</span>Level HUD &mdash; the measured SDVX level, live on the preview panel</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>The estimated level is now visible while you chart, not just buried in a modal.</strong> The <strong>v0.0.78 Honest Level Estimate</strong> answered &ldquo;what level did I just make?&rdquo; &mdash; but only inside the <strong>&#128202; Chart Statistics</strong> window. A new <strong>Level</strong> readout now sits in the <strong>Game Preview side context panel</strong>, beside the <strong>Green#</strong> reading readout and the <strong>Peak&nbsp;NPS</strong> physical-load readout: it shows the estimated <strong>SDVX level 1&ndash;20</strong> (<code>&#9670;&nbsp;N</code>) live, coloured on the same calm-green &rarr; hot-red ramp and banded <span style="color:#6fe08a">Beginner</span> / <span style="color:#66ddff">Intermediate</span> / <span style="color:#ffcc55">Advanced</span> / <span style="color:#ff8a3d">Expert</span> / <span style="color:#ff4d4d">Extreme</span>. Toggle with the <strong>&#9670;&nbsp;Est</strong> button; click the number to open the full Chart Statistics with the Honest Radar that explains it. Persists via <strong>Save Config</strong> / prefs.</li>
+    <li><span class="tag add">add</span><strong>One canonical source, so the HUD and the modal can never disagree.</strong> Both surfaces now read a single new DOM-free, unit-tested <code>chart.measuredDifficulty()</code> that assembles the six Honest-Radar axes (reading window at peak BPM, Peak/Avg NPS, Jack, Hand Balance, Knob Load) into one <code>{ raw, profile, estimate }</code>. The Chart Statistics modal was refactored to consume it too, so the radar shape, the modal&rsquo;s <strong>Est.&nbsp;level</strong> line and the live HUD are literally the same computation. Especially useful in <strong>multi-chart split view</strong>, whose documented purpose is analysing difficulty differences.</li>
+    <li><span class="tag add">add</span><strong>Render-only, cached, guarded.</strong> The level depends only on the chart (not HiSpeed / rate / cover / playhead), so a cheap onset + BPM + laser signature cache skips the recompute on unchanged frames; a note-less chart reads blank. The chart is never mutated. Verified with Node unit tests (empty &rArr; no level, no throw; a 16th single-lane chart &rArr; level&nbsp;17 Expert; <code>measuredDifficulty().raw</code> equals the modal&rsquo;s former inline assembly) and a real-browser run &mdash; the HUD and modal both read <strong>level&nbsp;17 Expert</strong> on the same chart with zero JS errors.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.78</span>Honest Level Estimate &mdash; the six measured axes reduced to one SDVX level</h4>

@@ -1101,6 +1101,69 @@ export class ChartData {
     return vt / TICKS_PER_BEAT * (60 / b) * 1000 / r;
   }
 
+  // ── Measured difficulty (v0.0.79) ──────────────────────────────────────────
+  // The single source of truth for the honest, measured difficulty of THIS
+  // chart. It assembles the six Honest-Radar axes from the chart's own engines —
+  // the exact numbers computeChartStats produces and the Chart Statistics modal
+  // draws — into ONE canonical object, so every consumer (the modal's radar +
+  // Est-level line, the live Game-Preview Level HUD, any future readout) reads an
+  // identical level and can never disagree. Before v0.0.79 the modal assembled
+  // this `raw` inline; that logic now lives here so a second surface can reuse it
+  // without duplicating (and drifting from) the mapping.
+  //
+  // READING axis: the reference green-number window at the chart's PEAK bpm through
+  // reactionWindowMs — a stable, HiSpeed-free chart property (shorter window ⇒
+  // harder reading), gated on there being notes to read (a note-less chart has a
+  // defined BPM but no reading demand, so the spoke stays 0 and the whole profile
+  // reads truly empty). The peak-bpm fallback of 120 matches the modal's original
+  // `s.bpmMax || 120` so the number is unchanged from v0.0.78. The other five axes
+  // come straight from notesPerSecond / jackStress / handBalance / knobStress.
+  //
+  // PURE of DOM and RENDER-ONLY — never mutates the chart. Guarded end to end: a
+  // chart with no notes, no BPM events, or missing engine methods degrades to an
+  // all-zero profile (hasNotes:false) rather than throwing.
+  // Returns { hasNotes, bpmMax, totalNotes, raw, profile, estimate }.
+  measuredDifficulty(opts = {}) {
+    const readingRefTicks = Number.isFinite(opts.readingRefTicks)
+      ? opts.readingRefTicks : HONEST_RADAR_READING_REF_TICKS;
+
+    // Total BT/FX onsets — reading load only means something with notes present.
+    let totalNotes = 0;
+    for (const lane of this.bt) totalNotes += lane.length;
+    for (const lane of this.fx) totalNotes += lane.length;
+
+    // Peak BPM drives the reference reading window (shorter window ⇒ harder).
+    const bs = (Array.isArray(this.bpmEvents) ? this.bpmEvents : [])
+      .map(e => e.bpm).filter(b => Number.isFinite(b));
+    const bpmMax = bs.length ? Math.max(...bs) : 0;
+    const bpmMaxEff = bpmMax || 120;   // matches the modal's original fallback
+
+    const nps  = (typeof this.notesPerSecond === 'function')
+      ? this.notesPerSecond({ windowSec: 1.0 }) : { peakNps: 0, meanNps: 0 };
+    const jack = (typeof this.jackStress === 'function')
+      ? this.jackStress({}) : { peakJps: 0 };
+    const hand = (typeof this.handBalance === 'function')
+      ? this.handBalance({}) : { heavierShare: 0.5 };
+    const knob = (typeof this.knobStress === 'function')
+      ? this.knobStress({}) : { peakKps: 0 };
+
+    const readingMs = (totalNotes > 0 && typeof this.reactionWindowMs === 'function')
+      ? this.reactionWindowMs(readingRefTicks, bpmMaxEff, 1) : 0;
+
+    const raw = {
+      readingMs,
+      peakNps: nps.peakNps, meanNps: nps.meanNps,
+      peakJps: jack.peakJps, heavierShare: hand.heavierShare, peakKps: knob.peakKps,
+    };
+
+    return {
+      hasNotes: totalNotes > 0,
+      bpmMax, totalNotes, raw,
+      profile:  honestRadarProfile(raw),
+      estimate: honestLevelEstimate(raw),
+    };
+  }
+
   // Inverse of reactionWindowMs: given a TARGET green number (`targetMs`, the ms a
   // note should be on screen), return the HiSpeed multiplier that achieves it at
   // tempo `bpm` and practice `rate`. `visibleTicksAt1x` is the visible scroll
