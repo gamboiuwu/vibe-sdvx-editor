@@ -403,6 +403,54 @@ export function honestLevelEstimate(raw = {}, opts = {}) {
   };
 }
 
+// v0.0.79 — Honest Profile Drift. The measured-difficulty family (v0.0.71–78)
+// answers "how hard is this chart RIGHT NOW"; this answers "how did my EDITS
+// change it" by diffing two honest profiles — the live chart against an earlier
+// snapshot. Given the raw axis object honestRadarProfile/honestLevelEstimate
+// already consume (readingMs/peakNps/meanNps/peakJps/heavierShare/peakKps) for a
+// CURRENT chart and a PREVIOUS (snapshot) chart, it returns the per-axis score
+// deltas, the overall-score delta, the estimated-level delta and the single axis
+// that moved most. It REUSES honestRadarProfile and honestLevelEstimate so the
+// drift can never disagree with the polygon and the level readout it sits under.
+// PURE and DOM-free; guarded so any missing/NaN input degrades that spoke to 0
+// (via the reused normaliser) rather than throwing; never touches chart data.
+// Returns { axes:[{key,short,label,cur,prev,delta}…], overallCur, overallPrev,
+// overallDelta, levelCur, levelPrev, levelDelta, levelFloatCur, levelFloatPrev,
+// levelFloatDelta, mover, moverShort, moverDelta }.
+export function honestProfileDelta(rawCur = {}, rawPrev = {}, opts = {}) {
+  const round1 = (x) => Math.round(x * 10) / 10;
+  const cur  = honestRadarProfile(rawCur, opts);
+  const prev = honestRadarProfile(rawPrev, opts);
+  const lvlCur  = honestLevelEstimate(rawCur, opts);
+  const lvlPrev = honestLevelEstimate(rawPrev, opts);
+
+  // Axis order follows the live profile; a missing spoke on either side reads 0.
+  const axes = cur.axes.map((ax) => {
+    const p = prev.axes.find(a => a.key === ax.key) || { score: 0 };
+    return {
+      key: ax.key, short: ax.short, label: ax.label,
+      cur: ax.score, prev: p.score, delta: round1(ax.score - p.score),
+    };
+  });
+
+  // The single axis that moved most (by magnitude) — the headline "what changed".
+  let mover = axes[0] || null;
+  for (const a of axes) if (mover && Math.abs(a.delta) > Math.abs(mover.delta)) mover = a;
+
+  return {
+    axes,
+    overallCur: cur.overall, overallPrev: prev.overall,
+    overallDelta: round1(cur.overall - prev.overall),
+    levelCur: lvlCur.level, levelPrev: lvlPrev.level,
+    levelDelta: lvlCur.level - lvlPrev.level,
+    levelFloatCur: lvlCur.levelFloat, levelFloatPrev: lvlPrev.levelFloat,
+    levelFloatDelta: round1(lvlCur.levelFloat - lvlPrev.levelFloat),
+    mover: mover ? mover.key : null,
+    moverShort: mover ? mover.short : null,
+    moverDelta: mover ? mover.delta : 0,
+  };
+}
+
 // ── Quantize / Nudge engine ──────────────────────────────────────────────────
 // Shared, side-effect-isolated tick math used by the Tools Hub "Quantize" tool.
 // Kept here (not in tools.js) so it can be unit-tested without a DOM, and so any

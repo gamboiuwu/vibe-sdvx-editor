@@ -1407,6 +1407,14 @@
       <canvas id="cs-radar" width="360" height="252" style="max-width:100%"></canvas>
       <div id="cs-level" style="font-size:13px;margin-top:5px;text-align:center;line-height:1.35">—</div>
       <div id="cs-radar-caption" style="font-size:11px;color:#8a8cc0;margin-top:2px;text-align:center">—</div>
+      <!-- Honest Profile Snapshot & Drift (v0.0.79) — freeze this chart's measured
+           profile, keep editing, and see the difficulty drift as a ghost polygon
+           behind the live one plus a level/axis delta readout. -->
+      <div id="cs-snap-ctl" style="display:flex;gap:8px;align-items:center;justify-content:center;margin-top:8px">
+        <button id="cs-snap" style="font-size:11px;padding:3px 10px" title="Freeze this chart's honest profile so later edits show as difficulty drift">📸 Snapshot</button>
+        <button id="cs-snap-clear" style="font-size:11px;padding:3px 10px;display:none" title="Discard the saved snapshot for this chart">Clear</button>
+      </div>
+      <div id="cs-drift" style="font-size:11px;color:#8a8cc0;margin-top:5px;text-align:center;line-height:1.4;display:none"></div>
     </div>
     <div id="cs-grid" class="cs-grid"></div>
     <div class="modal-buttons" style="margin-top:14px">
