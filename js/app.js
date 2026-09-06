@@ -1,4 +1,4 @@
-import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestRadarProfile, honestRadarScoreColor, honestLevelEstimate, honestLevelBand, HONEST_RADAR_READING_REF_TICKS, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
+import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestRadarProfile, honestRadarScoreColor, honestLevelEstimate, honestLevelBand, honestProfileDelta, HONEST_RADAR_READING_REF_TICKS, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
 import { Renderer, C, laserColors, laserOpacity, laserWideMode, LASER_PRESETS, applyLaserPreset, setLaserColorCustom, buildLaneHeader, setLaserOpacity, setLaserWideMode } from './renderer.js';
 import { GameView } from './game.js';
 import { exportKsh, importKsh, downloadText } from './ksh.js';
@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.78';
+const APP_VERSION = '0.0.79';
 const CHANGELOG = [
+  {
+    version: '0.0.79',
+    title: 'Honest Profile Snapshot & Drift — see how your edits move the difficulty',
+    entries: [
+      ['add', '<strong>Chart Statistics can now freeze a chart&rsquo;s honest profile and show how far your editing drifts it.</strong> The measured-difficulty family (v0.0.71&ndash;78) answers &ldquo;how hard is this chart <em>right now</em>&rdquo; &mdash; six measured axes drawn as the <strong>Honest Radar</strong> and reduced to one <strong>Est. level</strong>. A new <strong>📸 Snapshot</strong> button under the radar in the <strong>📊 Chart Statistics</strong> modal freezes that profile; keep editing, reopen the modal, and the snapshot is redrawn as a <em>dashed ghost polygon</em> behind the live shape, with a drift line reading the <strong>estimated-level change</strong> and the <strong>single axis that moved most</strong> (e.g. &ldquo;level ▲2 (15→17) · biggest move JACK ▲18&rdquo;). So a re-chart&rsquo;s difficulty shift reads as the gap between two shapes, and you can tell whether an edit actually made the section harder.'],
+      ['add', '<strong>Per-chart, colour-coded, never a black box.</strong> A snapshot belongs to the chart it was taken on (keyed on title/artist, the same convention Quick Bookmarks uses), so switching charts hides the ghost until that chart has its own snapshot, and <strong>Clear</strong> drops it. Rises colour amber and falls colour green &mdash; harder-since is warm, easier-since is cool, matching the difficulty-band ramp &mdash; and the drift line&rsquo;s hover tooltip spells out every axis&rsquo;s before→after score so the movement is fully auditable. The snapshot age (&ldquo;3m ago&rdquo;) is shown so you know what you&rsquo;re comparing against.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.honestProfileDelta(rawCur, rawPrev)</code> that reuses <code>chart.honestRadarProfile</code> and <code>chart.honestLevelEstimate</code> internally &mdash; so the drift, the ghost polygon and the Est.&nbsp;level readout it sits under can never disagree. The snapshot stores only the six raw axis numbers (never chart or KSON data) in <code>localStorage</code>; guarded end-to-end (NaN/missing axes degrade to 0, never throw; a corrupt store is ignored). The chart is never mutated. Verified with 20 Node unit tests and a real-browser run.'],
+    ],
+  },
   {
     version: '0.0.78',
     title: 'Honest Level Estimate — the six measured axes, reduced to one SDVX level',
@@ -11316,6 +11325,48 @@ const DisclaimerGate = (function() {
   const radarCanvas  = document.getElementById('cs-radar');
   const radarCaption = document.getElementById('cs-radar-caption');
   const levelReadout = document.getElementById('cs-level');
+  const btnSnap      = document.getElementById('cs-snap');
+  const btnSnapClear = document.getElementById('cs-snap-clear');
+  const driftReadout = document.getElementById('cs-drift');
+
+  // v0.0.79 — Honest Profile Snapshot & Drift. Per-chart persistence (keyed on
+  // title|artist, the same convention Bookmarks uses) so a snapshot belongs to
+  // the chart it was taken on; switching charts hides the ghost until that chart
+  // has its own snapshot. Stores only the raw axis object honestRadarProfile
+  // consumes (never chart/KSON data). `lastRaw` is the axis object drawRadar last
+  // built, so the Snapshot button can freeze exactly what the polygon shows.
+  const SNAP_PREFIX = 'vibe-editr-honest-snap::';
+  let lastRaw = null;
+  function snapKey() {
+    if (!chart) return null;
+    const t = (chart.meta?.title  || '').trim();
+    const a = (chart.meta?.artist || '').trim();
+    return SNAP_PREFIX + (t || 'untitled') + '|' + a;
+  }
+  function loadSnap() {
+    const k = snapKey();
+    if (!k) return null;
+    try { const s = localStorage.getItem(k); return s ? JSON.parse(s) : null; }
+    catch(_) { return null; }
+  }
+  function saveSnap(raw) {
+    const k = snapKey();
+    if (!k || !raw) return;
+    try { localStorage.setItem(k, JSON.stringify({ raw, ts: Date.now() })); } catch(_) {}
+  }
+  function clearSnap() {
+    const k = snapKey();
+    if (!k) return;
+    try { localStorage.removeItem(k); } catch(_) {}
+  }
+  function snapAgeStr(ts) {
+    const mins = Math.max(0, Math.round((Date.now() - (ts || 0)) / 60000));
+    if (mins < 1)  return 'just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.round(mins / 60);
+    if (hrs < 24)  return `${hrs}h ago`;
+    return `${Math.round(hrs / 24)}d ago`;
+  }
 
   // v0.0.77 — Honest Radar. Draw the six measured difficulty axes as one polygon
   // from the SAME numbers the text rows below use, via the DOM-free
@@ -11331,6 +11382,10 @@ const DisclaimerGate = (function() {
     if (!s) {
       if (radarCaption) radarCaption.textContent = '—';
       if (levelReadout) levelReadout.textContent = '—';
+      lastRaw = null;
+      if (btnSnap) btnSnap.disabled = true;
+      if (btnSnapClear) btnSnapClear.style.display = 'none';
+      if (driftReadout) driftReadout.style.display = 'none';
       return;
     }
 
@@ -11350,6 +11405,9 @@ const DisclaimerGate = (function() {
       heavierShare: s.handHeavierShare, peakKps: s.peakKps,
     };
     const prof = honestRadarProfile(raw);
+    // v0.0.79 — remember exactly what the polygon is drawn from so the Snapshot
+    // button freezes the same numbers the shape shows.
+    lastRaw = raw;
 
     const cx = W / 2, cy = H / 2 + 6, R = Math.min(W, H) * 0.34;
     const N = prof.axes.length;
@@ -11367,6 +11425,24 @@ const DisclaimerGate = (function() {
     }
     ctx.strokeStyle = 'rgba(120,124,180,0.30)';
     for (let i = 0; i < N; i++) { const [x, y] = pt(i, R); ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(x, y); ctx.stroke(); }
+
+    // v0.0.79 — Ghost snapshot polygon. If this chart has a saved snapshot, draw
+    // its honest profile as a dashed, un-filled outline BEHIND the live polygon so
+    // editing-driven difficulty drift reads as the gap between the two shapes.
+    // The snapshot's axis order matches the live one (same honestRadarProfile), so
+    // vertex i lines up spoke-for-spoke.
+    const snap = loadSnap();
+    if (snap && snap.raw) {
+      const ghost = honestRadarProfile(snap.raw);
+      ctx.save();
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = 'rgba(200,204,240,0.55)';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      for (let i = 0; i < N; i++) { const [x, y] = pt(i, R * (ghost.axes[i].score / 100)); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+      ctx.closePath(); ctx.stroke();
+      ctx.restore();
+    }
 
     // Filled data polygon.
     ctx.beginPath();
@@ -11431,6 +11507,37 @@ const DisclaimerGate = (function() {
           ` · dominant <strong style="color:${dom.color}">${dom.short}</strong> ${Math.round(dom.score)}` +
           ` <span style="opacity:.55">— measured axes only, 100 = extreme</span>`
         : 'No notes yet — the six measured axes will fill in as you chart.';
+    }
+
+    // v0.0.79 — Snapshot controls + drift readout. The Snapshot button freezes
+    // the live profile; a saved snapshot enables Clear and shows how far the chart
+    // has drifted since (estimated-level delta + the single axis that moved most),
+    // via the DOM-free chart.honestProfileDelta — the same normaliser the polygon
+    // and the ghost use, so the numbers can never disagree with the shapes.
+    const hasNotes = (s.totalNotes || 0) > 0;
+    if (btnSnap) btnSnap.disabled = !hasNotes;
+    if (btnSnapClear) btnSnapClear.style.display = snap ? '' : 'none';
+    if (driftReadout) {
+      if (snap && snap.raw && hasNotes) {
+        const d = honestProfileDelta(raw, snap.raw);
+        const arrow = v => v > 0 ? '▲' : v < 0 ? '▼' : '±';
+        const col   = v => v > 0 ? '#ff8a3d' : v < 0 ? '#6fe08a' : '#8a8cc0';
+        const lvl = d.levelDelta;
+        const lvlTxt = lvl === 0
+          ? `level unchanged (${d.levelCur})`
+          : `level <strong style="color:${col(lvl)}">${arrow(lvl)}${Math.abs(lvl)}</strong> <span style="opacity:.7">(${d.levelPrev}→${d.levelCur})</span>`;
+        const mv = d.moverDelta;
+        const mvTxt = (d.moverShort && Math.abs(mv) >= 0.1)
+          ? ` · biggest move <strong style="color:${col(mv)}">${d.moverShort} ${arrow(mv)}${Math.abs(mv).toFixed(0)}</strong>`
+          : ' · no axis moved';
+        driftReadout.style.display = '';
+        driftReadout.innerHTML = `<span style="opacity:.7">Since snapshot (${snapAgeStr(snap.ts)}):</span> ${lvlTxt}${mvTxt}`;
+        driftReadout.title = d.axes
+          .map(a => `${a.short}: ${a.prev.toFixed(0)}→${a.cur.toFixed(0)} (${a.delta >= 0 ? '+' : ''}${a.delta.toFixed(0)})`)
+          .join('  ·  ') + `   |   overall ${d.overallPrev.toFixed(0)}→${d.overallCur.toFixed(0)}`;
+      } else {
+        driftReadout.style.display = 'none';
+      }
     }
   }
   if (!modal || !grid) return;
@@ -11517,6 +11624,12 @@ const DisclaimerGate = (function() {
   btnOpen?.addEventListener('click', open);
   btnClose?.addEventListener('click', close);
   modal.addEventListener('click', e => { if (e.target === modal) close(); });
+
+  // v0.0.79 — Snapshot / Clear. Snapshot freezes the profile drawRadar last built
+  // (lastRaw), then re-renders so the ghost + drift appear immediately; Clear drops
+  // it. Both are render-only — the chart is never touched.
+  btnSnap?.addEventListener('click', () => { if (lastRaw) { saveSnap(lastRaw); render(); } });
+  btnSnapClear?.addEventListener('click', () => { clearSnap(); render(); });
 })();
 
 // ──────────────────────────────────────────────────────────────────────────────

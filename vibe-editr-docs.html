@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.78 · 2026</span>
+  <span class="version">v0.0.79 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.79</span>Honest Profile Snapshot &amp; Drift &mdash; see how your edits move the difficulty</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Chart Statistics can now freeze a chart&rsquo;s honest profile and show how far your editing drifts it.</strong> The measured-difficulty family (v0.0.71&ndash;78) answers &ldquo;how hard is this chart <em>right now</em>&rdquo; &mdash; six measured axes drawn as the <strong>Honest Radar</strong> and reduced to one <strong>Est.&nbsp;level</strong>. A new <strong>&#128248; Snapshot</strong> button under the radar in the <strong>&#128202; Chart Statistics</strong> modal freezes that profile; keep editing, reopen the modal, and the snapshot is redrawn as a <em>dashed ghost polygon</em> behind the live shape, with a drift line reading the <strong>estimated-level change</strong> and the <strong>single axis that moved most</strong> (e.g.&nbsp;&ldquo;level ▲2 (15&rarr;17) &middot; biggest move JACK ▲18&rdquo;). A re-chart&rsquo;s difficulty shift reads as the gap between two shapes, so you can tell whether an edit actually made the section harder.</li>
+    <li><span class="tag add">add</span><strong>Per-chart, colour-coded, never a black box.</strong> A snapshot belongs to the chart it was taken on (keyed on title/artist, the same convention Quick Bookmarks uses), so switching charts hides the ghost until that chart has its own snapshot, and <strong>Clear</strong> drops it. Rises colour amber and falls colour green &mdash; harder-since is warm, easier-since is cool &mdash; and the drift line&rsquo;s hover tooltip spells out every axis&rsquo;s before&rarr;after score so the movement is fully auditable. The snapshot age (&ldquo;3m ago&rdquo;) is shown so you know what you&rsquo;re comparing against.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.honestProfileDelta(rawCur, rawPrev)</code> that reuses <code>chart.honestRadarProfile</code> and <code>chart.honestLevelEstimate</code> internally &mdash; so the drift, the ghost polygon and the Est.&nbsp;level readout it sits under can never disagree. The snapshot stores only the six raw axis numbers (never chart or KSON data) in <code>localStorage</code>; guarded end-to-end (NaN/missing axes degrade to 0, never throw; a corrupt store is ignored). The chart is never mutated. Verified with 20 Node unit tests and a real-browser run.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.78</span>Honest Level Estimate &mdash; the six measured axes reduced to one SDVX level</h4>
