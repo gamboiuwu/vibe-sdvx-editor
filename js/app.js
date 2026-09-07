@@ -1,4 +1,4 @@
-import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestRadarProfile, honestRadarScoreColor, honestLevelEstimate, honestLevelBand, HONEST_RADAR_READING_REF_TICKS, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
+import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, chordDifficultyBand, honestRadarProfile, honestRadarScoreColor, honestLevelEstimate, honestLevelBand, HONEST_RADAR_READING_REF_TICKS, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
 import { Renderer, C, laserColors, laserOpacity, laserWideMode, LASER_PRESETS, applyLaserPreset, setLaserColorCustom, buildLaneHeader, setLaserOpacity, setLaserWideMode } from './renderer.js';
 import { GameView } from './game.js';
 import { exportKsh, importKsh, downloadText } from './ksh.js';
@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.78';
+const APP_VERSION = '0.0.79';
 const CHANGELOG = [
+  {
+    version: '0.0.79',
+    title: 'Chord Load — the honest simultaneous-press number, the sixth physical-difficulty axis',
+    entries: [
+      ['add', '<strong>Chart Statistics now scores chords &mdash; the one thing every other number is blind to.</strong> The five honest axes so far all read notes spread over <em>time</em> or a single lane: <strong>Peak&nbsp;NPS</strong> counts button onsets per second (a four-note stab and four spaced notes in the same second look identical), <strong>Peak&nbsp;Jack</strong> counts a single lane repeating, <strong>Hand&nbsp;Balance</strong> splits L/R, <strong>Knob&nbsp;Load</strong> scores the Tsumami. None of them exposes <em>simultaneity</em> &mdash; how many BT/FX buttons your hands must strike on the exact same instant, and how often. A new <strong>Chord&nbsp;Load (per second)</strong> row in both the <strong>📊 Chart Statistics</strong> modal and the Tools-Hub Chart Statistics tool finally puts an honest figure on it.'],
+      ['add', '<strong>A chord is its own SDVX skill, not &ldquo;four notes worth of NPS&rdquo;.</strong> A chord instant is a tick carrying <strong>two or more</strong> distinct BT/FX presses; chord <em>size</em> is how many buttons hit at once (2&ndash;6, since 4&nbsp;BT&nbsp;+&nbsp;2&nbsp;FX). Chord Load reports the busiest one wall-clock second of chords <em>and</em> the largest chord anywhere &mdash; a <strong>quad</strong> is one four-finger stab, and a chord <em>stream</em> is among the hardest things a chart can ask for. A difficulty band reads it at a glance &mdash; <span style="color:#6fe08a">Light</span>, <span style="color:#66ddff">Moderate</span>, <span style="color:#ffcc55">Busy</span>, <span style="color:#ff8a3d">Heavy</span>, <span style="color:#ff4d4d">Extreme</span> &mdash; with &ldquo;up to N-note&rdquo; and the total chord count shown alongside. Onsets only (a hold counts once at its start); lasers are continuous knob motion, not presses, so they&rsquo;re excluded &mdash; the same convention Peak&nbsp;NPS uses.'],
+      ['add', '<strong>BPM-independent, render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.chordStress(opts)</code> that groups every onset by tick (distinct lanes only, so a stray same-lane double can&rsquo;t inflate a chord), stamps each chord to seconds through the same <code>tickToSeconds</code> time model the C-Mode scroll, the audio path and <code>chart.notesPerSecond</code> all use, then slides the same provably-exact 1-second window &mdash; so a chord storm at 240&nbsp;BPM honestly outscores the identical tick pattern at 120. A shared <code>chart.chordDifficultyBand(peakCps)</code> drives the label and colour so the modal and the tool can never disagree. <code>computeChartStats</code> folds it in beside Knob&nbsp;Load (guarded so a plain-object caller degrades to zero, never throws). The chart is never mutated. Verified with 30 Node unit tests (empty&nbsp;&rarr;&nbsp;zeros; a quad&nbsp;&rarr;&nbsp;size&nbsp;4; the same chord stream at 240&nbsp;BPM = exactly double the 120&nbsp;BPM rate; a same-lane double is not a chord) and a real-browser run with zero JS errors.'],
+    ],
+  },
   {
     version: '0.0.78',
     title: 'Honest Level Estimate — the six measured axes, reduced to one SDVX level',
@@ -11507,6 +11516,18 @@ const DisclaimerGate = (function() {
           ? ` <span style="opacity:.6;font-size:.82em">${s.knobSlams || 0} slam${(s.knobSlams||0)!==1?'s':''}, ${s.knobReversals || 0} rev</span>`
           : '';
         return `<strong>${(s.peakKps || 0).toFixed(1)}</strong> <span style="color:${band.color};font-weight:600">${band.label}</span>${detail}`;
+      })()),
+      // v0.0.79 — Chord Load: the sixth physical-difficulty axis and the first for
+      // SIMULTANEITY. Busiest wall-clock second of simultaneous BT/FX presses
+      // (chords, size >= 2), plus the largest chord in the chart, banded via the
+      // shared chordDifficultyBand so the colour and label match anywhere it surfaces.
+      row('Chord Load (per second)', (() => {
+        const band = chordDifficultyBand(s.peakCps);
+        const sizeName = { 2: 'pairs', 3: 'triples', 4: 'quads', 5: 'quints', 6: 'sexts' }[s.maxChord] || '';
+        const detail = (s.chordTotal || 0) > 0
+          ? ` <span style="opacity:.6;font-size:.82em">up to ${s.maxChord}-note${sizeName ? ` (${sizeName})` : ''}, ${s.chordTotal} total</span>`
+          : '';
+        return `<strong>${(s.peakCps || 0).toFixed(1)}</strong> <span style="color:${band.color};font-weight:600">${band.label}</span>${detail}`;
       })()),
     ].join('');
   }

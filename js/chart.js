@@ -139,6 +139,15 @@ export function computeChartStats(chart) {
     ? chart.knobStress({})
     : { peakKps: 0, peakTick: 0, meanKps: 0, total: 0, slams: 0, reversals: 0, grabs: 0 };
 
+  // Honest, BPM-independent chord load (v0.0.79) — the busiest wall-clock second of
+  // simultaneous BT/FX presses (chords, size >= 2) plus the largest chord in the
+  // chart, from the v0.0.79 engine, surfaced beside Knob Load as the SIXTH physical-
+  // difficulty axis and the first that scores SIMULTANEITY. Reuses chart.chordStress
+  // as the single source of truth; guarded so a plain-object caller degrades to zero.
+  const chordRes = (typeof chart.chordStress === 'function')
+    ? chart.chordStress({})
+    : { peakCps: 0, peakTick: 0, meanCps: 0, total: 0, maxChord: 0, maxChordTick: 0, pairs: 0, triples: 0, quads: 0, bigger: 0 };
+
   return {
     btChip, btHold, fxChip, fxHold,
     btTotal: btChip + btHold, fxTotal: fxChip + fxHold,
@@ -154,6 +163,10 @@ export function computeChartStats(chart) {
     peakKps: knobRes.peakKps, meanKps: knobRes.meanKps, peakKnobTick: knobRes.peakTick,
     knobSlams: knobRes.slams, knobReversals: knobRes.reversals, knobGrabs: knobRes.grabs,
     knobTotal: knobRes.total,
+    peakCps: chordRes.peakCps, meanCps: chordRes.meanCps, peakChordTick: chordRes.peakTick,
+    maxChord: chordRes.maxChord, maxChordTick: chordRes.maxChordTick,
+    chordPairs: chordRes.pairs, chordTriples: chordRes.triples, chordQuads: chordRes.quads,
+    chordBigger: chordRes.bigger, chordTotal: chordRes.total,
     coverL, coverR,
     bpmMin, bpmMax, bpmRange,
     bpmCount: chart.bpmEvents.length,
@@ -237,6 +250,29 @@ export function knobDifficultyBand(peakKps) {
   if (v >= 12) return { key: 'heavy',   label: 'Heavy',   color: '#ff8a3d' };
   if (v >= 8)  return { key: 'busy',    label: 'Busy',    color: '#ffcc55' };
   if (v >= 4)  return { key: 'moderate',label: 'Moderate',color: '#66ddff' };
+  if (v > 0)   return { key: 'light',   label: 'Light',   color: '#6fe08a' };
+  return { key: 'none', label: 'None', color: '#6fe08a' };
+}
+
+// ── Chord difficulty band (v0.0.79) ───────────────────────────────────────────
+// Classify a peak chords-per-second value (the busiest wall-clock second of
+// simultaneous BT/FX presses from chart.chordStress) into a coarse chord-load
+// band — the SIXTH honest physical-difficulty number and the sibling of
+// npsDifficultyBand / jackDifficultyBand / knobDifficultyBand. NPS counts onsets
+// spread over TIME and jack counts a SINGLE lane repeating; neither exposes how
+// often the chart demands several fingers strike AT ONCE. Thresholds are
+// calibrated to how chording FEELS: an occasional 2-note chord is trivial (~1/s);
+// a steady stream of pairs/triples sits around 4-6/s; a wall of chords — dense
+// quad/chord-jack runs — climbs past 8 and reads Extreme. Pure and DOM-free so
+// the modal and any future caller colour/label from ONE source of truth; matches
+// the difficulty-band palette (calm green → cyan → amber → hot). Returns the
+// lowest band ("None") for 0 / NaN so a chord-free chart never reads blank.
+export function chordDifficultyBand(peakCps) {
+  const v = Math.max(0, Number(peakCps) || 0);
+  if (v >= 8)  return { key: 'extreme', label: 'Extreme', color: '#ff4d4d' };
+  if (v >= 6)  return { key: 'heavy',   label: 'Heavy',   color: '#ff8a3d' };
+  if (v >= 4)  return { key: 'busy',    label: 'Busy',    color: '#ffcc55' };
+  if (v >= 2)  return { key: 'moderate',label: 'Moderate',color: '#66ddff' };
   if (v > 0)   return { key: 'light',   label: 'Light',   color: '#6fe08a' };
   return { key: 'none', label: 'None', color: '#6fe08a' };
 }
@@ -1602,6 +1638,93 @@ export class ChartData {
       peakTick: rows[peakIdx].tick,
       peakTime: rows[peakIdx].sec,
       meanKps, total, slams, reversals, grabs, spanSec, windowSec,
+    };
+  }
+
+  // ── Chord Load / simultaneous-press stress (v0.0.79) ───────────────────────
+  // The SIXTH honest physical-difficulty axis, and the one every earlier number
+  // is blind to. The v0.0.71-73 NPS counts button onsets spread over TIME (a
+  // 4-note chord and four spaced notes in the same second read identically); the
+  // v0.0.74 jack counts a SINGLE lane repeating; hand balance splits L/R; knob
+  // load scores the Tsumami. None of them exposes SIMULTANEITY — how many BT/FX
+  // buttons the hands must strike on the exact same instant, and how often. A
+  // chord (two or more presses on one tick) is its own SDVX skill: a quad is not
+  // "four notes worth of NPS", it is one four-finger stab, and a chord STREAM is
+  // among the hardest things a chart can ask for.
+  //
+  // A chord instant = a tick carrying >= 2 distinct BT/FX presses. Chord SIZE is
+  // the count of distinct lanes on that tick (2..6, since 4 BT + 2 FX). Onsets
+  // only (a hold = one press at its start tick, the SAME convention every note-
+  // side axis uses); lasers are continuous knob motion, not presses, so they are
+  // excluded here exactly as they are from NPS/jack/hand. Every chord instant is
+  // stamped at its tick and converted to seconds through the same tickToSeconds
+  // time model the C-Mode scroll, the audio path and notesPerSecond all use, then
+  // the same provably-exact onset-anchored 1-second sliding window finds the
+  // busiest chord second — so a chord storm at 240 BPM honestly outscores the
+  // identical tick pattern at 120. BPM-independent, DOM-free and unit-tested; the
+  // chart is never mutated. Returns:
+  //   peakCps    busiest chords-per-second anywhere (0 if the chart has no chords)
+  //   peakTick   tick of the first chord in the busiest window (for seek)
+  //   peakTime   that chord's time in seconds
+  //   meanCps    chords across the whole chord span / that span in seconds
+  //   total      total chord instants (size >= 2)
+  //   maxChord   largest simultaneous press count anywhere (0 / else 2..6)
+  //   maxChordTick  tick of the first max-size chord (for seek)
+  //   pairs / triples / quads / bigger  chord-size distribution (bigger = size>=5)
+  chordStress(opts = {}) {
+    const windowSec = Math.max(0.05, Number(opts.windowSec) || 1.0);
+    // Group every BT/FX onset by its tick, keeping DISTINCT lanes only so a
+    // stray same-lane double can't inflate a chord's size.
+    const lanes = [...this.bt, ...this.fx];   // 4 BT + 2 FX, lane index 0..5
+    const byTick = new Map();                  // tick -> Set(laneIdx)
+    for (let li = 0; li < lanes.length; li++) {
+      const lane = lanes[li] || [];
+      for (const n of lane) {
+        let set = byTick.get(n.y);
+        if (!set) { set = new Set(); byTick.set(n.y, set); }
+        set.add(li);
+      }
+    }
+    let maxChord = 0, maxChordTick = 0;
+    let pairs = 0, triples = 0, quads = 0, bigger = 0;
+    const rows = [];   // { tick, sec } per chord instant (size >= 2)
+    for (const [tick, set] of byTick) {
+      const size = set.size;
+      if (size < 2) continue;                  // a lone press is not a chord
+      rows.push({ tick, sec: this.tickToSeconds(tick) });
+      if (size === 2) pairs++;
+      else if (size === 3) triples++;
+      else if (size === 4) quads++;
+      else bigger++;
+      if (size > maxChord) { maxChord = size; maxChordTick = tick; }
+      else if (size === maxChord && tick < maxChordTick) { maxChordTick = tick; }
+    }
+    const total = rows.length;
+    if (total === 0) {
+      return { peakCps: 0, peakTick: 0, peakTime: 0, meanCps: 0, total: 0,
+               maxChord: 0, maxChordTick: 0, pairs: 0, triples: 0, quads: 0, bigger: 0,
+               spanSec: 0, windowSec };
+    }
+    rows.sort((a, b) => a.sec - b.sec || a.tick - b.tick);
+    // Busiest chord second — the same exact onset-anchored two-pointer sweep the
+    // NPS / knob engines use (the count-maximising window can always slide left to
+    // meet a chord instant without dropping one, so anchoring at instants is exact).
+    let peakCount = 0, peakIdx = 0, j = 0;
+    for (let i = 0; i < rows.length; i++) {
+      if (j < i) j = i;
+      const limit = rows[i].sec + windowSec;
+      while (j < rows.length && rows[j].sec < limit) j++;
+      const cnt = j - i;
+      if (cnt > peakCount) { peakCount = cnt; peakIdx = i; }
+    }
+    const spanSec = Math.max(0, rows[rows.length - 1].sec - rows[0].sec);
+    const meanCps = spanSec > 1e-6 ? total / spanSec : total / windowSec;
+    return {
+      peakCps: peakCount / windowSec,
+      peakTick: rows[peakIdx].tick,
+      peakTime: rows[peakIdx].sec,
+      meanCps, total, maxChord, maxChordTick,
+      pairs, triples, quads, bigger, spanSec, windowSec,
     };
   }
 
