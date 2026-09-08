@@ -403,6 +403,59 @@ export function honestLevelEstimate(raw = {}, opts = {}) {
   };
 }
 
+// v0.0.79 — Level Verdict. Compares the MEASURED honest level (honestLevelEstimate)
+// against the chart's DECLARED difficulty (meta.level, the 1..20 an SDVX chart
+// carries) and turns the gap into a plain-language verdict, so a chartist sees at a
+// glance when what they BUILT has drifted from what they LABELLED it. SDVX levels
+// rise with difficulty, so measured > declared means the chart plays HARDER than
+// its label (UNDER-rated — the number is too low); measured < declared means it
+// plays EASIER (OVER-rated — the number is too high). PURE and DOM-free: takes two
+// numbers, never touches the chart. A non-finite or out-of-range declared level
+// (a chart with no meta.level set, or a 0) yields tier 'unset' so the caller can
+// suppress the verdict rather than flag a false mismatch. The bands are
+// intentionally forgiving — one level of drift is a healthy MATCH, because the
+// estimate is honestly labelled an estimate, not a verdict on the chartist.
+// Returns { declared, measured, delta, absDelta, tier, direction, label, color, message }.
+export function levelVerdict(measuredLevel, declaredLevel) {
+  const m = Math.round(Number(measuredLevel));
+  const d = Math.round(Number(declaredLevel));
+  const mOk = Number.isFinite(m) && m >= 1 && m <= 20;
+  const dOk = Number.isFinite(d) && d >= 1 && d <= 20;
+  if (!mOk || !dOk) {
+    return {
+      declared: dOk ? d : null, measured: mOk ? m : null,
+      delta: 0, absDelta: 0, tier: 'unset', direction: 'none',
+      label: 'No declared level', color: '#8a8cc0',
+      message: 'Set a chart level in the metadata to compare it against the measured estimate.',
+    };
+  }
+  const delta = m - d;
+  const absDelta = Math.abs(delta);
+  const direction = delta > 0 ? 'under' : delta < 0 ? 'over' : 'exact';
+  let tier, color;
+  if (absDelta <= 1)       { tier = 'match';  color = '#6fe08a'; }
+  else if (absDelta === 2) { tier = 'slight'; color = '#66ddff'; }
+  else if (absDelta <= 4)  { tier = 'off';    color = '#ff8a3d'; }
+  else                     { tier = 'severe'; color = '#ff4d4d'; }
+
+  let label, message;
+  if (tier === 'match') {
+    label = 'Matches declared';
+    message = delta === 0
+      ? `The measured level (${m}) is exactly the declared level (${d}).`
+      : `The measured level (${m}) is within 1 of the declared level (${d}) — a healthy match.`;
+  } else {
+    const word  = direction === 'under' ? 'under-rated' : 'over-rated';
+    const plays = direction === 'under'
+      ? `plays ${absDelta} harder than its label`
+      : `plays ${absDelta} easier than its label`;
+    const sev = tier === 'slight' ? 'Slightly ' : tier === 'severe' ? 'Strongly ' : '';
+    label = `${sev}${word}`;
+    message = `Declared ${d}, measured ${m} — the chart ${plays} (${delta > 0 ? '+' : ''}${delta}).`;
+  }
+  return { declared: d, measured: m, delta, absDelta, tier, direction, label, color, message };
+}
+
 // ── Quantize / Nudge engine ──────────────────────────────────────────────────
 // Shared, side-effect-isolated tick math used by the Tools Hub "Quantize" tool.
 // Kept here (not in tools.js) so it can be unit-tested without a DOM, and so any

@@ -1,4 +1,4 @@
-import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestRadarProfile, honestRadarScoreColor, honestLevelEstimate, honestLevelBand, HONEST_RADAR_READING_REF_TICKS, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
+import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestRadarProfile, honestRadarScoreColor, honestLevelEstimate, honestLevelBand, levelVerdict, HONEST_RADAR_READING_REF_TICKS, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
 import { Renderer, C, laserColors, laserOpacity, laserWideMode, LASER_PRESETS, applyLaserPreset, setLaserColorCustom, buildLaneHeader, setLaserOpacity, setLaserWideMode } from './renderer.js';
 import { GameView } from './game.js';
 import { exportKsh, importKsh, downloadText } from './ksh.js';
@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.78';
+const APP_VERSION = '0.0.79';
 const CHANGELOG = [
+  {
+    version: '0.0.79',
+    title: 'Level Verdict — measured difficulty vs. the level you declared',
+    entries: [
+      ['add', '<strong>Chart Statistics now tells you whether your chart is rated honestly.</strong> v0.0.78 reduced the six measured Honest-Radar axes to a single <strong>Est. level</strong> — the &ldquo;what level did I just make?&rdquo; number. But a chart also carries a <em>declared</em> difficulty in its metadata (the 1&ndash;20 an SDVX chart ships with), and nothing ever compared the two. A new <strong>Level Verdict</strong> line sits directly under the Est. level in the <strong>📊 Chart Statistics</strong> modal: it reads your chart&rsquo;s <code>meta.level</code>, sets it beside the measured estimate, and flags the gap — so a chart labelled <strong>15</strong> that actually plays like an <strong>18</strong> is caught the moment you open the panel.'],
+      ['add', '<strong>Plain-language, direction-aware, forgiving by one.</strong> SDVX levels rise with difficulty, so measured&nbsp;&gt;&nbsp;declared means the chart <strong>plays harder than its label</strong> (<span style="color:#ff8a3d">under-rated</span> — the number is too low), and measured&nbsp;&lt;&nbsp;declared means it plays easier (<span style="color:#ff8a3d">over-rated</span>). One level of drift reads as a healthy <span style="color:#6fe08a">✓ Matches declared</span> — the estimate is honestly an <em>estimate</em>, not a verdict on the chartist — then a two-level gap is <span style="color:#66ddff">Slightly&nbsp;off</span>, three-to-four is off, and five-plus is <span style="color:#ff4d4d">Strongly under/over-rated</span>. A chart with no level set stays quiet rather than crying &ldquo;mismatch&rdquo; against an unset field. The hover tooltip spells out the exact arithmetic (&ldquo;Declared&nbsp;15, measured&nbsp;18 — the chart plays 3 harder than its label&rdquo;).'],
+      ['add', '<strong>Now in both Chart Statistics surfaces, render-only, one source of truth.</strong> Following the pattern every prior measured metric uses, the <strong>Est. level</strong> and <strong>Level Verdict</strong> also appear as rows in the Tools-Hub <strong>Chart Statistics</strong> tool, driven by the same numbers as the modal so the two can never disagree. Backed by a new DOM-free, unit-tested <code>chart.levelVerdict(measured, declared)</code> that returns the tier, direction, colour and message; guarded end-to-end (a non-finite or out-of-range declared level degrades to an <em>unset</em> tier, never a false flag; junk inputs stay finite and never throw). The chart is never mutated. Verified with 28 Node unit tests and a real-browser run.'],
+    ],
+  },
   {
     version: '0.0.78',
     title: 'Honest Level Estimate — the six measured axes, reduced to one SDVX level',
@@ -11316,6 +11325,7 @@ const DisclaimerGate = (function() {
   const radarCanvas  = document.getElementById('cs-radar');
   const radarCaption = document.getElementById('cs-radar-caption');
   const levelReadout = document.getElementById('cs-level');
+  const verdictReadout = document.getElementById('cs-verdict');
 
   // v0.0.77 — Honest Radar. Draw the six measured difficulty axes as one polygon
   // from the SAME numbers the text rows below use, via the DOM-free
@@ -11331,6 +11341,7 @@ const DisclaimerGate = (function() {
     if (!s) {
       if (radarCaption) radarCaption.textContent = '—';
       if (levelReadout) levelReadout.textContent = '—';
+      if (verdictReadout) { verdictReadout.textContent = ''; verdictReadout.title = ''; }
       return;
     }
 
@@ -11406,6 +11417,7 @@ const DisclaimerGate = (function() {
       const hasNotes = (s.totalNotes || 0) > 0;
       if (!hasNotes) {
         levelReadout.textContent = '—';
+        if (verdictReadout) { verdictReadout.textContent = ''; verdictReadout.title = ''; }
       } else {
         const est = honestLevelEstimate(raw);
         const driver = est.axes.find(a => a.key === est.peakAxis);
@@ -11421,6 +11433,29 @@ const DisclaimerGate = (function() {
           `volatility heuristic). composite ${est.composite.toFixed(1)}/100 = ` +
           `0.6·peak(${est.peakScore.toFixed(0)}) + 0.4·mean(${est.meanScore.toFixed(0)}) ` +
           `→ ${est.levelFloat.toFixed(1)}, rounded to ${est.level}. An estimate, not a verdict.`;
+
+        // v0.0.79 — Level Verdict. Compare the measured estimate against the chart's
+        // DECLARED difficulty (meta.level) so a mismatch — a chart labelled 15 that
+        // measures 18 — is flagged. Reuses the DOM-free chart.levelVerdict single
+        // source of truth. If no level is declared it stays quiet rather than crying
+        // "mismatch" against an unset field.
+        if (verdictReadout) {
+          const declared = chart && chart.meta ? chart.meta.level : null;
+          const vd = levelVerdict(est.level, declared);
+          if (vd.tier === 'unset') {
+            verdictReadout.innerHTML =
+              `<span style="opacity:.55">vs declared —</span> <span style="color:${vd.color}">no chart level set</span>`;
+            verdictReadout.title = vd.message;
+          } else {
+            const icon = vd.tier === 'match' ? '✓' : '⚠';
+            verdictReadout.innerHTML =
+              `<span style="opacity:.6">Declared</span> <strong>${vd.declared}</strong>` +
+              ` <span style="opacity:.4">·</span> ` +
+              `<span style="color:${vd.color};font-weight:600">${icon} ${vd.label}</span>` +
+              (vd.tier === 'match' ? '' : ` <span style="color:${vd.color};opacity:.85">(${vd.delta > 0 ? '+' : ''}${vd.delta})</span>`);
+            verdictReadout.title = vd.message;
+          }
+        }
       }
     }
 
