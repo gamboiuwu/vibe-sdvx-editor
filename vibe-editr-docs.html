@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.78 · 2026</span>
+  <span class="version">v0.0.79 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.79</span>Level Verdict &mdash; measured difficulty vs. the level you declared</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Chart Statistics now tells you whether your chart is rated honestly.</strong> v0.0.78 reduced the six measured Honest-Radar axes to a single <strong>Est.&nbsp;level</strong>. But a chart also carries a <em>declared</em> difficulty in its metadata (the 1&ndash;20 an SDVX chart ships with), and nothing ever compared the two. A new <strong>Level Verdict</strong> line sits directly under the Est.&nbsp;level in the <strong>&#128202; Chart Statistics</strong> modal: it reads your chart&rsquo;s <code>meta.level</code>, sets it beside the measured estimate, and flags the gap &mdash; so a chart labelled <strong>15</strong> that actually plays like an <strong>18</strong> is caught the moment you open the panel.</li>
+    <li><span class="tag add">add</span><strong>Plain-language, direction-aware, forgiving by one.</strong> SDVX levels rise with difficulty, so measured&nbsp;&gt;&nbsp;declared means the chart <strong>plays harder than its label</strong> (<span style="color:#ff8a3d">under-rated</span> &mdash; the number is too low), and measured&nbsp;&lt;&nbsp;declared means it plays easier (<span style="color:#ff8a3d">over-rated</span>). One level of drift reads as a healthy <span style="color:#6fe08a">&#10003; Matches declared</span> &mdash; the estimate is honestly an <em>estimate</em>, not a verdict on the chartist &mdash; then a two-level gap is <span style="color:#66ddff">Slightly&nbsp;off</span>, three-to-four is off, and five-plus is <span style="color:#ff4d4d">Strongly under/over-rated</span>. A chart with no level set stays quiet rather than crying &ldquo;mismatch&rdquo; against an unset field. The hover tooltip spells out the exact arithmetic.</li>
+    <li><span class="tag add">add</span><strong>Now in both Chart Statistics surfaces, render-only, one source of truth.</strong> Following the pattern every prior measured metric uses, the <strong>Est.&nbsp;level</strong> and <strong>Level Verdict</strong> also appear as rows in the Tools-Hub <strong>Chart Statistics</strong> tool, driven by the same numbers as the modal so the two can never disagree. Backed by a new DOM-free, unit-tested <code>chart.levelVerdict(measured, declared)</code> that returns the tier, direction, colour and message; guarded end-to-end (a non-finite or out-of-range declared level degrades to an <em>unset</em> tier, never a false flag; junk inputs stay finite and never throw). The chart is never mutated. Verified with 28 Node unit tests and a real-browser run.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.78</span>Honest Level Estimate &mdash; the six measured axes reduced to one SDVX level</h4>
