@@ -1,4 +1,4 @@
-import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestRadarProfile, honestRadarScoreColor, honestLevelEstimate, honestLevelBand, HONEST_RADAR_READING_REF_TICKS, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
+import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestRadarProfile, honestRadarScoreColor, honestLevelEstimate, honestLevelBand, levelMetaNudge, HONEST_RADAR_READING_REF_TICKS, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
 import { Renderer, C, laserColors, laserOpacity, laserWideMode, LASER_PRESETS, applyLaserPreset, setLaserColorCustom, buildLaneHeader, setLaserOpacity, setLaserWideMode } from './renderer.js';
 import { GameView } from './game.js';
 import { exportKsh, importKsh, downloadText } from './ksh.js';
@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.78';
+const APP_VERSION = '0.0.79';
 const CHANGELOG = [
+  {
+    version: '0.0.79',
+    title: 'Level Nudge — is your chart labelled the difficulty it actually plays?',
+    entries: [
+      ['add', '<strong>Chart Statistics now flags a mis-slotted chart.</strong> v0.0.78 gave every chart one <strong>measured</strong> SDVX level from the six honest axes — but a chart also carries a <em>declared</em> level (the slot you typed in <strong>meta.level</strong>), and nothing compared the two. A chart declared <strong>12</strong> that measures <strong>17</strong> is mis-labelled, and now the editor says so. A new <strong>Level Nudge</strong> sits right beside the <strong>Est.&nbsp;level</strong> readout in both the <strong>📊 Chart Statistics</strong> modal and the Tools-Hub Chart Statistics tool: when the declared and measured levels disagree it shows <strong>▲ plays harder</strong> / <strong>▼ plays easier</strong> with the exact gap (e.g. <em>declared 12, plays like 17 (+5)</em>); when they agree it shows a calm <strong>✓ Matches declared</strong>.'],
+      ['add', '<strong>Banded so a small drift never cries wolf.</strong> A level is an estimate, not a verdict, so a gap of <strong>±1</strong> reads as <span style="color:#6fe08a">Matches declared</span>; <strong>±2</strong> is a <span style="color:#66ddff">Slight mismatch</span>; <strong>±3–4</strong> a <span style="color:#ff8a3d">Notable mismatch</span>; <strong>±5&nbsp;or&nbsp;more</strong> a <span style="color:#ff4d4d">Large mismatch</span> — the same calm-green&nbsp;→&nbsp;hot-red ramp every honest band uses. A chart with no valid declared level (unset, or outside 1&ndash;20) simply shows no nudge rather than a false alarm, and a note-less chart shows no level at all.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.levelMetaNudge(measured, declared)</code> that classifies the gap once, so the modal and the tool can never disagree; it composes on top of the existing <code>chart.honestLevelEstimate</code> and never touches the chart. Guarded end-to-end (NaN/string/out-of-range declared levels degrade to &ldquo;no comparison&rdquo;, never throw). Verified with 18 Node unit tests plus a real-browser run across three declared levels (mismatch, exact match, unset) with zero JS errors.'],
+    ],
+  },
   {
     version: '0.0.78',
     title: 'Honest Level Estimate — the six measured axes, reduced to one SDVX level',
@@ -11411,16 +11420,36 @@ const DisclaimerGate = (function() {
         const driver = est.axes.find(a => a.key === est.peakAxis);
         const drvName = driver ? driver.short : (est.driver || '—');
         const drvCol  = driver ? driver.color : est.color;
+        // v0.0.79 — Declared-vs-Measured Nudge. When the chart carries a declared
+        // meta.level (the slot the chartist typed), compare it with the measured
+        // level and flag a mis-slot via the shared chart.levelMetaNudge classifier,
+        // so a "declared 15, plays like 18" gap is visible right beside the number.
+        const nudge = levelMetaNudge(est.level, chart && chart.meta && chart.meta.level);
+        let nudgeHtml = '';
+        if (nudge.valid && nudge.severity !== 'match') {
+          const arrow = nudge.direction === 'harder' ? '▲' : '▼';
+          const sign  = nudge.delta > 0 ? '+' : '';
+          nudgeHtml =
+            ` <span style="opacity:.5;font-size:11px">·</span>` +
+            ` <strong style="color:${nudge.color}">${arrow} ${nudge.label}</strong>` +
+            ` <span style="opacity:.6;font-size:11px">vs declared ${nudge.declared} (${sign}${nudge.delta})</span>`;
+        } else if (nudge.valid) {
+          nudgeHtml =
+            ` <span style="opacity:.5;font-size:11px">·</span>` +
+            ` <span style="color:${nudge.color};font-size:11px;opacity:.85">✓ matches declared ${nudge.declared}</span>`;
+        }
         levelReadout.innerHTML =
           `Est. level <strong style="color:${est.color};font-size:17px">${est.level}</strong>` +
           ` <span style="color:${est.color};opacity:.9">${est.band}</span>` +
           ` <span style="opacity:.6;font-size:11px">— driven by</span>` +
-          ` <strong style="color:${drvCol}">${drvName}</strong>`;
+          ` <strong style="color:${drvCol}">${drvName}</strong>` +
+          nudgeHtml;
         levelReadout.title =
           `Estimated SDVX level from the six measured Honest-Radar axes (not the ` +
           `volatility heuristic). composite ${est.composite.toFixed(1)}/100 = ` +
           `0.6·peak(${est.peakScore.toFixed(0)}) + 0.4·mean(${est.meanScore.toFixed(0)}) ` +
-          `→ ${est.levelFloat.toFixed(1)}, rounded to ${est.level}. An estimate, not a verdict.`;
+          `→ ${est.levelFloat.toFixed(1)}, rounded to ${est.level}. An estimate, not a verdict.` +
+          (nudge.valid ? `  Declared meta.level ${nudge.declared}; measured ${nudge.measured} (Δ${nudge.delta > 0 ? '+' : ''}${nudge.delta}).` : '');
       }
     }
 

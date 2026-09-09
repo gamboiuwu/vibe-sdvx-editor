@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.78 · 2026</span>
+  <span class="version">v0.0.79 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.79</span>Level Nudge &mdash; is your chart labelled the difficulty it actually plays?</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Chart Statistics now flags a mis-slotted chart.</strong> <strong>v0.0.78</strong> gave every chart one <em>measured</em> SDVX level from the six honest axes &mdash; but a chart also carries a <em>declared</em> level (the slot you typed in <strong>meta.level</strong>), and nothing compared the two. A chart declared <strong>12</strong> that measures <strong>17</strong> is mis-labelled, and now the editor says so. A new <strong>Level Nudge</strong> sits right beside the <strong>Est.&nbsp;level</strong> readout in both the <strong>&#128202; Chart Statistics</strong> modal and the Tools-Hub Chart Statistics tool: when the declared and measured levels disagree it shows <strong>&#9650; plays harder</strong> / <strong>&#9660; plays easier</strong> with the exact gap (e.g. <em>declared 12, plays like 17 (+5)</em>); when they agree it shows a calm <strong>&#10003; Matches declared</strong>.</li>
+    <li><span class="tag add">add</span><strong>Banded so a small drift never cries wolf.</strong> A level is an estimate, not a verdict, so a gap of <strong>&plusmn;1</strong> reads as <span style="color:#6fe08a">Matches declared</span>; <strong>&plusmn;2</strong> is a <span style="color:#66ddff">Slight mismatch</span>; <strong>&plusmn;3&ndash;4</strong> a <span style="color:#ff8a3d">Notable mismatch</span>; <strong>&plusmn;5&nbsp;or&nbsp;more</strong> a <span style="color:#ff4d4d">Large mismatch</span> &mdash; the same calm-green&nbsp;&rarr;&nbsp;hot-red ramp every honest band uses. A chart with no valid declared level (unset, or outside 1&ndash;20) simply shows no nudge rather than a false alarm, and a note-less chart shows no level at all.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.levelMetaNudge(measured, declared)</code> that classifies the gap once, so the modal and the tool can never disagree; it composes on top of the existing <code>chart.honestLevelEstimate</code> and never touches the chart. Guarded end-to-end (NaN/string/out-of-range declared levels degrade to &ldquo;no comparison&rdquo;, never throw). Verified with 18 Node unit tests plus a real-browser run across three declared levels (mismatch, exact match, unset) with zero JS errors.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.78</span>Honest Level Estimate &mdash; the six measured axes reduced to one SDVX level</h4>
