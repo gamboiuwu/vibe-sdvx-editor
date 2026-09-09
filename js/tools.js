@@ -1,5 +1,5 @@
 import { chart, renderer, gameView, render, saveUndo, updateSeekbar, addChartAnnotation, _seekTo, sel, playing, audioBuffer, flipHorizontalRange, flipTemporalRange, updateStopEventList } from './app.js';
-import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick } from './chart.js';
+import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestLevelEstimate, honestLevelBand, levelMetaNudge, HONEST_RADAR_READING_REF_TICKS, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick } from './chart.js';
 import { Renderer } from './renderer.js';
 import { updateRadar } from './radar.js';
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -5899,6 +5899,39 @@ function _toolChartStats(c) {
         const kb = knobDifficultyBand(st.peakKps);
         const det = (st.knobTotal || 0) > 0 ? ` <span style="opacity:.55">(${st.knobSlams || 0} slam${(st.knobSlams||0)!==1?'s':''}, ${st.knobReversals || 0} rev)</span>` : '';
         return `${(st.peakKps || 0).toFixed(1)} <span style="color:${kb.color};font-weight:600">${kb.label}</span>${det}`;
+      })() },
+      // v0.0.78 — Est. level: the six honest axes reduced to one SDVX level 1..20
+      // via the shared, DOM-free chart.honestLevelEstimate — the same engine (and
+      // the same `raw`) the Chart Statistics modal's Honest-Radar level line uses,
+      // so the tool and the modal can never disagree. Gated on notes: a note-less
+      // chart has no level to estimate (its axes are all 0), matching the modal.
+      // v0.0.79 — Declared-vs-Measured Nudge: appended when meta.level is a valid
+      // 1..20 slot, flagging a chart that plays harder/easier than its label via
+      // the shared chart.levelMetaNudge classifier. Render-only; never mutates.
+      { label: 'Est. level',           value: (() => {
+        if (totalNoteEvents <= 0) return '<span style="opacity:.5">— (no notes)</span>';
+        // Reading load needs notes and a real BPM; mirror the modal's raw builder.
+        const readingMs = (typeof ch.reactionWindowMs === 'function')
+          ? ch.reactionWindowMs(HONEST_RADAR_READING_REF_TICKS, st.bpmMax || 120, 1)
+          : 0;
+        const est = honestLevelEstimate({
+          readingMs,
+          peakNps: st.peakNps, meanNps: st.meanNps, peakJps: st.peakJps,
+          heavierShare: st.handHeavierShare, peakKps: st.peakKps,
+        });
+        let out = `<strong style="color:${est.color};font-size:14px">${est.level}</strong>` +
+          ` <span style="color:${est.color};font-weight:600">${est.band}</span>` +
+          ` <span style="opacity:.55">— driven by ${est.driver || '—'}</span>`;
+        const nudge = levelMetaNudge(est.level, ch.meta && ch.meta.level);
+        if (nudge.valid && nudge.severity !== 'match') {
+          const arrow = nudge.direction === 'harder' ? '▲' : '▼';
+          const sign  = nudge.delta > 0 ? '+' : '';
+          out += `<br><span style="color:${nudge.color};font-weight:600">${arrow} ${nudge.label}</span>` +
+            ` <span style="opacity:.7">— declared ${nudge.declared}, plays like ${nudge.measured} (${sign}${nudge.delta})</span>`;
+        } else if (nudge.valid) {
+          out += `<br><span style="color:${nudge.color};opacity:.8">✓ Matches declared ${nudge.declared}</span>`;
+        }
+        return out;
       })() },
       { label: 'Total note events',    value: totalNoteEvents },
       { label: 'BPM events',           value: ch.bpmEvents.length },

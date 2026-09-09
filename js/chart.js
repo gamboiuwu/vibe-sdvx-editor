@@ -403,6 +403,43 @@ export function honestLevelEstimate(raw = {}, opts = {}) {
   };
 }
 
+// v0.0.79 — Declared-vs-Measured Level Nudge. The natural follow-up to the
+// v0.0.78 Honest Level Estimate (Upcoming-Changes Point 60 b3): a chart carries a
+// DECLARED difficulty slot in meta.level (1..20, what the chartist typed), while
+// honestLevelEstimate produces a MEASURED level from the six honest axes. When the
+// two disagree by more than a slot the chart is mis-slotted — it plays harder or
+// easier than its label claims — and nothing in the editor surfaced that. This
+// pure, DOM-free classifier compares the two and bands the gap so the modal, the
+// Tools-Hub stat tool and any future caller read the mismatch from ONE source of
+// truth. `measured` is honestLevelEstimate(...).level; `declared` is meta.level.
+// A non-numeric / out-of-range declared level (no honest slot to compare against)
+// returns { valid:false } so the caller can simply omit the row. The chart is
+// never mutated. Returns
+//   { valid, delta, absDelta, direction, severity, label, color, declared, measured }.
+export function levelMetaNudge(measured, declared) {
+  const m = Math.round(Number(measured));
+  const d = Math.round(Number(declared));
+  // A declared level only means something on the same 1..20 scale the estimate
+  // uses; anything outside it (unset, 0, NaN, string) has no slot to compare.
+  if (!Number.isFinite(m) || !Number.isFinite(d) || d < 1 || d > 20) {
+    return { valid: false, delta: 0, absDelta: 0, direction: 'none',
+             severity: 'none', label: '', color: '#6fe08a',
+             declared: Number.isFinite(d) ? d : null, measured: Number.isFinite(m) ? m : null };
+  }
+  const delta = m - d;                 // + ⇒ plays harder than declared
+  const abs = Math.abs(delta);
+  const direction = delta > 0 ? 'harder' : delta < 0 ? 'easier' : 'match';
+  // Bands: ±1 is within reading noise (a level is an estimate, not a verdict), 2
+  // is a slight drift, 3–4 notable, 5+ a large mis-slot. Same calm-green → hot-red
+  // ramp every honest band uses, so the chip reads with consistent colour semantics.
+  let severity, label, color;
+  if (abs <= 1)      { severity = 'match';    label = 'Matches declared';  color = '#6fe08a'; }
+  else if (abs === 2){ severity = 'slight';   label = 'Slight mismatch';   color = '#66ddff'; }
+  else if (abs <= 4) { severity = 'notable';  label = 'Notable mismatch';  color = '#ff8a3d'; }
+  else               { severity = 'large';    label = 'Large mismatch';    color = '#ff4d4d'; }
+  return { valid: true, delta, absDelta: abs, direction, severity, label, color, declared: d, measured: m };
+}
+
 // ── Quantize / Nudge engine ──────────────────────────────────────────────────
 // Shared, side-effect-isolated tick math used by the Tools Hub "Quantize" tool.
 // Kept here (not in tools.js) so it can be unit-tested without a DOM, and so any
