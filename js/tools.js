@@ -1,5 +1,5 @@
 import { chart, renderer, gameView, render, saveUndo, updateSeekbar, addChartAnnotation, _seekTo, sel, playing, audioBuffer, flipHorizontalRange, flipTemporalRange, updateStopEventList } from './app.js';
-import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick } from './chart.js';
+import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestRawFromStats, honestLevelEstimate, levelCheck, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick } from './chart.js';
 import { Renderer } from './renderer.js';
 import { updateRadar } from './radar.js';
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -5904,6 +5904,34 @@ function _toolChartStats(c) {
       { label: 'BPM events',           value: ch.bpmEvents.length },
       { label: 'Chart sections',       value: (ch.sections||[]).length },
     ];
+
+    // v0.0.78/79 — the honest ESTIMATED level and the DECLARED-vs-measured Level
+    // Check, brought to the tool for parity with the Chart Statistics modal. Both
+    // reduce the SAME six measured axes (built by the shared honestRawFromStats,
+    // so the tool and the modal can never disagree) — the level estimate to one
+    // 1..20 number, the check to how far meta.level is from it. Gated on "has
+    // notes" exactly like the modal (a note-less chart has no level to estimate).
+    if (totalNoteEvents > 0) {
+      const raw = honestRawFromStats(st, ch.reactionWindowMs ? ch.reactionWindowMs.bind(ch) : null);
+      const est = honestLevelEstimate(raw);
+      const drv = est.axes.find(a => a.key === est.peakAxis);
+      details.push({ label: 'Est. level', value:
+        `<b style="color:${est.color}">${est.level}</b> ` +
+        `<span style="color:${est.color};font-weight:600">${est.band}</span>` +
+        (drv ? ` <span style="opacity:.55">(driven by ${drv.short})</span>` : '') });
+      const lc = levelCheck(ch.meta ? ch.meta.level : null, raw);
+      if (lc.status !== 'undeclared') {
+        const arrow = lc.delta > 0 ? '▲' : lc.delta < 0 ? '▼' : '=';
+        const deltaTxt = lc.delta === 0 ? '±0' : (lc.delta > 0 ? `+${lc.delta}` : `${lc.delta}`);
+        details.push({ label: 'Level Check', value:
+          `declared <b>${lc.declared}</b> vs measured <b style="color:${lc.measuredColor}">${lc.measured}</b> ` +
+          `<span style="color:${lc.color};font-weight:600">${arrow} ${lc.label}</span> ` +
+          `<span style="opacity:.5">(${deltaTxt})</span>` });
+      } else {
+        details.push({ label: 'Level Check', value:
+          `<span style="opacity:.55">set a Level (1–20) in metadata to compare</span>` });
+      }
+    }
     details.forEach(({ label, value }) => {
       const kv = _h('div', 'tool-kv', '');
       kv.innerHTML = `<span class="tool-kv-key">${label}</span><span class="tool-kv-val">${value}</span>`;
