@@ -403,6 +403,73 @@ export function honestLevelEstimate(raw = {}, opts = {}) {
   };
 }
 
+// Build the raw axis object the honest Radar / Level engines consume, from the
+// values computeChartStats already produces plus the reaction-window engine, so
+// the Chart-Statistics MODAL and the Tools-Hub Chart-Statistics TOOL feed the
+// honest engines from ONE source and can never drift. `reactionMsFn` is the
+// chart's own reactionWindowMs method (passed in to keep this DOM-free / testable);
+// the READING spoke is gated on "has notes" exactly like the modal, since a
+// note-less chart has a defined BPM but no reading demand. Pure and DOM-free.
+export function honestRawFromStats(s, reactionMsFn) {
+  if (!s) return {};
+  const bpmMax = s.bpmMax || 120;
+  const hasNotes = (s.totalNotes || 0) > 0;
+  const readingMs = (hasNotes && typeof reactionMsFn === 'function')
+    ? reactionMsFn(HONEST_RADAR_READING_REF_TICKS, bpmMax, 1)
+    : 0;
+  return {
+    readingMs,
+    peakNps: s.peakNps, meanNps: s.meanNps, peakJps: s.peakJps,
+    heavierShare: s.handHeavierShare, peakKps: s.peakKps,
+  };
+}
+
+// v0.0.79 — Level Check. The natural follow-up to v0.0.78's Honest Level Estimate
+// (recommendation b3): a chart carries a DECLARED difficulty in meta.level (the
+// 1..20 slot the author is aiming for), but nothing ever compared that against the
+// MEASURED honest level the six axes actually produce. levelCheck reduces the same
+// raw axes to a measured level (via honestLevelEstimate, so it agrees with the
+// radar and the Est.-level line by construction) and reports how far the declared
+// label is from it — so "I called this a 15 but it plays like an 18" becomes a
+// single visible flag. delta = measured − declared: POSITIVE means the chart is
+// HARDER than its label (under-rated), NEGATIVE means EASIER (over-rated). A ±1
+// tolerance reads as "matches" (estimation noise); ±2 is "slightly" off; ≥3 is a
+// clear mismatch. A missing / out-of-range declared level yields status
+// 'undeclared' rather than a false comparison. PURE and DOM-free — never touches
+// the chart. Returns { declared, measured, delta, mag, status, label, color,
+//   measuredBand, measuredColor, est }.
+export function levelCheck(declaredLevel, raw = {}, opts = {}) {
+  const est = honestLevelEstimate(raw, opts);
+  const measured = est.level;
+  const d = Number(declaredLevel);
+  const declared = (Number.isFinite(d) && d >= 1 && d <= 20) ? Math.round(d) : null;
+  if (declared == null) {
+    return {
+      declared: null, measured, delta: null, mag: null,
+      status: 'undeclared', label: 'No declared level', color: '#8a8fb5',
+      measuredBand: est.band, measuredColor: est.color, est,
+    };
+  }
+  const delta = measured - declared;
+  const mag = Math.abs(delta);
+  let status, label, color;
+  if (mag <= 1) {
+    status = 'match'; label = 'Matches declared'; color = '#6fe08a';
+  } else if (mag === 2) {
+    status = delta > 0 ? 'under' : 'over';
+    label = delta > 0 ? 'Slightly under-rated' : 'Slightly over-rated';
+    color = '#ffcc55';
+  } else {
+    status = delta > 0 ? 'under' : 'over';
+    label = delta > 0 ? 'Under-rated' : 'Over-rated';
+    color = delta > 0 ? '#ff8a3d' : '#66ddff';
+  }
+  return {
+    declared, measured, delta, mag, status, label, color,
+    measuredBand: est.band, measuredColor: est.color, est,
+  };
+}
+
 // ── Quantize / Nudge engine ──────────────────────────────────────────────────
 // Shared, side-effect-isolated tick math used by the Tools Hub "Quantize" tool.
 // Kept here (not in tools.js) so it can be unit-tested without a DOM, and so any
