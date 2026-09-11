@@ -1,5 +1,5 @@
 import { chart, renderer, gameView, render, saveUndo, updateSeekbar, addChartAnnotation, _seekTo, sel, playing, audioBuffer, flipHorizontalRange, flipTemporalRange, updateStopEventList } from './app.js';
-import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick } from './chart.js';
+import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestLevelEstimate, honestLevelBand, levelCheck, HONEST_RADAR_READING_REF_TICKS, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick } from './chart.js';
 import { Renderer } from './renderer.js';
 import { updateRadar } from './radar.js';
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -5899,6 +5899,38 @@ function _toolChartStats(c) {
         const kb = knobDifficultyBand(st.peakKps);
         const det = (st.knobTotal || 0) > 0 ? ` <span style="opacity:.55">(${st.knobSlams || 0} slam${(st.knobSlams||0)!==1?'s':''}, ${st.knobReversals || 0} rev)</span>` : '';
         return `${(st.peakKps || 0).toFixed(1)} <span style="color:${kb.color};font-weight:600">${kb.label}</span>${det}`;
+      })() },
+      // v0.0.78/79 — the measured Honest Level (the six axes reduced to one SDVX
+      // level 1..20) and, beside it, the Level Check reconciling that measured
+      // level against the chart's DECLARED meta.level. Both go through the same
+      // DOM-free chart.js engines (honestLevelEstimate / levelCheck) the Chart
+      // Statistics modal uses, so the tool and the modal can never disagree. A
+      // note-less chart has no measurable level, so both rows read "—".
+      { label: 'Est. level (measured)', value: (() => {
+        if (totalNoteEvents <= 0) return '—';
+        const readingMs = (typeof ch.reactionWindowMs === 'function')
+          ? ch.reactionWindowMs(HONEST_RADAR_READING_REF_TICKS, st.bpmMax || 120, 1) : 0;
+        const est = honestLevelEstimate({
+          readingMs, peakNps: st.peakNps, meanNps: st.meanNps, peakJps: st.peakJps,
+          heavierShare: st.handHeavierShare, peakKps: st.peakKps,
+        });
+        const drv = est.axes.find(a => a.key === est.peakAxis);
+        const drvName = drv ? drv.short : (est.driver || '—');
+        return `<strong style="color:${est.color}">${est.level}</strong> <span style="color:${est.color};font-weight:600">${est.band}</span> <span style="opacity:.55">— ${drvName}</span>`;
+      })() },
+      { label: 'Level Check (vs declared)', value: (() => {
+        if (totalNoteEvents <= 0) return '—';
+        const readingMs = (typeof ch.reactionWindowMs === 'function')
+          ? ch.reactionWindowMs(HONEST_RADAR_READING_REF_TICKS, st.bpmMax || 120, 1) : 0;
+        const est = honestLevelEstimate({
+          readingMs, peakNps: st.peakNps, meanNps: st.meanNps, peakJps: st.peakJps,
+          heavierShare: st.handHeavierShare, peakKps: st.peakKps,
+        });
+        const lc = levelCheck(ch.meta ? ch.meta.level : null, est.level);
+        if (!lc.hasDeclared) return `<span style="opacity:.55">declared level not set</span>`;
+        const arrow = lc.direction === 'under' ? '▲' : lc.direction === 'over' ? '▼' : '=';
+        const deltaTxt = lc.delta === 0 ? '±0' : (lc.delta > 0 ? `+${lc.delta}` : `${lc.delta}`);
+        return `Lv.${lc.declared} → ${lc.measured} <span style="color:${lc.color};font-weight:600">${arrow} ${lc.verdict}</span> <span style="color:${lc.color};opacity:.85">(${deltaTxt})</span>`;
       })() },
       { label: 'Total note events',    value: totalNoteEvents },
       { label: 'BPM events',           value: ch.bpmEvents.length },
