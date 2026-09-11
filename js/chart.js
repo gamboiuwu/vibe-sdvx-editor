@@ -403,6 +403,70 @@ export function honestLevelEstimate(raw = {}, opts = {}) {
   };
 }
 
+// v0.0.79 — Level Check. The measured-difficulty family (v0.0.71–78) grew a single
+// honest measured level (honestLevelEstimate, 1..20) — but nothing ever compared
+// that against the level the chartist DECLARED in the chart's own metadata
+// (chart.meta.level, stored in KSON). A chart labelled "Lv.15" that actually plays
+// like a measured 18 is mislabeled — it misleads players and difficulty folders —
+// and until now the editor had no way to surface that gap. levelCheck reconciles
+// the two: given the declared level and the measured level it returns the signed
+// gap, a severity verdict (banded by MAGNITUDE, since a mislabel in either
+// direction is worth flagging), a human label, a colour on the shared calm-green →
+// hot-red ramp, and a short piece of advice naming the direction. PURE and
+// DOM-free — reads two numbers, touches no chart data — so the Chart Statistics
+// modal and the Tools-Hub Chart Statistics tool reconcile from ONE source of truth
+// and can never disagree. Direction convention: delta = measured − declared, so a
+// POSITIVE delta means the chart plays HARDER than its label (under-rated) and a
+// negative delta means it plays EASIER than its label (over-rated).
+//
+// A declared level of 0 / NaN / negative / non-finite means "not declared" — the
+// caller should hide the line rather than flag a false mismatch. Returns
+//   { declared, measured, delta, absDelta, direction, severity, verdict, color,
+//     advice, hasDeclared }.
+export function levelCheck(declaredLevel, measuredLevel) {
+  const clampLvl = (x) => Math.max(1, Math.min(20, Math.round(Number(x) || 0)));
+  const dRaw = Number(declaredLevel);
+  const hasDeclared = Number.isFinite(dRaw) && dRaw >= 1;
+  const declared = hasDeclared ? clampLvl(dRaw) : null;
+  const measured = clampLvl(measuredLevel);
+
+  if (!hasDeclared) {
+    return {
+      declared: null, measured, delta: 0, absDelta: 0, direction: 'none',
+      severity: 'unknown', verdict: 'No declared level', color: '#8a8cc0',
+      advice: 'Set a level in the chart metadata to compare it against the measured difficulty.',
+      hasDeclared: false,
+    };
+  }
+
+  const delta = measured - declared;         // + = plays harder than labelled
+  const absDelta = Math.abs(delta);
+  const direction = delta > 0 ? 'under' : delta < 0 ? 'over' : 'match';
+
+  // Severity is banded by magnitude, not sign: any mislabel is a caution, a large
+  // one a warning. ±1 is within normal charting tolerance ⇒ "on target".
+  let severity, color;
+  if (absDelta <= 1)      { severity = 'ok';    color = '#6fe08a'; }
+  else if (absDelta <= 3) { severity = 'warn';  color = '#ffcc55'; }
+  else                    { severity = 'alert'; color = '#ff4d4d'; }
+
+  let verdict, advice;
+  if (direction === 'match' || (severity === 'ok')) {
+    verdict = 'On target';
+    advice = absDelta === 0
+      ? `Measured ${measured} matches the declared Lv.${declared}.`
+      : `Measured ${measured} is within one level of the declared Lv.${declared} — a normal charting margin.`;
+  } else if (direction === 'under') {
+    verdict = severity === 'alert' ? 'Far under-rated' : 'Under-rated';
+    advice = `Plays +${absDelta} above its Lv.${declared} label (measured ${measured}) — consider raising the declared level.`;
+  } else {
+    verdict = severity === 'alert' ? 'Far over-rated' : 'Over-rated';
+    advice = `Plays ${absDelta} below its Lv.${declared} label (measured ${measured}) — consider lowering the declared level.`;
+  }
+
+  return { declared, measured, delta, absDelta, direction, severity, verdict, color, advice, hasDeclared: true };
+}
+
 // ── Quantize / Nudge engine ──────────────────────────────────────────────────
 // Shared, side-effect-isolated tick math used by the Tools Hub "Quantize" tool.
 // Kept here (not in tools.js) so it can be unit-tested without a DOM, and so any
