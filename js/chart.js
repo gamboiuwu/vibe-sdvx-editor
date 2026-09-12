@@ -403,6 +403,67 @@ export function honestLevelEstimate(raw = {}, opts = {}) {
   };
 }
 
+// v0.0.79 — Level Check. Classify the SIGNED gap between a chart's DECLARED level
+// (chart.meta.level, the number the chartist typed) and its MEASURED level
+// (honestLevelEstimate().level, read from the six measured axes). A chartist can
+// mislabel a chart — call an 18 a 15 by habit, or over-rate a comfortable chart —
+// and until now nothing in the editor compared the two. delta = measured -
+// declared, so a POSITIVE delta means the chart plays HARDER than its label
+// (under-rated), a NEGATIVE delta means it plays EASIER (over-rated). The band is
+// keyed on |delta| so both directions read with the same severity ramp (a ±1 gap
+// is well within estimation noise and reads "on target"). Colours reuse the same
+// calm-green → hot-red semantics as every honest-difficulty band. Pure, DOM-free.
+export function levelDeltaBand(delta) {
+  const d  = Math.round(Number(delta) || 0);
+  const ad = Math.abs(d);
+  if (ad <= 1) return { status: 'match', severity: 0, direction: 'even',
+                        label: 'On target', color: '#6fe08a' };
+  const dir  = d > 0 ? 'harder' : 'easier';
+  // Under-rated = the label is too LOW for how the chart measures (plays harder);
+  // over-rated = the label is too HIGH (plays easier).
+  const word = d > 0 ? 'Under-rated' : 'Over-rated';
+  if (ad === 2) return { status: 'slight', severity: 1, direction: dir,
+                         label: `Slightly ${dir} than labelled`, color: '#ffcc55' };
+  if (ad <= 4)  return { status: 'off', severity: 2, direction: dir,
+                         label: `${word} · plays ${dir}`, color: '#ff8a3d' };
+  return             { status: 'far', severity: 3, direction: dir,
+                         label: `${word} · plays much ${dir}`, color: '#ff4d4d' };
+}
+
+// Reconcile a measured level (1..20) against a declared one (1..20). Returns
+// { hasCheck, measured, declared, delta, absDelta, status, severity, direction,
+//   label, color, advice }. When the measured level is unavailable (a note-less
+// chart estimates to nothing to compare) hasCheck is false and the caller shows
+// nothing. PURE and DOM-free — never touches the chart. Guarded: non-finite
+// inputs degrade to hasCheck:false rather than throwing.
+export function levelCheck(measuredLevel, declaredLevel) {
+  const clampL = (x) => Math.max(1, Math.min(20, Math.round(Number(x))));
+  const mOk = Number.isFinite(Number(measuredLevel)) && Number(measuredLevel) > 0;
+  const dOk = Number.isFinite(Number(declaredLevel)) && Number(declaredLevel) > 0;
+  if (!mOk || !dOk) {
+    return { hasCheck: false, measured: mOk ? clampL(measuredLevel) : null,
+             declared: dOk ? clampL(declaredLevel) : null, delta: 0, absDelta: 0,
+             status: 'none', severity: 0, direction: 'even',
+             label: '—', color: '#8a8cc0', advice: '' };
+  }
+  const measured = clampL(measuredLevel);
+  const declared = clampL(declaredLevel);
+  const delta    = measured - declared;
+  const absDelta = Math.abs(delta);
+  const band     = levelDeltaBand(delta);
+  let advice;
+  if (band.status === 'match') {
+    advice = `Measured level ${measured} matches the declared ${declared} — the label is honest.`;
+  } else if (delta > 0) {
+    advice = `Measured ${measured}, ${absDelta} above the declared ${declared} — the chart plays harder than its label. Consider raising the declared level or easing its hardest axis.`;
+  } else {
+    advice = `Measured ${measured}, ${absDelta} below the declared ${declared} — the chart plays easier than its label. Consider lowering the declared level or adding density.`;
+  }
+  return { hasCheck: true, measured, declared, delta, absDelta,
+           status: band.status, severity: band.severity, direction: band.direction,
+           label: band.label, color: band.color, advice };
+}
+
 // ── Quantize / Nudge engine ──────────────────────────────────────────────────
 // Shared, side-effect-isolated tick math used by the Tools Hub "Quantize" tool.
 // Kept here (not in tools.js) so it can be unit-tested without a DOM, and so any

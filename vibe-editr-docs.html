@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.78 · 2026</span>
+  <span class="version">v0.0.79 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.79</span>Level Check &mdash; is your declared level honest? Measured vs labelled, reconciled</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Chart Statistics now tells you whether the level you typed matches the level you built.</strong> The <strong>v0.0.78 Est.&nbsp;level</strong> gave every chart a single <em>measured</em> SDVX level from the six honest axes, but it sat next to the chart&rsquo;s <em>declared</em> <code>meta.level</code> without ever comparing them &mdash; so a chart typed as a 15 that measures an 18 looked fine. A new <strong>Level&nbsp;Check</strong> line sits directly under the Est.&nbsp;level in the <strong>&#128202; Chart Statistics</strong> modal (and as a row in the Tools-Hub Chart Statistics tool): it shows <em>declared vs measured</em>, the signed gap, and a verdict &mdash; <span style="color:#6fe08a">On&nbsp;target</span>, <span style="color:#ffcc55">Slightly&nbsp;off</span>, <span style="color:#ff8a3d">Under/Over-rated</span>, <span style="color:#ff4d4d">much&nbsp;off</span> &mdash; so a mislabelled chart is caught before it ships.</li>
+    <li><span class="tag add">add</span><strong>Signed, so it names the direction.</strong> <code>delta = measured &minus; declared</code>: a <em>positive</em> gap means the chart plays <strong>harder</strong> than its label (under-rated &mdash; raise the number or ease the hardest axis), a <em>negative</em> gap means it plays <strong>easier</strong> (over-rated). A &plusmn;1 gap reads &ldquo;On&nbsp;target&rdquo; because that is well inside estimation noise; the severity ramp opens up from there, and the hover tooltip spells out the exact advice. The check appears only once the chart has notes &mdash; a note-less chart has nothing to measure, so nothing to reconcile.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.levelCheck(measured, declared)</code> and its band helper <code>chart.levelDeltaBand(delta)</code>; the measured side reuses <code>chart.honestLevelEstimate</code> so the modal readout, the tool row and the radar shape can never disagree. Guarded end-to-end (a missing/NaN/negative level degrades to &ldquo;no check&rdquo; rather than throwing; both levels clamp to 1&ndash;20); the chart is never mutated. Verified with 20 Node unit tests and a real-browser run.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.78</span>Honest Level Estimate &mdash; the six measured axes reduced to one SDVX level</h4>

@@ -1,5 +1,5 @@
 import { chart, renderer, gameView, render, saveUndo, updateSeekbar, addChartAnnotation, _seekTo, sel, playing, audioBuffer, flipHorizontalRange, flipTemporalRange, updateStopEventList } from './app.js';
-import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick } from './chart.js';
+import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestLevelEstimate, levelCheck, HONEST_RADAR_READING_REF_TICKS, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick } from './chart.js';
 import { Renderer } from './renderer.js';
 import { updateRadar } from './radar.js';
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -5899,6 +5899,27 @@ function _toolChartStats(c) {
         const kb = knobDifficultyBand(st.peakKps);
         const det = (st.knobTotal || 0) > 0 ? ` <span style="opacity:.55">(${st.knobSlams || 0} slam${(st.knobSlams||0)!==1?'s':''}, ${st.knobReversals || 0} rev)</span>` : '';
         return `${(st.peakKps || 0).toFixed(1)} <span style="color:${kb.color};font-weight:600">${kb.label}</span>${det}`;
+      })() },
+      // v0.0.79 — Level Check: reconcile the MEASURED honest level (the same
+      // reduction of the six axes the Chart Statistics modal shows) against the
+      // chart's DECLARED meta.level, so a mislabelled chart is flagged here too.
+      // Same DOM-free source of truth (honestLevelEstimate + levelCheck) as the
+      // modal, so the two can never disagree.
+      { label: 'Level Check',          value: (() => {
+        if ((st.totalNotes || 0) <= 0) return '<span style="opacity:.5">— no notes</span>';
+        const readingMs = ch && typeof ch.reactionWindowMs === 'function'
+          ? ch.reactionWindowMs(HONEST_RADAR_READING_REF_TICKS, st.bpmMax || 120, 1) : 0;
+        const est = honestLevelEstimate({
+          readingMs, peakNps: st.peakNps, meanNps: st.meanNps, peakJps: st.peakJps,
+          heavierShare: st.handHeavierShare, peakKps: st.peakKps,
+        });
+        const declared = ch && ch.meta ? ch.meta.level : null;
+        const chk = levelCheck(est.level, declared);
+        if (!chk.hasCheck) return `<span style="opacity:.5">measured ${est.level}</span>`;
+        const sign = chk.delta > 0 ? `+${chk.delta}` : `${chk.delta}`;
+        const tail = chk.status === 'match' ? '' : ` (${sign})`;
+        return `declared ${chk.declared} / measured ${chk.measured} ` +
+               `<span style="color:${chk.color};font-weight:600">${chk.label}${tail}</span>`;
       })() },
       { label: 'Total note events',    value: totalNoteEvents },
       { label: 'BPM events',           value: ch.bpmEvents.length },

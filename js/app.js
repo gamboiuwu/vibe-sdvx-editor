@@ -1,4 +1,4 @@
-import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestRadarProfile, honestRadarScoreColor, honestLevelEstimate, honestLevelBand, HONEST_RADAR_READING_REF_TICKS, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
+import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestRadarProfile, honestRadarScoreColor, honestLevelEstimate, honestLevelBand, levelCheck, levelDeltaBand, HONEST_RADAR_READING_REF_TICKS, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
 import { Renderer, C, laserColors, laserOpacity, laserWideMode, LASER_PRESETS, applyLaserPreset, setLaserColorCustom, buildLaneHeader, setLaserOpacity, setLaserWideMode } from './renderer.js';
 import { GameView } from './game.js';
 import { exportKsh, importKsh, downloadText } from './ksh.js';
@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.78';
+const APP_VERSION = '0.0.79';
 const CHANGELOG = [
+  {
+    version: '0.0.79',
+    title: 'Level Check — is your declared level honest? Measured vs labelled, reconciled',
+    entries: [
+      ['add', '<strong>Chart Statistics now tells you whether the level you typed matches the level you built.</strong> v0.0.78 gave every chart a single <em>measured</em> SDVX level from the six honest axes, but that number sat next to the chart&rsquo;s <em>declared</em> <code>meta.level</code> without ever comparing them — so a chart typed as a 15 that measures an 18 looked fine. A new <strong>Level Check</strong> line sits directly under the <strong>Est. level</strong> in the <strong>📊 Chart Statistics</strong> modal (and as a row in the Tools-Hub Chart Statistics tool): it shows <em>declared vs measured</em>, the signed gap, and a verdict — <span style="color:#6fe08a">On&nbsp;target</span>, <span style="color:#ffcc55">Slightly&nbsp;off</span>, <span style="color:#ff8a3d">Under/Over-rated</span>, <span style="color:#ff4d4d">much&nbsp;off</span> — so a mislabelled chart is caught before it ships.'],
+      ['add', '<strong>Signed, so it names the direction.</strong> <code>delta = measured − declared</code>: a <em>positive</em> gap means the chart plays <strong>harder</strong> than its label (under-rated — raise the number or ease the hardest axis), a <em>negative</em> gap means it plays <strong>easier</strong> (over-rated). A ±1 gap reads &ldquo;On target&rdquo; because that is well inside estimation noise; the severity ramp opens up from there, and the hover tooltip spells out the exact advice. The check only appears once the chart has notes — a note-less chart has nothing to measure, so nothing to reconcile.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.levelCheck(measured, declared)</code> and its band helper <code>chart.levelDeltaBand(delta)</code>; the measured side reuses <code>chart.honestLevelEstimate</code> so the modal readout, the tool row and the radar shape can never disagree. Guarded end-to-end (a missing/NaN/negative declared or measured level degrades to &ldquo;no check&rdquo; rather than throwing; both levels clamp to 1&ndash;20); the chart is never mutated. Verified with 20 Node unit tests and a real-browser run.'],
+    ],
+  },
   {
     version: '0.0.78',
     title: 'Honest Level Estimate — the six measured axes, reduced to one SDVX level',
@@ -11316,6 +11325,7 @@ const DisclaimerGate = (function() {
   const radarCanvas  = document.getElementById('cs-radar');
   const radarCaption = document.getElementById('cs-radar-caption');
   const levelReadout = document.getElementById('cs-level');
+  const levelCheckEl = document.getElementById('cs-level-check');
 
   // v0.0.77 — Honest Radar. Draw the six measured difficulty axes as one polygon
   // from the SAME numbers the text rows below use, via the DOM-free
@@ -11331,6 +11341,7 @@ const DisclaimerGate = (function() {
     if (!s) {
       if (radarCaption) radarCaption.textContent = '—';
       if (levelReadout) levelReadout.textContent = '—';
+      if (levelCheckEl) levelCheckEl.hidden = true;
       return;
     }
 
@@ -11406,6 +11417,7 @@ const DisclaimerGate = (function() {
       const hasNotes = (s.totalNotes || 0) > 0;
       if (!hasNotes) {
         levelReadout.textContent = '—';
+        if (levelCheckEl) levelCheckEl.hidden = true;
       } else {
         const est = honestLevelEstimate(raw);
         const driver = est.axes.find(a => a.key === est.peakAxis);
@@ -11421,6 +11433,26 @@ const DisclaimerGate = (function() {
           `volatility heuristic). composite ${est.composite.toFixed(1)}/100 = ` +
           `0.6·peak(${est.peakScore.toFixed(0)}) + 0.4·mean(${est.meanScore.toFixed(0)}) ` +
           `→ ${est.levelFloat.toFixed(1)}, rounded to ${est.level}. An estimate, not a verdict.`;
+
+        // v0.0.79 — Level Check. Reconcile that measured level against the chart's
+        // DECLARED level (meta.level) so a mislabelled chart is flagged right under
+        // the estimate. Same DOM-free source of truth as the Tools-Hub tool.
+        if (levelCheckEl) {
+          const declared = chart && chart.meta ? chart.meta.level : null;
+          const chk = levelCheck(est.level, declared);
+          if (chk.hasCheck) {
+            const arrow = chk.delta > 0 ? '▲' : chk.delta < 0 ? '▼' : '=';
+            const sign  = chk.delta > 0 ? `+${chk.delta}` : `${chk.delta}`;
+            levelCheckEl.hidden = false;
+            levelCheckEl.innerHTML =
+              `<span style="opacity:.6">Declared</span> <strong>${chk.declared}</strong>` +
+              ` <span style="opacity:.5">vs measured</span> <strong>${chk.measured}</strong>` +
+              ` <span style="color:${chk.color};font-weight:600">${arrow} ${chk.status === 'match' ? '' : sign + ' · '}${chk.label}</span>`;
+            levelCheckEl.title = chk.advice;
+          } else {
+            levelCheckEl.hidden = true;
+          }
+        }
       }
     }
 
