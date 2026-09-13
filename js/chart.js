@@ -403,6 +403,63 @@ export function honestLevelEstimate(raw = {}, opts = {}) {
   };
 }
 
+// v0.0.79 — Level Check. The measured-difficulty family (v0.0.71–78) grew a single
+// honest Est. level (honestLevelEstimate) but never compared it against the level
+// the chartist DECLARED in metadata (chart.meta.level, the 1..20 number that ships
+// in the KSH/KSON header). A chart labelled 15 that actually plays like an 18 is a
+// real, common authoring mistake — the player is blindsided and the slot is wrong —
+// and no number in the editor caught it. This turns the measured level into a
+// labelling sanity check: given the measured level and the declared level it
+// returns the signed gap, a coarse severity tier, a plain-language verdict and a
+// colour on the SAME calm-green → hot-red ramp the rest of the honest family uses.
+//   delta = measured − declared  (positive ⇒ plays HARDER than the label says)
+// Severity is by |delta| because an estimate is not a verdict, so ±1 is "on target":
+//   |Δ| ≤ 1  match   · |Δ| = 2  minor · |Δ| = 3–4  notable · |Δ| ≥ 5  large
+// PURE and DOM-free — reads only two numbers, never touches the chart. A declared
+// level outside 1..20 (or non-numeric) yields severity 'none' so the caller can hide
+// the row rather than invent a comparison. Returns
+//   { ok, declared, measured, delta, absDelta, severity, label, color, direction,
+//     message }.
+export function levelCheckReport(measuredLevel, declaredLevel) {
+  const m = Math.round(Number(measuredLevel));
+  const dRaw = Number(declaredLevel);
+  const d = Math.round(dRaw);
+  // Need a usable measured level AND a plausible declared level (1..20) to compare.
+  const measuredOk = Number.isFinite(m) && m >= 1 && m <= 20;
+  const declaredOk = Number.isFinite(dRaw) && d >= 1 && d <= 20;
+  if (!measuredOk || !declaredOk) {
+    return {
+      ok: false, declared: declaredOk ? d : null, measured: measuredOk ? m : null,
+      delta: 0, absDelta: 0, severity: 'none', label: '', color: '#8a8cc0',
+      direction: 'match', message: '',
+    };
+  }
+  const delta = m - d;
+  const absDelta = Math.abs(delta);
+  const direction = delta > 0 ? 'harder' : delta < 0 ? 'easier' : 'match';
+  let severity, label, color;
+  if (absDelta <= 1) {
+    severity = 'match';   label = 'On target';        color = '#6fe08a';
+  } else if (absDelta === 2) {
+    severity = 'minor';   label = 'Slight mismatch';  color = '#66ddff';
+  } else if (absDelta <= 4) {
+    severity = 'notable'; label = 'Notable mismatch'; color = '#ff8a3d';
+  } else {
+    severity = 'large';   label = 'Large mismatch';   color = '#ff4d4d';
+  }
+  let message;
+  if (severity === 'match') {
+    message = absDelta === 0
+      ? `Measured level ${m} matches the declared level ${d}.`
+      : `Measured level ${m} is within a level of the declared ${d} — on target.`;
+  } else {
+    const word = direction === 'harder' ? 'harder' : 'easier';
+    message = `Measured level ${m} plays ${absDelta} level${absDelta === 1 ? '' : 's'} ` +
+      `${word} than the declared ${d}.`;
+  }
+  return { ok: true, declared: d, measured: m, delta, absDelta, severity, label, color, direction, message };
+}
+
 // ── Quantize / Nudge engine ──────────────────────────────────────────────────
 // Shared, side-effect-isolated tick math used by the Tools Hub "Quantize" tool.
 // Kept here (not in tools.js) so it can be unit-tested without a DOM, and so any
