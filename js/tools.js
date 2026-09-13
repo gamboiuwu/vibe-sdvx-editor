@@ -1,5 +1,5 @@
 import { chart, renderer, gameView, render, saveUndo, updateSeekbar, addChartAnnotation, _seekTo, sel, playing, audioBuffer, flipHorizontalRange, flipTemporalRange, updateStopEventList } from './app.js';
-import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick } from './chart.js';
+import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestLevelEstimate, levelCheckReport, HONEST_RADAR_READING_REF_TICKS, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick } from './chart.js';
 import { Renderer } from './renderer.js';
 import { updateRadar } from './radar.js';
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -5899,6 +5899,43 @@ function _toolChartStats(c) {
         const kb = knobDifficultyBand(st.peakKps);
         const det = (st.knobTotal || 0) > 0 ? ` <span style="opacity:.55">(${st.knobSlams || 0} slam${(st.knobSlams||0)!==1?'s':''}, ${st.knobReversals || 0} rev)</span>` : '';
         return `${(st.peakKps || 0).toFixed(1)} <span style="color:${kb.color};font-weight:600">${kb.label}</span>${det}`;
+      })() },
+      // v0.0.78/79 — the honest Est. level (the six measured axes reduced to one
+      // SDVX level) and, beside it, the Level Check against the declared meta.level.
+      // Reuses the SAME raw the Chart Statistics modal builds — readingMs via the
+      // reactionWindowMs engine at peak BPM, plus the NPS/jack/hand/knob axes — so
+      // the tool and the modal can never disagree. Gated on having notes: a note-less
+      // chart has no level to estimate.
+      { label: 'Est. level',          value: (() => {
+        if ((totalNoteEvents || 0) <= 0) return '<span style="opacity:.55">—</span>';
+        const bpmMax = st.bpmMax || 120;
+        const readingMs = (typeof ch.reactionWindowMs === 'function')
+          ? ch.reactionWindowMs(HONEST_RADAR_READING_REF_TICKS, bpmMax, 1) : 0;
+        const est = honestLevelEstimate({
+          readingMs, peakNps: st.peakNps, meanNps: st.meanNps, peakJps: st.peakJps,
+          heavierShare: st.handHeavierShare, peakKps: st.peakKps,
+        });
+        return `<strong style="color:${est.color}">${est.level}</strong> ` +
+          `<span style="color:${est.color};font-weight:600">${est.band}</span> ` +
+          `<span style="opacity:.55">(${est.driver || '—'})</span>`;
+      })() },
+      { label: 'Level Check',         value: (() => {
+        if ((totalNoteEvents || 0) <= 0) return '<span style="opacity:.55">—</span>';
+        const bpmMax = st.bpmMax || 120;
+        const readingMs = (typeof ch.reactionWindowMs === 'function')
+          ? ch.reactionWindowMs(HONEST_RADAR_READING_REF_TICKS, bpmMax, 1) : 0;
+        const est = honestLevelEstimate({
+          readingMs, peakNps: st.peakNps, meanNps: st.meanNps, peakJps: st.peakJps,
+          heavierShare: st.handHeavierShare, peakKps: st.peakKps,
+        });
+        const chk = levelCheckReport(est.level, ch.meta?.level);
+        if (!chk.ok) return `<span style="opacity:.55">no declared level</span>`;
+        if (chk.severity === 'match')
+          return `<span style="color:${chk.color};font-weight:600">✓ ${chk.label}</span> ` +
+            `<span style="opacity:.55">(declared ${chk.declared})</span>`;
+        const arrow = chk.direction === 'harder' ? '▲' : '▼';
+        return `<span style="color:${chk.color};font-weight:600">⚠ ${chk.label}</span> ` +
+          `<span style="opacity:.7">declared ${chk.declared} ${arrow} ${chk.absDelta}</span>`;
       })() },
       { label: 'Total note events',    value: totalNoteEvents },
       { label: 'BPM events',           value: ch.bpmEvents.length },

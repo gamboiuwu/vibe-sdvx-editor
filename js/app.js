@@ -1,4 +1,4 @@
-import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestRadarProfile, honestRadarScoreColor, honestLevelEstimate, honestLevelBand, HONEST_RADAR_READING_REF_TICKS, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
+import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestRadarProfile, honestRadarScoreColor, honestLevelEstimate, honestLevelBand, levelCheckReport, HONEST_RADAR_READING_REF_TICKS, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
 import { Renderer, C, laserColors, laserOpacity, laserWideMode, LASER_PRESETS, applyLaserPreset, setLaserColorCustom, buildLaneHeader, setLaserOpacity, setLaserWideMode } from './renderer.js';
 import { GameView } from './game.js';
 import { exportKsh, importKsh, downloadText } from './ksh.js';
@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.78';
+const APP_VERSION = '0.0.79';
 const CHANGELOG = [
+  {
+    version: '0.0.79',
+    title: 'Level Check — is your chart labelled the level it actually plays?',
+    entries: [
+      ['add', '<strong>Chart Statistics now tells you when your declared difficulty doesn&rsquo;t match what you charted.</strong> v0.0.78 reduced the six measured axes to one honest <strong>Est. level</strong>, but a chartist still had to eyeball whether that number agreed with the <strong>level they typed into the metadata</strong> (<code>meta.level</code>, the 1&ndash;20 slot number that ships in the KSH/KSON header). A chart labelled <strong>15</strong> that actually plays like an <strong>18</strong> is a real, common authoring mistake &mdash; the player is blindsided and the slot is wrong. A new <strong>Level Check</strong> line sits directly under the Est. level in the <strong>📊 Chart Statistics</strong> modal and compares the two automatically: <span style="color:#6fe08a">✓ On target</span> when they agree, or <span style="color:#ff8a3d">⚠ a signed mismatch</span> (<code>declared 15, measured 18 &#9650; 3</code>) when they diverge, with an arrow showing whether the chart plays <em>harder</em> (&#9650;) or <em>easier</em> (&#9660;) than its label.'],
+      ['add', '<strong>Forgiving where an estimate should be, loud where it matters.</strong> Because the measured level is honestly <em>an estimate, not a verdict</em>, a gap of a single level counts as <span style="color:#6fe08a">on target</span> &mdash; the badge only warns from two levels apart, escalating on the same calm-green &rarr; hot-red ramp the rest of the honest family uses: <span style="color:#66ddff">Slight</span> (&plusmn;2), <span style="color:#ff8a3d">Notable</span> (&plusmn;3&ndash;4), <span style="color:#ff4d4d">Large</span> (&plusmn;5+). A chart with no declared level in range simply hides the row rather than inventing a comparison, and the hover tooltip spells out the full sentence (&ldquo;Measured level 18 plays 3 levels harder than the declared 15&rdquo;).'],
+      ['add', '<strong>Now in the Tools-Hub tool too, and one source of truth.</strong> The Est. level and the Level Check now also appear as rows in the Tools-Hub <strong>Chart Statistics</strong> tool, so every honest metric lives in both surfaces as before. Both are backed by a new DOM-free, unit-tested <code>chart.levelCheckReport(measured, declared)</code> that returns the signed delta, severity tier, verdict and colour, and both build the Est. level from the <em>same</em> <code>raw</code> the radar polygon is drawn from &mdash; so the modal, the tool and the radar can never disagree. Guarded end-to-end (a declared level outside 1&ndash;20, NaN, or a string yields &ldquo;no declared level&rdquo;, never throws); the chart is never mutated. Verified with 34 Node unit assertions and a real-browser run.'],
+    ],
+  },
   {
     version: '0.0.78',
     title: 'Honest Level Estimate — the six measured axes, reduced to one SDVX level',
@@ -11316,6 +11325,7 @@ const DisclaimerGate = (function() {
   const radarCanvas  = document.getElementById('cs-radar');
   const radarCaption = document.getElementById('cs-radar-caption');
   const levelReadout = document.getElementById('cs-level');
+  const levelCheckEl = document.getElementById('cs-level-check');
 
   // v0.0.77 — Honest Radar. Draw the six measured difficulty axes as one polygon
   // from the SAME numbers the text rows below use, via the DOM-free
@@ -11331,6 +11341,7 @@ const DisclaimerGate = (function() {
     if (!s) {
       if (radarCaption) radarCaption.textContent = '—';
       if (levelReadout) levelReadout.textContent = '—';
+      if (levelCheckEl) levelCheckEl.hidden = true;
       return;
     }
 
@@ -11406,6 +11417,7 @@ const DisclaimerGate = (function() {
       const hasNotes = (s.totalNotes || 0) > 0;
       if (!hasNotes) {
         levelReadout.textContent = '—';
+        if (levelCheckEl) levelCheckEl.hidden = true;
       } else {
         const est = honestLevelEstimate(raw);
         const driver = est.axes.find(a => a.key === est.peakAxis);
@@ -11421,6 +11433,35 @@ const DisclaimerGate = (function() {
           `volatility heuristic). composite ${est.composite.toFixed(1)}/100 = ` +
           `0.6·peak(${est.peakScore.toFixed(0)}) + 0.4·mean(${est.meanScore.toFixed(0)}) ` +
           `→ ${est.levelFloat.toFixed(1)}, rounded to ${est.level}. An estimate, not a verdict.`;
+
+        // v0.0.79 — Level Check. Compare the measured Est. level against the level
+        // the chartist DECLARED in metadata (chart.meta.level). A chart labelled 15
+        // that measures 18 is a real authoring mistake; this flags the signed gap.
+        // Reuses chart.levelCheckReport (DOM-free, unit-tested) so the modal and the
+        // Tools-Hub Chart Statistics tool can never disagree. Hidden when there is
+        // no plausible declared level to compare against.
+        if (levelCheckEl) {
+          const chk = levelCheckReport(est.level, chart.meta?.level);
+          if (!chk.ok) {
+            levelCheckEl.hidden = true;
+          } else if (chk.severity === 'match') {
+            levelCheckEl.hidden = false;
+            levelCheckEl.innerHTML =
+              `<span style="color:${chk.color}">✓ ${chk.label}</span>` +
+              ` <span style="opacity:.6">— declared ${chk.declared}, measured ${chk.measured}</span>`;
+            levelCheckEl.title = chk.message + ' The declared level is meta.level from the chart header.';
+          } else {
+            levelCheckEl.hidden = false;
+            const arrow = chk.direction === 'harder' ? '▲' : '▼';
+            levelCheckEl.innerHTML =
+              `<span style="color:${chk.color}">⚠ ${chk.label}</span>` +
+              ` <span style="opacity:.75">— declared <strong>${chk.declared}</strong>, ` +
+              `measured <strong style="color:${chk.color}">${chk.measured}</strong> ` +
+              `<span style="color:${chk.color}">${arrow} ${chk.absDelta}</span></span>`;
+            levelCheckEl.title = chk.message + ' The declared level is meta.level from the chart header; ' +
+              'the measured level is the honest estimate. An estimate, not a verdict.';
+          }
+        }
       }
     }
 
