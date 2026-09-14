@@ -1,5 +1,5 @@
 import { chart, renderer, gameView, render, saveUndo, updateSeekbar, addChartAnnotation, _seekTo, sel, playing, audioBuffer, flipHorizontalRange, flipTemporalRange, updateStopEventList } from './app.js';
-import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick } from './chart.js';
+import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestLevelEstimate, honestLevelVsMeta, HONEST_RADAR_READING_REF_TICKS, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick } from './chart.js';
 import { Renderer } from './renderer.js';
 import { updateRadar } from './radar.js';
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -5866,6 +5866,27 @@ function _toolChartStats(c) {
     // npsDifficultyBand so the number and its colour match the Chart Statistics
     // modal and the live peak-NPS readout.
     const npsBand = npsDifficultyBand(st.peakNps);
+
+    // v0.0.79 — Honest Level Estimate in the tool (parity with the Window-menu
+    // modal) plus a Meta Nudge. Build the SAME raw object drawRadar feeds the
+    // estimate — readingMs from the shared reactionWindowMs engine at the chart's
+    // peak BPM, and the five measured density/knob axes from computeChartStats —
+    // so the tool's level, the modal's level and the radar shape can never
+    // disagree. A note-less chart has no level to estimate (all axes 0), so `est`
+    // stays null and the rows read "—", matching the modal's gating.
+    const hasNotes = (st.totalNotes || 0) > 0;
+    let est = null;
+    if (hasNotes) {
+      const bpmMax = st.bpmMax || 120;
+      const readingMs = (typeof ch.reactionWindowMs === 'function')
+        ? ch.reactionWindowMs(HONEST_RADAR_READING_REF_TICKS, bpmMax, 1) : 0;
+      est = honestLevelEstimate({
+        readingMs,
+        peakNps: st.peakNps, meanNps: st.meanNps, peakJps: st.peakJps,
+        heavierShare: st.handHeavierShare, peakKps: st.peakKps,
+      });
+    }
+
     const details = [
       { label: 'FX Chips / Holds',    value: `${fxChips} / ${fxHolds}` },
       { label: 'VOL-L coverage',       value: `${coverL}%  (${ch.lasers[0].length} section${ch.lasers[0].length!==1?'s':''})` },
@@ -5899,6 +5920,32 @@ function _toolChartStats(c) {
         const kb = knobDifficultyBand(st.peakKps);
         const det = (st.knobTotal || 0) > 0 ? ` <span style="opacity:.55">(${st.knobSlams || 0} slam${(st.knobSlams||0)!==1?'s':''}, ${st.knobReversals || 0} rev)</span>` : '';
         return `${(st.peakKps || 0).toFixed(1)} <span style="color:${kb.color};font-weight:600">${kb.label}</span>${det}`;
+      })() },
+      // v0.0.79 — Est. level (measured): the six honest axes reduced to one SDVX
+      // level 1..20 via the shared honestLevelEstimate, named by its driving axis.
+      // Same engine and same raw the Window-menu modal's Honest Radar readout uses.
+      { label: 'Est. level (measured)', value: est ? (() => {
+        const drv = est.axes.find(a => a.key === est.peakAxis);
+        const drvName = drv ? drv.short : (est.driver || '—');
+        return `<strong style="color:${est.color};font-size:13px">${est.level}</strong> ` +
+               `<span style="color:${est.color};font-weight:600">${est.band}</span>` +
+               ` <span style="opacity:.55">— ${drvName}</span>`;
+      })() : '<span style="opacity:.5">— (no notes)</span>' },
+      // v0.0.79 — Meta Nudge: compare the measured level against the chart's
+      // declared meta.level so a mis-slotted chart (declared 15, measured 18) is
+      // flagged. honestLevelVsMeta is a shared, unit-tested comparison — no verdict
+      // when there's no valid declared level to compare against.
+      { label: 'vs declared level', value: (() => {
+        if (!est) return '<span style="opacity:.5">—</span>';
+        const declared = (ch.meta && ch.meta.level != null) ? ch.meta.level : null;
+        const cmp = honestLevelVsMeta(est.level, declared);
+        if (!cmp.valid) {
+          const shown = declared == null ? '—' : declared;
+          return `<span style="opacity:.6">declared ${shown} · <span style="color:${cmp.color}">${cmp.label}</span></span>`;
+        }
+        const arrow = cmp.direction === 'harder' ? '▲' : cmp.direction === 'easier' ? '▼' : '=';
+        return `declared <strong>${cmp.declared}</strong> · measured <strong>${cmp.measured}</strong> ` +
+               `<span style="color:${cmp.color};font-weight:600">${arrow} ${cmp.label}</span>`;
       })() },
       { label: 'Total note events',    value: totalNoteEvents },
       { label: 'BPM events',           value: ch.bpmEvents.length },

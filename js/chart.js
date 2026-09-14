@@ -403,6 +403,51 @@ export function honestLevelEstimate(raw = {}, opts = {}) {
   };
 }
 
+// v0.0.79 — Meta Nudge. Compare a chart's MEASURED level (from honestLevelEstimate)
+// against the level the chartist DECLARED in metadata (meta.level, 1..20). The
+// honest axes say what the chart plays like; meta.level says what slot it was filed
+// under — a mismatch ("declared 15, measured 18") means the chart is mis-slotted,
+// which is exactly the thing a chartist wants flagged before publishing. This is a
+// pure comparison, deliberately separate from the estimate itself, so it can be
+// unit-tested and reused by any surface (tool row, modal, future export) with no
+// risk of the number and its verdict disagreeing. DOM-free; touches nothing.
+//   delta = measured - declared  (+ = plays harder than its declared slot)
+// Bands on the shared calm-green → hot-red ramp:
+//   |delta| <= 1  → 'match'   (within a level; charts are never exact — fine)
+//   |delta| 2..3  → 'notable' (a real gap worth a second look)
+//   |delta| >= 4  → 'strong'  (clearly mis-slotted)
+// A non-1..20 declared level (unset / NaN / out of range) returns valid:false so
+// the caller can show "no declared level to compare" rather than a false verdict.
+// Returns { valid, measured, declared, delta, absDelta, direction, status, label, color }.
+export function honestLevelVsMeta(measured, declared) {
+  const m = Math.round(Number(measured));
+  const d = Math.round(Number(declared));
+  const okM = Number.isFinite(m) && m >= 1 && m <= 20;
+  const okD = Number.isFinite(d) && d >= 1 && d <= 20;
+  if (!okM || !okD) {
+    return {
+      valid: false, measured: okM ? m : null, declared: okD ? d : null,
+      delta: 0, absDelta: 0, direction: 'none', status: 'unknown',
+      label: 'no declared level to compare', color: '#8890b0',
+    };
+  }
+  const delta = m - d;               // + = measured plays harder than declared
+  const absDelta = Math.abs(delta);
+  const direction = delta > 0 ? 'harder' : delta < 0 ? 'easier' : 'match';
+  let status, color;
+  if (absDelta <= 1)      { status = 'match';   color = '#6fe08a'; }
+  else if (absDelta <= 3) { status = 'notable'; color = '#ffcc55'; }
+  else                    { status = 'strong';  color = '#ff6a4d'; }
+  let label;
+  if (direction === 'match' || absDelta <= 1) {
+    label = 'matches the declared level';
+  } else {
+    const word = direction === 'harder' ? 'above' : 'below';
+    label = `plays ${absDelta} ${word} its declared slot`;
+  }
+  return { valid: true, measured: m, declared: d, delta, absDelta, direction, status, label, color };
+}
+
 // ── Quantize / Nudge engine ──────────────────────────────────────────────────
 // Shared, side-effect-isolated tick math used by the Tools Hub "Quantize" tool.
 // Kept here (not in tools.js) so it can be unit-tested without a DOM, and so any

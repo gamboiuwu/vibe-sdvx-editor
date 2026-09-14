@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.78';
+const APP_VERSION = '0.0.79';
 const CHANGELOG = [
+  {
+    version: '0.0.79',
+    title: 'Level in the Chart Statistics tool + Meta Nudge — is your chart in the slot you filed it under?',
+    entries: [
+      ['add', '<strong>The Honest Level Estimate now lives in the Tools-Hub Chart Statistics tool too, not just the modal.</strong> Every prior measured metric — <strong>Peak&nbsp;NPS</strong>, <strong>Avg&nbsp;NPS</strong>, <strong>Peak&nbsp;Jack</strong>, <strong>Hand&nbsp;Balance</strong>, <strong>Knob&nbsp;Load</strong> — appears in <em>both</em> the Window-menu <strong>📊 Chart Statistics</strong> modal and the docked <strong>Chart Statistics</strong> tool, but v0.0.78&rsquo;s <strong>Est.&nbsp;level</strong> shipped only in the modal. A new <strong>Est.&nbsp;level (measured)</strong> row now closes that gap, driven by the <em>same</em> <code>chart.honestLevelEstimate</code> and the same raw axes the modal&rsquo;s Honest Radar feeds — so the tool, the modal and the radar shape can never disagree.'],
+      ['add', '<strong>New: a Meta Nudge that flags a mis-slotted chart.</strong> The honest axes say what a chart <em>plays</em> like; the chart&rsquo;s <code>meta.level</code> says which slot you <em>filed</em> it under — and until now nothing compared the two. A new <strong>vs&nbsp;declared&nbsp;level</strong> row reads <em>&ldquo;declared&nbsp;15 &middot; measured&nbsp;18 &nbsp;▲ plays 3 above its declared slot&rdquo;</em>, colour-banded on the shared calm-green&nbsp;&rarr;&nbsp;hot-red ramp — <span style="color:#6fe08a">match</span> within a level, <span style="color:#ffcc55">notable</span> at a 2&ndash;3 gap, <span style="color:#ff6a4d">strong</span> at 4+ — so a chart that drifted past its target difficulty during editing is caught before publishing. When there is no valid declared level it honestly says so rather than inventing a verdict.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> The comparison is a new DOM-free, unit-tested <code>chart.honestLevelVsMeta(measured, declared)</code> kept deliberately separate from the estimate itself, so the number and its verdict can never diverge; a non-1&ndash;20 declared level degrades to <em>&ldquo;no declared level to compare&rdquo;</em> rather than throwing. The chart is never mutated; no KSON/data-format risk. Verified with Node unit tests (every band boundary, both directions, unset/NaN/out-of-range declared levels) and a live browser run against a constructed chart.'],
+    ],
+  },
   {
     version: '0.0.78',
     title: 'Honest Level Estimate — the six measured axes, reduced to one SDVX level',
