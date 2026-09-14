@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.78 · 2026</span>
+  <span class="version">v0.0.79 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.79</span>Level in the Chart Statistics tool + Meta Nudge &mdash; is your chart in the slot you filed it under?</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>The Honest Level Estimate now lives in the Tools-Hub Chart Statistics tool too.</strong> Every prior measured metric &mdash; Peak&nbsp;NPS, Avg&nbsp;NPS, Peak&nbsp;Jack, Hand&nbsp;Balance, Knob&nbsp;Load &mdash; appears in <em>both</em> the Window-menu <strong>&#128202; Chart Statistics</strong> modal and the docked <strong>Chart Statistics</strong> tool, but v0.0.78&rsquo;s <strong>Est.&nbsp;level</strong> shipped only in the modal. A new <strong>Est.&nbsp;level (measured)</strong> row closes that gap, driven by the <em>same</em> <code>chart.honestLevelEstimate</code> and the same raw axes the modal&rsquo;s Honest Radar feeds &mdash; so tool, modal and radar shape can never disagree.</li>
+    <li><span class="tag add">add</span><strong>New: a Meta Nudge that flags a mis-slotted chart.</strong> The honest axes say what a chart <em>plays</em> like; the chart&rsquo;s <code>meta.level</code> says which slot you <em>filed</em> it under &mdash; and nothing compared the two. A new <strong>vs&nbsp;declared&nbsp;level</strong> row reads <em>&ldquo;declared&nbsp;15 &middot; measured&nbsp;18&nbsp; &#9650; plays 3 above its declared slot&rdquo;</em>, colour-banded on the shared calm-green &rarr; hot-red ramp &mdash; <span style="color:#6fe08a">match</span> within a level, <span style="color:#ffcc55">notable</span> at a 2&ndash;3 gap, <span style="color:#ff6a4d">strong</span> at 4+. When there is no valid declared level it says so rather than inventing a verdict.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> The comparison is a new DOM-free, unit-tested <code>chart.honestLevelVsMeta(measured, declared)</code>, kept separate from the estimate so the number and its verdict can never diverge; a non-1&ndash;20 declared level degrades to &ldquo;no declared level to compare&rdquo; rather than throwing. The chart is never mutated.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.78</span>Honest Level Estimate &mdash; the six measured axes reduced to one SDVX level</h4>
