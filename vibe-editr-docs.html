@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.78 · 2026</span>
+  <span class="version">v0.0.79 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.79</span>Level in the Chart Statistics tool + Declared-vs-measured nudge</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>The Tools-Hub Chart Statistics tool now carries the Honest Level Estimate too.</strong> v0.0.78 added the measured <strong>Est.&nbsp;level</strong> under the Honest Radar in the <strong>&#128202; Chart Statistics</strong> <em>modal</em>, but the <em>Tools-Hub</em> Chart Statistics tool &mdash; where every other honest number (Peak&nbsp;NPS, Peak&nbsp;Jack, Hand&nbsp;Balance, Knob&nbsp;Load) already lives beside its modal twin &mdash; stopped short of it. A new <strong>Est.&nbsp;level (measured)</strong> row now sits in the tool, reading the exact same six measured axes as the modal, so the two can never disagree.</li>
+    <li><span class="tag add">add</span><strong>Declared vs measured &mdash; the meta nudge.</strong> A second new row compares the measured estimate against the level you <em>declared</em> in the chart header (<code>meta.level</code>) and names the gap: <em>declared&nbsp;8 &middot; measured&nbsp;17 &nbsp;&uarr;&nbsp;+9 &nbsp;plays much harder</em>. It bands on the same calm-green &rarr; hot-red ramp every honest surface uses &mdash; <span style="color:#6fe08a">within&nbsp;1 matches</span>, <span style="color:#ffcc55">off&nbsp;by&nbsp;2 a bit</span>, <span style="color:#ff4d4d">off&nbsp;by&nbsp;3+ far</span> &mdash; with neutral direction words (plays harder / easier), never a verdict. The row hides itself when there is no usable declared level, so a fresh or note-less chart shows nothing false.</li>
+    <li><span class="tag add">add</span><strong>One source of truth, render-only.</strong> Both rows reuse the DOM-free <code>chart.honestLevelEstimate</code>; a new shared <code>chart.honestRadarRawFromStats(stats, chart)</code> builds the six-axis input for the modal radar <em>and</em> the tool from one place (the reading-window <code>reactionWindowMs</code> call lived inline in the modal before &mdash; it lives in one function now), and a new pure <code>chart.honestLevelMetaCompare(measured, declared)</code> classifies the gap. The chart is never mutated. Verified with 34 Node unit tests plus real-browser runs of both the tool and the modal &mdash; a 16th single-lane chart reads <strong>level&nbsp;17 Expert</strong> in both, the nudge reads <strong>+9 plays much harder</strong>, zero JS errors.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.78</span>Honest Level Estimate &mdash; the six measured axes reduced to one SDVX level</h4>

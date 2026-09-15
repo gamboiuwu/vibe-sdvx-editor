@@ -1,5 +1,5 @@
 import { chart, renderer, gameView, render, saveUndo, updateSeekbar, addChartAnnotation, _seekTo, sel, playing, audioBuffer, flipHorizontalRange, flipTemporalRange, updateStopEventList } from './app.js';
-import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick } from './chart.js';
+import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestLevelEstimate, honestRadarRawFromStats, honestLevelMetaCompare, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick } from './chart.js';
 import { Renderer } from './renderer.js';
 import { updateRadar } from './radar.js';
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -5900,11 +5900,44 @@ function _toolChartStats(c) {
         const det = (st.knobTotal || 0) > 0 ? ` <span style="opacity:.55">(${st.knobSlams || 0} slam${(st.knobSlams||0)!==1?'s':''}, ${st.knobReversals || 0} rev)</span>` : '';
         return `${(st.peakKps || 0).toFixed(1)} <span style="color:${kb.color};font-weight:600">${kb.label}</span>${det}`;
       })() },
+      // v0.0.79 — Est. level: the six honest measured axes reduced to one
+      // estimated SDVX level 1..20 via chart.honestLevelEstimate, reading the SAME
+      // raw axes the Chart Statistics modal's Honest Radar draws (built through the
+      // shared honestRadarRawFromStats) so the tool and the modal can never
+      // disagree. A note-less chart has no level to estimate, so the row shows "—".
+      { label: 'Est. level (measured)', value: (() => {
+        if ((st.totalNotes || 0) <= 0) return '<span style="opacity:.5">—</span>';
+        const est = honestLevelEstimate(honestRadarRawFromStats(st, ch));
+        const drv = est.axes.find(a => a.key === est.peakAxis);
+        const drvName = drv ? drv.short : (est.driver || '—');
+        return `<b style="color:${est.color}">${est.level}</b> ` +
+               `<span style="color:${est.color};font-weight:600">${est.band}</span>` +
+               ` <span style="opacity:.55">(driven by ${drvName})</span>`;
+      })() },
+      // v0.0.79 — META NUDGE: compare the measured estimate against the chart's
+      // DECLARED meta.level via chart.honestLevelMetaCompare, so a mislabelled
+      // chart is flagged. The row is omitted entirely when there is no usable
+      // declared level (see the .filter below), matching how the other honest
+      // rows stay quiet when they have nothing to say.
+      { label: 'Declared vs measured', skipIf: () => {
+          if ((st.totalNotes || 0) <= 0) return true;
+          const est = honestLevelEstimate(honestRadarRawFromStats(st, ch));
+          return !honestLevelMetaCompare(est.level, ch.meta && ch.meta.level).ok;
+        }, value: (() => {
+        const est = honestLevelEstimate(honestRadarRawFromStats(st, ch));
+        const cmp = honestLevelMetaCompare(est.level, ch.meta && ch.meta.level);
+        if (!cmp.ok) return '';
+        const arrow = cmp.delta === 0 ? '=' : (cmp.delta > 0 ? '↑' : '↓');
+        return `declared <b>${cmp.declared}</b> · measured <b style="color:${cmp.color}">${cmp.measured}</b>` +
+               ` <span style="color:${cmp.color};font-weight:600">${arrow} ${cmp.sign}</span>` +
+               ` <span style="opacity:.6">${cmp.word}</span>`;
+      })() },
       { label: 'Total note events',    value: totalNoteEvents },
       { label: 'BPM events',           value: ch.bpmEvents.length },
       { label: 'Chart sections',       value: (ch.sections||[]).length },
     ];
-    details.forEach(({ label, value }) => {
+    details.forEach(({ label, value, skipIf }) => {
+      if (typeof skipIf === 'function' && skipIf()) return;
       const kv = _h('div', 'tool-kv', '');
       kv.innerHTML = `<span class="tool-kv-key">${label}</span><span class="tool-kv-val">${value}</span>`;
       fullRes.appendChild(kv);
