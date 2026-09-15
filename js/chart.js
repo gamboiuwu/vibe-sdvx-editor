@@ -403,6 +403,67 @@ export function honestLevelEstimate(raw = {}, opts = {}) {
   };
 }
 
+// v0.0.79 — Build the `raw` honest-radar / honest-level input object from a
+// computeChartStats() result. Extracted so the Chart Statistics MODAL (app.js
+// drawRadar) and the Tools-Hub Chart Statistics TOOL (tools.js) build the exact
+// same six-axis input from ONE place — the reading axis in particular needs the
+// chart's own reactionWindowMs engine, and duplicating that inline in two files
+// is exactly how the modal and the tool would silently drift apart. The reading
+// spoke uses the reference green-number window at the chart's PEAK bpm (a stable,
+// HiSpeed-free property, the same engine the live green number uses); a note-less
+// chart has a defined BPM but no reading demand, so its reading spoke stays 0 and
+// the whole profile reads truly empty. Guarded end-to-end: a null stats object,
+// or a chart without reactionWindowMs (a plain object), degrades every axis to 0
+// rather than throwing. PURE — never mutates the chart or the stats. Returns the
+// { readingMs, peakNps, meanNps, peakJps, heavierShare, peakKps } shape both
+// honestRadarProfile and honestLevelEstimate consume.
+export function honestRadarRawFromStats(st = null, ch = null) {
+  const s = st || {};
+  const num = (x) => (Number.isFinite(Number(x)) ? Number(x) : 0);
+  const bpmMax = num(s.bpmMax) || 120;
+  const hasNotes = num(s.totalNotes) > 0;
+  const readingMs = (hasNotes && ch && typeof ch.reactionWindowMs === 'function')
+    ? ch.reactionWindowMs(HONEST_RADAR_READING_REF_TICKS, bpmMax, 1)
+    : 0;
+  return {
+    readingMs,
+    peakNps:      num(s.peakNps),
+    meanNps:      num(s.meanNps),
+    peakJps:      num(s.peakJps),
+    heavierShare: num(s.handHeavierShare),
+    peakKps:      num(s.peakKps),
+  };
+}
+
+// v0.0.79 — META NUDGE. Compare a chart's honest MEASURED level (from
+// honestLevelEstimate) against its DECLARED meta.level (the number the chartist
+// typed into the header) and classify the gap, so a mislabelled chart is visible
+// at a glance ("declared 15, measured 18 → +3, plays much harder"). Neutral
+// direction words (plays harder / easier), never a verdict — the estimate is
+// still an estimate. Bands on the same calm-green → hot-red ramp every honest
+// difficulty surface uses: |Δ|≤1 agrees (green), |Δ|=2 a bit off (amber), |Δ|≥3
+// far off (red). Returns { ok:false } when there is no usable declared level
+// (0, out of the 1..20 SDVX range, or non-numeric) so the caller can simply hide
+// the row rather than showing a false mismatch. PURE and DOM-free.
+export function honestLevelMetaCompare(measuredLevel, declaredLevel) {
+  const m = Math.round(Number(measuredLevel));
+  const d = Math.round(Number(declaredLevel));
+  if (!Number.isFinite(m) || !Number.isFinite(d) || d < 1 || d > 20) {
+    return { ok: false, delta: null, status: 'none', color: '#6668a0', word: '' };
+  }
+  const delta = m - d;              // + ⇒ measured harder than declared
+  const a = Math.abs(delta);
+  let status, color, word;
+  if (a <= 1)       { status = 'match';  color = '#6fe08a'; word = 'matches declared'; }
+  else if (a === 2) { status = 'slight'; color = '#ffcc55'; word = delta > 0 ? 'plays a bit harder' : 'plays a bit easier'; }
+  else              { status = 'far';    color = '#ff4d4d'; word = delta > 0 ? 'plays much harder' : 'plays much easier'; }
+  return {
+    ok: true, delta, status, color, word,
+    declared: d, measured: m,
+    sign: delta > 0 ? `+${delta}` : `${delta}`,
+  };
+}
+
 // ── Quantize / Nudge engine ──────────────────────────────────────────────────
 // Shared, side-effect-isolated tick math used by the Tools Hub "Quantize" tool.
 // Kept here (not in tools.js) so it can be unit-tested without a DOM, and so any

@@ -1,4 +1,4 @@
-import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestRadarProfile, honestRadarScoreColor, honestLevelEstimate, honestLevelBand, HONEST_RADAR_READING_REF_TICKS, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
+import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestRadarProfile, honestRadarScoreColor, honestLevelEstimate, honestLevelBand, honestRadarRawFromStats, HONEST_RADAR_READING_REF_TICKS, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
 import { Renderer, C, laserColors, laserOpacity, laserWideMode, LASER_PRESETS, applyLaserPreset, setLaserColorCustom, buildLaneHeader, setLaserOpacity, setLaserWideMode } from './renderer.js';
 import { GameView } from './game.js';
 import { exportKsh, importKsh, downloadText } from './ksh.js';
@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.78';
+const APP_VERSION = '0.0.79';
 const CHANGELOG = [
+  {
+    version: '0.0.79',
+    title: 'Level in the Chart Statistics tool + Declared-vs-measured nudge',
+    entries: [
+      ['add', '<strong>The Tools-Hub Chart Statistics tool now carries the Honest Level Estimate too — and flags a mislabelled chart.</strong> v0.0.78 added the measured <strong>Est. level</strong> under the Honest Radar in the <strong>📊 Chart Statistics</strong> <em>modal</em>, but the <em>Tools-Hub</em> Chart Statistics tool — where every other honest number (Peak NPS, Peak Jack, Hand Balance, Knob Load) already lives beside its modal twin — still stopped short of it. A new <strong>Est. level (measured)</strong> row now sits in the tool, reading the exact same six measured axes as the modal, so the two can never disagree.'],
+      ['add', '<strong>Declared vs measured — the meta nudge.</strong> A second new row compares the measured estimate against the level you <em>declared</em> in the chart header (<code>meta.level</code>) and names the gap: <em>declared&nbsp;8 &middot; measured&nbsp;17 &nbsp;&uarr;&nbsp;+9 &nbsp;plays much harder</em>. It bands on the same calm-green&nbsp;&rarr;&nbsp;hot-red ramp every honest surface uses — <span style="color:#6fe08a">within&nbsp;1 matches</span>, <span style="color:#ffcc55">off&nbsp;by&nbsp;2 a bit</span>, <span style="color:#ff4d4d">off&nbsp;by&nbsp;3+ far</span> — with neutral direction words (plays harder / easier), never a verdict. The row hides itself entirely when there is no usable declared level, so a fresh or note-less chart shows nothing false.'],
+      ['add', '<strong>One source of truth, render-only.</strong> Both rows reuse the DOM-free <code>chart.honestLevelEstimate</code>; a new shared <code>chart.honestRadarRawFromStats(stats, chart)</code> now builds the six-axis input for the modal radar <em>and</em> the tool from one place (the reading-window <code>reactionWindowMs</code> call lived inline in the modal before — it lives in exactly one function now), and a new pure <code>chart.honestLevelMetaCompare(measured, declared)</code> classifies the gap. The chart is never mutated. Verified with 34 Node unit tests plus real-browser runs of both the tool and the modal (a 16th single-lane chart reads <strong>level&nbsp;17 Expert</strong> in both, the nudge reads <strong>+9 plays much harder</strong>, zero JS errors).'],
+    ],
+  },
   {
     version: '0.0.78',
     title: 'Honest Level Estimate — the six measured axes, reduced to one SDVX level',
@@ -11340,15 +11349,11 @@ const DisclaimerGate = (function() {
     // Reading load only means something when there are notes to read — a
     // note-less chart has a defined BPM but no reading demand, so its reading
     // spoke stays at 0 and the whole radar reads truly empty.
-    const bpmMax = s.bpmMax || 120;
-    const readingMs = ((s.totalNotes || 0) > 0 && chart && typeof chart.reactionWindowMs === 'function')
-      ? chart.reactionWindowMs(HONEST_RADAR_READING_REF_TICKS, bpmMax, 1)
-      : 0;
-    const raw = {
-      readingMs,
-      peakNps: s.peakNps, meanNps: s.meanNps, peakJps: s.peakJps,
-      heavierShare: s.handHeavierShare, peakKps: s.peakKps,
-    };
+    // v0.0.79 — build the six-axis raw input through the shared
+    // chart.honestRadarRawFromStats so the modal radar and the Tools-Hub Chart
+    // Statistics tool's Est.-level row read from ONE source (the reading spoke's
+    // reactionWindowMs call in particular lives in exactly one place now).
+    const raw = honestRadarRawFromStats(s, chart);
     const prof = honestRadarProfile(raw);
 
     const cx = W / 2, cy = H / 2 + 6, R = Math.min(W, H) * 0.34;
