@@ -403,6 +403,64 @@ export function honestLevelEstimate(raw = {}, opts = {}) {
   };
 }
 
+// v0.0.79 — Level Meta Nudge. Reconcile the DECLARED chart level (meta.level —
+// what the chartist typed into the chart's metadata) against the MEASURED honest
+// level (honestLevelEstimate — what the six honest-radar axes actually say). SDVX
+// levels run 1..20; a divergence of two or more whole levels is worth flagging,
+// because a chart labelled 15 that plays like an 18 mis-sells itself to players
+// and to any level-based matchmaking. This is the natural v0.0.78 follow-up: the
+// measured level only becomes actionable once it is compared to the number the
+// author claimed. PURE and DOM-free — the caller passes the already-computed
+// measured level and the declared meta.level; nothing is mutated. Returns
+//   { status, delta, declared, measured, label, advice, color }
+// status: 'none'   → no valid declared level to compare against
+//         'match'  → |measured − declared| <= tol (default 1); the label is honest
+//         'harder' → measured >= declared + tol + 1; plays above its label
+//         'easier' → measured <= declared − tol − 1; plays below its label
+// Severity colours the flag: a gap of 2–3 reads amber, 4+ reads hot-red, on the
+// same ramp the level band and the radar spokes use. `delta` is measured−declared.
+export function levelMetaNudge(measured, declared, opts = {}) {
+  const tol = opts.tol == null ? 1 : Math.max(0, Number(opts.tol) || 0);
+  const m = Number(measured), d = Number(declared);
+  const okM = Number.isFinite(m) && m >= 1;
+  const okD = Number.isFinite(d) && d >= 1;
+  if (!okM || !okD) {
+    return {
+      status: 'none', delta: null,
+      declared: okD ? Math.round(d) : null,
+      measured: okM ? Math.round(m) : null,
+      label: '', advice: '', color: '#8a8fb5',
+    };
+  }
+  const dec = Math.round(d), mea = Math.round(m);
+  const delta = mea - dec, mag = Math.abs(delta);
+  if (mag <= tol) {
+    return {
+      status: 'match', delta, declared: dec, measured: mea,
+      label: 'matches the declared level',
+      advice: `Measured level ${mea} is within ${tol} of the declared ${dec} — the label is honest.`,
+      color: '#6fe08a',
+    };
+  }
+  const color = mag >= 4 ? '#ff4d4d' : '#ff8a3d';
+  if (delta > 0) {
+    return {
+      status: 'harder', delta, declared: dec, measured: mea,
+      label: `plays ~${delta} above its declared level`,
+      advice: `Declared ${dec}, but the measured axes read ${mea}. This chart plays ` +
+              `harder than its label — consider raising meta.level or easing the driving axis.`,
+      color,
+    };
+  }
+  return {
+    status: 'easier', delta, declared: dec, measured: mea,
+    label: `plays ~${mag} below its declared level`,
+    advice: `Declared ${dec}, but the measured axes read ${mea}. This chart plays ` +
+            `easier than its label — consider lowering meta.level or adding demand.`,
+    color,
+  };
+}
+
 // ── Quantize / Nudge engine ──────────────────────────────────────────────────
 // Shared, side-effect-isolated tick math used by the Tools Hub "Quantize" tool.
 // Kept here (not in tools.js) so it can be unit-tested without a DOM, and so any

@@ -1,4 +1,4 @@
-import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestRadarProfile, honestRadarScoreColor, honestLevelEstimate, honestLevelBand, HONEST_RADAR_READING_REF_TICKS, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
+import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestRadarProfile, honestRadarScoreColor, honestLevelEstimate, honestLevelBand, levelMetaNudge, HONEST_RADAR_READING_REF_TICKS, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
 import { Renderer, C, laserColors, laserOpacity, laserWideMode, LASER_PRESETS, applyLaserPreset, setLaserColorCustom, buildLaneHeader, setLaserOpacity, setLaserWideMode } from './renderer.js';
 import { GameView } from './game.js';
 import { exportKsh, importKsh, downloadText } from './ksh.js';
@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.78';
+const APP_VERSION = '0.0.79';
 const CHANGELOG = [
+  {
+    version: '0.0.79',
+    title: 'Level Meta Nudge — declared vs. measured level, reconciled',
+    entries: [
+      ['add', '<strong>Chart Statistics now tells you when your chart&rsquo;s label lies.</strong> v0.0.78 gave every chart one honest <strong>estimated level</strong> read from the six measured axes. But a chart also carries a <em>declared</em> level &mdash; the number the author typed into <code>meta.level</code> &mdash; and until now nothing compared the two. A new <strong>Level Meta Nudge</strong> line sits directly under the Est.-level readout in the <strong>📊 Chart Statistics</strong> modal: it shows <em>declared&nbsp;N vs&nbsp;measured&nbsp;M</em> and flags the gap, because a chart labelled 15 that plays like an 18 mis-sells itself to players and to any level-based matchmaking.'],
+      ['add', '<strong>A calm ✓ when honest, a coloured arrow when not.</strong> Within one whole level the line reads a green <span style="color:#6fe08a">✓ matches the declared level</span>. A measured level two or more above its label reads <span style="color:#ff8a3d">▲ plays ~N above its declared level</span>; two or more below reads <span style="color:#ff8a3d">▼ plays ~N below</span>. A gap of four or more turns <span style="color:#ff4d4d">hot-red</span>, on the same calm-green&rarr;hot-red ramp the level band and radar spokes use. The hover tooltip spells out the exact declared/measured numbers and a one-line suggestion (raise <code>meta.level</code>, or ease the driving axis). The line hides itself when the chart has no notes or no declared level to compare against.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.levelMetaNudge(measured, declared)</code> that takes the level <code>honestLevelEstimate</code> already produced and the chart&rsquo;s <code>meta.level</code> &mdash; so the nudge and the Est.-level line can never disagree. Guarded end-to-end (a missing, NaN, zero or string declared/measured level degrades to a clean &ldquo;nothing to compare&rdquo; state, never throws); the chart is never mutated. Verified with 24 Node unit tests and a real-browser run: a declared-10 chart measured at 17 flags <strong>▲ plays ~7 above</strong> in red, a declared-17 measured-17 chart reads <strong>✓ matches</strong>, with zero JS errors.'],
+    ],
+  },
   {
     version: '0.0.78',
     title: 'Honest Level Estimate — the six measured axes, reduced to one SDVX level',
@@ -11316,6 +11325,7 @@ const DisclaimerGate = (function() {
   const radarCanvas  = document.getElementById('cs-radar');
   const radarCaption = document.getElementById('cs-radar-caption');
   const levelReadout = document.getElementById('cs-level');
+  const metaReadout  = document.getElementById('cs-level-meta');
 
   // v0.0.77 — Honest Radar. Draw the six measured difficulty axes as one polygon
   // from the SAME numbers the text rows below use, via the DOM-free
@@ -11421,6 +11431,38 @@ const DisclaimerGate = (function() {
           `volatility heuristic). composite ${est.composite.toFixed(1)}/100 = ` +
           `0.6·peak(${est.peakScore.toFixed(0)}) + 0.4·mean(${est.meanScore.toFixed(0)}) ` +
           `→ ${est.levelFloat.toFixed(1)}, rounded to ${est.level}. An estimate, not a verdict.`;
+
+        // v0.0.79 — Level Meta Nudge. Reconcile the measured level above against
+        // the DECLARED chart level (chart.meta.level, what the author typed). A
+        // gap of two or more whole levels is worth flagging — a chart labelled 15
+        // that plays like an 18 mis-sells itself. Render-only; the DOM-free
+        // chart.levelMetaNudge is the single source of truth, so this line and the
+        // Est.-level line can never disagree. Hidden when there is no declared
+        // level to compare against.
+        if (metaReadout) {
+          const nudge = levelMetaNudge(est.level, chart?.meta?.level);
+          if (nudge.status === 'none') {
+            metaReadout.style.display = 'none';
+            metaReadout.innerHTML = '';
+            metaReadout.title = '';
+          } else {
+            metaReadout.style.display = '';
+            const icon = nudge.status === 'match' ? '✓'
+                       : nudge.status === 'harder' ? '▲' : '▼';
+            metaReadout.innerHTML =
+              `<span style="color:${nudge.color};font-weight:600">${icon}</span> ` +
+              `<span style="opacity:.7">declared</span> ` +
+              `<strong>${nudge.declared}</strong> ` +
+              `<span style="opacity:.5">vs measured</span> ` +
+              `<strong style="color:${nudge.color}">${nudge.measured}</strong> ` +
+              `<span style="color:${nudge.color};opacity:.9">— ${nudge.label}</span>`;
+            metaReadout.title = nudge.advice;
+          }
+        }
+      }
+      if (metaReadout && !hasNotes) {
+        metaReadout.style.display = 'none';
+        metaReadout.innerHTML = '';
       }
     }
 
