@@ -1,4 +1,4 @@
-import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestRadarProfile, honestRadarScoreColor, honestLevelEstimate, honestLevelBand, HONEST_RADAR_READING_REF_TICKS, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
+import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestRadarProfile, honestRadarScoreColor, honestLevelEstimate, honestLevelBand, levelMetaNudge, HONEST_RADAR_READING_REF_TICKS, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
 import { Renderer, C, laserColors, laserOpacity, laserWideMode, LASER_PRESETS, applyLaserPreset, setLaserColorCustom, buildLaneHeader, setLaserOpacity, setLaserWideMode } from './renderer.js';
 import { GameView } from './game.js';
 import { exportKsh, importKsh, downloadText } from './ksh.js';
@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.78';
+const APP_VERSION = '0.0.79';
 const CHANGELOG = [
+  {
+    version: '0.0.79',
+    title: 'Declared vs Measured — the honest level, now in the Stats tool, checked against the slot you typed',
+    entries: [
+      ['add', '<strong>The Honest Level Estimate now lives in the Tools-Hub Chart Statistics tool too — and tells you when your declared level is wrong.</strong> v0.0.78 reduced the six measured axes to one estimated <strong>SDVX level</strong>, but only in the <strong>📊 Chart Statistics</strong> <em>modal</em>. Every prior measured number (Peak&nbsp;NPS, Peak&nbsp;Jack, Hand&nbsp;Balance, Knob&nbsp;Load) lives in <em>both</em> the modal and the Tools-Hub tool; the level now does the same. A new <strong>Est. level</strong> row shows the same <code>N&nbsp;Band&nbsp;— driven by AXIS</code> the radar readout does, from the same source of truth.'],
+      ['add', '<strong>And it checks that measured level against the one you declared.</strong> A KSON chart carries a typed <code>meta.level</code> — the slot number you meant to make — and that can silently drift from what the notes actually demand: a chart labelled <strong>15</strong> can measure <strong>18</strong> once it grows a dense burst. A new <strong>Declared vs measured</strong> row (in the tool) and an inline <code>· vs declared N</code> tag (on the modal readout) flag the gap: within ±1 reads a calm <span style="color:#6fe08a">matches declared</span>, a chart that <span style="color:#ff8a3d">plays harder — under-rated</span> warms toward <span style="color:#ff4d4d">red</span> as the gap widens (the direction that ambushes a player), and one that <span style="color:#66ddff">plays easier — over-rated</span> reads cool cyan. It is a <em>reading</em> only — <code>meta.level</code> is never changed for you.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.levelMetaNudge(measured, declared)</code> that returns a <code>match / under / over / none</code> verdict with a signed delta and a colour on the same calm-green&nbsp;→&nbsp;hot-red ramp, reused verbatim by the modal and the tool so they can never disagree. Guarded end-to-end (a missing / out-of-range / NaN declared level degrades to a quiet &ldquo;no declared level to compare&rdquo;, never throws); a note-less chart shows &ldquo;&mdash;&rdquo;. Verified with 23 Node unit tests and a real-browser run; the chart is never mutated.'],
+    ],
+  },
   {
     version: '0.0.78',
     title: 'Honest Level Estimate — the six measured axes, reduced to one SDVX level',
@@ -11411,16 +11420,29 @@ const DisclaimerGate = (function() {
         const driver = est.axes.find(a => a.key === est.peakAxis);
         const drvName = driver ? driver.short : (est.driver || '—');
         const drvCol  = driver ? driver.color : est.color;
+        // v0.0.79 — declared-vs-measured nudge. The chart carries a typed meta.level
+        // (the slot the chartist declared); levelMetaNudge (shared with the Tools-Hub
+        // Chart Statistics tool) flags when the measured level has drifted past it, so
+        // an under-rated burst is visible without opening the tool. Reading only —
+        // meta.level is never changed here.
+        const nudge = levelMetaNudge(est.level, chart.meta && chart.meta.level);
+        const nudgeHtml = nudge.verdict === 'none' ? '' :
+          ` <span style="opacity:.5;font-size:11px">· vs declared ${nudge.declared}:</span>` +
+          ` <strong style="color:${nudge.color};font-size:11px">${nudge.label}</strong>`;
         levelReadout.innerHTML =
           `Est. level <strong style="color:${est.color};font-size:17px">${est.level}</strong>` +
           ` <span style="color:${est.color};opacity:.9">${est.band}</span>` +
           ` <span style="opacity:.6;font-size:11px">— driven by</span>` +
-          ` <strong style="color:${drvCol}">${drvName}</strong>`;
+          ` <strong style="color:${drvCol}">${drvName}</strong>` +
+          nudgeHtml;
         levelReadout.title =
           `Estimated SDVX level from the six measured Honest-Radar axes (not the ` +
           `volatility heuristic). composite ${est.composite.toFixed(1)}/100 = ` +
           `0.6·peak(${est.peakScore.toFixed(0)}) + 0.4·mean(${est.meanScore.toFixed(0)}) ` +
-          `→ ${est.levelFloat.toFixed(1)}, rounded to ${est.level}. An estimate, not a verdict.`;
+          `→ ${est.levelFloat.toFixed(1)}, rounded to ${est.level}. An estimate, not a verdict.` +
+          (nudge.verdict !== 'none'
+            ? `  Declared meta.level ${nudge.declared}; measured ${nudge.measured} (${nudge.label}).`
+            : '');
       }
     }
 
