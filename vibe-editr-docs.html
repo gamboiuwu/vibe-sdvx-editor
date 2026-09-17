@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.78 · 2026</span>
+  <span class="version">v0.0.79 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.79</span>Declared vs Measured &mdash; the honest level, now in the Stats tool, checked against the slot you typed</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>The Honest Level Estimate now lives in the Tools-Hub Chart Statistics tool too &mdash; and tells you when your declared level is wrong.</strong> v0.0.78 reduced the six measured axes to one estimated <strong>SDVX level</strong>, but only in the <strong>&#128202; Chart Statistics</strong> <em>modal</em>. Every prior measured number (Peak&nbsp;NPS, Peak&nbsp;Jack, Hand&nbsp;Balance, Knob&nbsp;Load) lives in <em>both</em> the modal and the Tools-Hub tool; the level now does the same, via a new <strong>Est.&nbsp;level</strong> row showing the same <code>N&nbsp;Band&nbsp;&mdash; driven by AXIS</code> the radar readout does, from the same source of truth.</li>
+    <li><span class="tag add">add</span><strong>And it checks that measured level against the one you declared.</strong> A KSON chart carries a typed <code>meta.level</code> &mdash; the slot number you meant to make &mdash; and that can silently drift from what the notes actually demand: a chart labelled <strong>15</strong> can measure <strong>18</strong> once it grows a dense burst. A new <strong>Declared vs measured</strong> row (in the tool) and an inline <code>&middot; vs declared N</code> tag (on the modal readout) flag the gap: within &plusmn;1 reads a calm <span style="color:#6fe08a">matches declared</span>, a chart that <span style="color:#ff8a3d">plays harder &mdash; under-rated</span> warms toward <span style="color:#ff4d4d">red</span> as the gap widens (the direction that ambushes a player), and one that <span style="color:#66ddff">plays easier &mdash; over-rated</span> reads cool cyan. It is a <em>reading</em> only &mdash; <code>meta.level</code> is never changed for you.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.levelMetaNudge(measured, declared)</code> that returns a <code>match / under / over / none</code> verdict with a signed delta and a colour on the same calm-green &rarr; hot-red ramp, reused verbatim by the modal and the tool so they can never disagree. Guarded end-to-end (a missing / out-of-range / NaN declared level degrades to a quiet &ldquo;no declared level to compare&rdquo;, never throws); a note-less chart shows &ldquo;&mdash;&rdquo;. Verified with 23 Node unit tests and a real-browser run; the chart is never mutated.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.78</span>Honest Level Estimate &mdash; the six measured axes reduced to one SDVX level</h4>

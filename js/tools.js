@@ -1,5 +1,5 @@
 import { chart, renderer, gameView, render, saveUndo, updateSeekbar, addChartAnnotation, _seekTo, sel, playing, audioBuffer, flipHorizontalRange, flipTemporalRange, updateStopEventList } from './app.js';
-import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick } from './chart.js';
+import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestLevelEstimate, levelMetaNudge, HONEST_RADAR_READING_REF_TICKS, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick } from './chart.js';
 import { Renderer } from './renderer.js';
 import { updateRadar } from './radar.js';
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -5899,6 +5899,45 @@ function _toolChartStats(c) {
         const kb = knobDifficultyBand(st.peakKps);
         const det = (st.knobTotal || 0) > 0 ? ` <span style="opacity:.55">(${st.knobSlams || 0} slam${(st.knobSlams||0)!==1?'s':''}, ${st.knobReversals || 0} rev)</span>` : '';
         return `${(st.peakKps || 0).toFixed(1)} <span style="color:${kb.color};font-weight:600">${kb.label}</span>${det}`;
+      })() },
+      // v0.0.79 — Est. level: the six measured axes reduced to one SDVX level 1..20
+      // via the shared honestLevelEstimate, so the tool row and the Chart Statistics
+      // modal's radar readout can never disagree (same DOM-free source of truth). The
+      // `raw` object is built exactly the way the modal's drawRadar builds it — the
+      // READING axis is the reference green-number window at the chart's PEAK bpm, so
+      // it is a stable, HiSpeed-free chart property. A note-less chart has no measured
+      // level (all axes 0), so the row reads "—" rather than a false "1".
+      { label: 'Est. level',           value: (() => {
+        if ((totalNoteEvents || 0) <= 0) return '<span style="opacity:.5">—</span>';
+        const readingMs = (typeof ch.reactionWindowMs === 'function')
+          ? ch.reactionWindowMs(HONEST_RADAR_READING_REF_TICKS, st.bpmMax || 120, 1) : 0;
+        const est = honestLevelEstimate({
+          readingMs, peakNps: st.peakNps, meanNps: st.meanNps, peakJps: st.peakJps,
+          heavierShare: st.handHeavierShare, peakKps: st.peakKps,
+        });
+        const drv = est.driver || '—';
+        return `<b style="color:${est.color};font-size:14px">${est.level}</b> ` +
+               `<span style="color:${est.color};font-weight:600">${est.band}</span> ` +
+               `<span style="opacity:.55">— driven by ${drv}</span>`;
+      })() },
+      // v0.0.79 — Declared vs measured: compare the measured level to the chart's
+      // typed meta.level via the shared levelMetaNudge, flagging a drift (a chart
+      // labelled 15 that measures 18 is under-rated by 3). Reading only — meta.level
+      // is never changed here.
+      { label: 'Declared vs measured', value: (() => {
+        if ((totalNoteEvents || 0) <= 0) return '<span style="opacity:.5">—</span>';
+        const readingMs = (typeof ch.reactionWindowMs === 'function')
+          ? ch.reactionWindowMs(HONEST_RADAR_READING_REF_TICKS, st.bpmMax || 120, 1) : 0;
+        const est = honestLevelEstimate({
+          readingMs, peakNps: st.peakNps, meanNps: st.meanNps, peakJps: st.peakJps,
+          heavierShare: st.handHeavierShare, peakKps: st.peakKps,
+        });
+        const nudge = levelMetaNudge(est.level, ch.meta && ch.meta.level);
+        if (nudge.verdict === 'none') {
+          return `<span style="opacity:.55">${nudge.label}</span>`;
+        }
+        return `declared <b>${nudge.declared}</b> / measured <b>${nudge.measured}</b> ` +
+               `<span style="color:${nudge.color};font-weight:600">${nudge.label}</span>`;
       })() },
       { label: 'Total note events',    value: totalNoteEvents },
       { label: 'BPM events',           value: ch.bpmEvents.length },

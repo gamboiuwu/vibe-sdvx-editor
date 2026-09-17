@@ -403,6 +403,50 @@ export function honestLevelEstimate(raw = {}, opts = {}) {
   };
 }
 
+// v0.0.79 — Declared-vs-measured level nudge. The Honest Level Estimate (v0.0.78)
+// answers "what level did I just make?" from the six measured axes; a KSON chart
+// ALSO carries a DECLARED level in meta.level (the slot number the chartist typed,
+// 1..20). Those two can silently drift apart — a chart labelled 15 can measure 18
+// once it grows a dense burst — and nothing surfaced the gap. levelMetaNudge is the
+// single, DOM-free, unit-tested source of truth that compares them, so the modal
+// and the Tools-Hub tool flag a mismatch identically. It is a READING, never a
+// write: it never changes meta.level, only reports the drift.
+//   measured  — the measured level from honestLevelEstimate (1..20), or null/0 when
+//               the chart has no notes (no measured level to compare).
+//   declared  — meta.level as typed (may be undefined / 0 / out of range).
+// Returns { verdict, delta, declared, measured, label, color } where verdict is:
+//   'none'  — nothing to compare (no measured level, or no sane declared level);
+//   'match' — within ±1 (a level is an estimate, so ±1 is agreement, calm green);
+//   'under' — measured ≥ declared+2 (chart plays HARDER than its label; under-rated,
+//             warmer as the gap widens — the dangerous direction for a player);
+//   'over'  — measured ≤ declared−2 (chart plays EASIER than its label; over-rated,
+//             cool cyan). delta = measured − declared (signed). Pure and guarded so
+// non-numeric / out-of-range inputs degrade to verdict 'none', never throw.
+export function levelMetaNudge(measured, declared) {
+  const m = Math.round(Number(measured));
+  const d = Math.round(Number(declared));
+  const mOk = Number.isFinite(m) && m >= 1 && m <= 20;
+  const dOk = Number.isFinite(d) && d >= 1 && d <= 20;
+  if (!mOk || !dOk) {
+    return { verdict: 'none', delta: 0, declared: dOk ? d : null, measured: mOk ? m : null,
+             label: 'no declared level to compare', color: '#8890b8' };
+  }
+  const delta = m - d;
+  const mag = Math.abs(delta);
+  if (mag <= 1) {
+    return { verdict: 'match', delta, declared: d, measured: m,
+             label: 'matches declared', color: '#6fe08a' };
+  }
+  if (delta > 0) {
+    // Harder than labelled — the direction that surprises a player, so it warms up.
+    const color = mag >= 4 ? '#ff4d4d' : '#ff8a3d';
+    return { verdict: 'under', delta, declared: d, measured: m,
+             label: `plays harder — under-rated by ${mag}`, color };
+  }
+  return { verdict: 'over', delta, declared: d, measured: m,
+           label: `plays easier — over-rated by ${mag}`, color: '#66ddff' };
+}
+
 // ── Quantize / Nudge engine ──────────────────────────────────────────────────
 // Shared, side-effect-isolated tick math used by the Tools Hub "Quantize" tool.
 // Kept here (not in tools.js) so it can be unit-tested without a DOM, and so any
