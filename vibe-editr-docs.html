@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.78 · 2026</span>
+  <span class="version">v0.0.79 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.79</span>Meta-Level Match &mdash; the measured level, checked against the slot you declared</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Chart Statistics now flags when your chart plays harder &mdash; or easier &mdash; than its declared level.</strong> <strong>v0.0.78</strong> reduced the six measured Honest-Radar axes to one estimated <strong>SDVX level 1&ndash;20</strong>, but it stood on its own; nothing compared it to the <strong>level you typed into the chart&rsquo;s metadata</strong>. Now the <strong>Est.&nbsp;level</strong> line in the <strong>&#128202; Chart Statistics</strong> modal, and a matching new <strong>Est.&nbsp;level</strong> row in the Tools-Hub Chart Statistics tool, both read <code>declared 10 &mdash; 7 above declared</code> beside the estimate &mdash; so a chart set to 15 but edited into an 18 shows the drift as a single flag, right where every other difficulty number already lives.</li>
+    <li><span class="tag add">add</span><strong>Four honest tiers, on the same calm-green &rarr; hot-red ramp.</strong> The gap is banded: <span style="color:#6fe08a">matches</span> (&Delta;&nbsp;0), <span style="color:#66ddff">&asymp;&nbsp;declared&nbsp;(&plusmn;1)</span> &mdash; within normal charting tolerance &mdash; <span style="color:#ffcc55">2&nbsp;above/below</span>, and <span style="color:#ff4d4d">3+&nbsp;above/below</span>. A positive gap means the chart plays <em>harder</em> than its slot (under-rated); negative means <em>easier</em> (over-rated). A chart with no declared level yet simply omits the comparison rather than guessing, and a note-less chart still shows no level at all.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.levelMatchReport(measured, declared)</code> that classifies the gap (guarded: a missing/NaN/over-20 declared level degrades cleanly, never throws), plus a new shared <code>chart.honestRadarRawFromStats(stats, chart)</code> that is now the ONE place the six-axis radar inputs are assembled &mdash; the modal radar, the level readout and the tool row all feed it identical numbers, so they can never disagree. The chart is never mutated. Verified with 19 Node unit tests and a real-browser run: a single-lane burst declared 10 reads <strong>17 Expert &mdash; 7 above declared</strong>, a two-hand chart declared 18 reads <strong>12 Advanced &mdash; 6 below declared</strong>, with zero JS errors.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.78</span>Honest Level Estimate &mdash; the six measured axes reduced to one SDVX level</h4>

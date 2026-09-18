@@ -1,4 +1,4 @@
-import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestRadarProfile, honestRadarScoreColor, honestLevelEstimate, honestLevelBand, HONEST_RADAR_READING_REF_TICKS, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
+import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestRadarProfile, honestRadarScoreColor, honestLevelEstimate, honestLevelBand, honestRadarRawFromStats, levelMatchReport, HONEST_RADAR_READING_REF_TICKS, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
 import { Renderer, C, laserColors, laserOpacity, laserWideMode, LASER_PRESETS, applyLaserPreset, setLaserColorCustom, buildLaneHeader, setLaserOpacity, setLaserWideMode } from './renderer.js';
 import { GameView } from './game.js';
 import { exportKsh, importKsh, downloadText } from './ksh.js';
@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.78';
+const APP_VERSION = '0.0.79';
 const CHANGELOG = [
+  {
+    version: '0.0.79',
+    title: 'Meta-Level Match — the measured level, checked against the slot you declared',
+    entries: [
+      ['add', '<strong>Chart Statistics now flags when your chart plays harder — or easier — than its declared level.</strong> v0.0.78 reduced the six measured Honest-Radar axes to one estimated <strong>SDVX level 1&ndash;20</strong>, but it only ever stood on its own; nothing compared it to the <strong>level you actually typed into the chart&rsquo;s metadata</strong>. Now the <strong>Est.&nbsp;level</strong> line in the <strong>📊 Chart Statistics</strong> modal, and a matching new <strong>Est.&nbsp;level</strong> row in the Tools-Hub Chart Statistics tool, both read <code>declared 10 &mdash; 7 above declared</code> beside the estimate. A chartist who sets a chart to level 15 and edits it into an 18 sees the drift as a single flag, right where every other difficulty number already lives.'],
+      ['add', '<strong>Four honest tiers, on the same calm-green &rarr; hot-red ramp.</strong> The gap is banded so it reads at a glance: <span style="color:#6fe08a">matches</span> (Δ&nbsp;0), <span style="color:#66ddff">&asymp;&nbsp;declared&nbsp;(&plusmn;1)</span> &mdash; within normal charting tolerance &mdash; <span style="color:#ffcc55">2&nbsp;above/below</span>, and <span style="color:#ff4d4d">3+&nbsp;above/below</span>. A positive gap means the chart plays <em>harder</em> than its slot (under-rated); negative means <em>easier</em> (over-rated). When a chart carries no declared level yet, the comparison is simply omitted rather than guessed, and a note-less chart still shows no level at all.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.levelMatchReport(measured, declared)</code> that classifies the gap (guarded: a missing/NaN/over-20 declared level degrades cleanly, never throws), plus a new shared <code>chart.honestRadarRawFromStats(stats, chart)</code> that is now the ONE place the six-axis radar inputs are assembled &mdash; the modal radar, the level readout and the tool row all feed it identical numbers, so they can never disagree. The chart is never mutated. Verified with 19 Node unit tests and a real-browser run: a single-lane burst declared 10 reads <strong>17 Expert &mdash; 7 above declared</strong>, a two-hand chart declared 18 reads <strong>12 Advanced &mdash; 6 below declared</strong>, with zero JS errors.'],
+    ],
+  },
   {
     version: '0.0.78',
     title: 'Honest Level Estimate — the six measured axes, reduced to one SDVX level',
@@ -11340,15 +11349,10 @@ const DisclaimerGate = (function() {
     // Reading load only means something when there are notes to read — a
     // note-less chart has a defined BPM but no reading demand, so its reading
     // spoke stays at 0 and the whole radar reads truly empty.
-    const bpmMax = s.bpmMax || 120;
-    const readingMs = ((s.totalNotes || 0) > 0 && chart && typeof chart.reactionWindowMs === 'function')
-      ? chart.reactionWindowMs(HONEST_RADAR_READING_REF_TICKS, bpmMax, 1)
-      : 0;
-    const raw = {
-      readingMs,
-      peakNps: s.peakNps, meanNps: s.meanNps, peakJps: s.peakJps,
-      heavierShare: s.handHeavierShare, peakKps: s.peakKps,
-    };
+    // Build the six-axis raw inputs through the shared honestRadarRawFromStats so
+    // the radar polygon, the level readout and the Tools-Hub Chart Statistics row
+    // all read IDENTICAL numbers — one source of truth (v0.0.79).
+    const raw = honestRadarRawFromStats(s, chart);
     const prof = honestRadarProfile(raw);
 
     const cx = W / 2, cy = H / 2 + 6, R = Math.min(W, H) * 0.34;
@@ -11411,16 +11415,32 @@ const DisclaimerGate = (function() {
         const driver = est.axes.find(a => a.key === est.peakAxis);
         const drvName = driver ? driver.short : (est.driver || '—');
         const drvCol  = driver ? driver.color : est.color;
+        // v0.0.79 — Meta-Level Match: compare the measured level against the
+        // chart's DECLARED meta.level and flag the gap. Reuses the shared,
+        // DOM-free levelMatchReport so the modal badge and the Tools-Hub tool
+        // row read the same verdict.
+        const declared = chart && chart.meta ? chart.meta.level : null;
+        const mm = levelMatchReport(est.level, declared);
+        const matchBadge = mm.hasDeclared
+          ? ` <span style="opacity:.6;font-size:11px">— declared</span>` +
+            ` <strong style="color:${mm.color}">${mm.declared}</strong>` +
+            ` <span style="color:${mm.color};opacity:.9;font-size:11px">${mm.label}</span>`
+          : '';
         levelReadout.innerHTML =
           `Est. level <strong style="color:${est.color};font-size:17px">${est.level}</strong>` +
           ` <span style="color:${est.color};opacity:.9">${est.band}</span>` +
           ` <span style="opacity:.6;font-size:11px">— driven by</span>` +
-          ` <strong style="color:${drvCol}">${drvName}</strong>`;
+          ` <strong style="color:${drvCol}">${drvName}</strong>` +
+          matchBadge;
         levelReadout.title =
           `Estimated SDVX level from the six measured Honest-Radar axes (not the ` +
           `volatility heuristic). composite ${est.composite.toFixed(1)}/100 = ` +
           `0.6·peak(${est.peakScore.toFixed(0)}) + 0.4·mean(${est.meanScore.toFixed(0)}) ` +
-          `→ ${est.levelFloat.toFixed(1)}, rounded to ${est.level}. An estimate, not a verdict.`;
+          `→ ${est.levelFloat.toFixed(1)}, rounded to ${est.level}. An estimate, not a verdict.` +
+          (mm.hasDeclared
+            ? `\nDeclared meta.level ${mm.declared}; measured ${mm.measured} ` +
+              `(Δ ${mm.delta >= 0 ? '+' : ''}${mm.delta}${mm.delta !== 0 ? `, plays ${mm.direction}` : ''}).`
+            : `\nNo declared meta.level to compare against.`);
       }
     }
 
