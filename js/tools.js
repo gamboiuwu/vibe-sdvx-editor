@@ -1,5 +1,5 @@
 import { chart, renderer, gameView, render, saveUndo, updateSeekbar, addChartAnnotation, _seekTo, sel, playing, audioBuffer, flipHorizontalRange, flipTemporalRange, updateStopEventList } from './app.js';
-import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick } from './chart.js';
+import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestLevelEstimate, honestRadarRawFromStats, levelMatchReport, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick } from './chart.js';
 import { Renderer } from './renderer.js';
 import { updateRadar } from './radar.js';
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -5899,6 +5899,26 @@ function _toolChartStats(c) {
         const kb = knobDifficultyBand(st.peakKps);
         const det = (st.knobTotal || 0) > 0 ? ` <span style="opacity:.55">(${st.knobSlams || 0} slam${(st.knobSlams||0)!==1?'s':''}, ${st.knobReversals || 0} rev)</span>` : '';
         return `${(st.peakKps || 0).toFixed(1)} <span style="color:${kb.color};font-weight:600">${kb.label}</span>${det}`;
+      })() },
+      // v0.0.79 — Est. level: the six measured Honest-Radar axes reduced to one
+      // SDVX level 1..20 (parity with the Chart Statistics modal), plus the NEW
+      // Meta-Level Match that flags a gap against the chart's DECLARED meta.level.
+      // Built through the shared honestRadarRawFromStats + honestLevelEstimate so
+      // this row and the modal readout can never disagree, and levelMatchReport
+      // drives the same match verdict on both surfaces. A note-less chart has no
+      // level to estimate, so the row reads "—".
+      { label: 'Est. level',           value: (() => {
+        if ((totalNoteEvents || 0) <= 0) return '—';
+        const raw = honestRadarRawFromStats(st, ch);
+        const est = honestLevelEstimate(raw);
+        const drv = est.driver || '—';
+        const declared = ch.meta ? ch.meta.level : null;
+        const mm = levelMatchReport(est.level, declared);
+        const base = `<b style="color:${est.color}">${est.level}</b> <span style="color:${est.color};font-weight:600">${est.band}</span> <span style="opacity:.55">(${drv})</span>`;
+        const match = mm.hasDeclared
+          ? `<br><span style="opacity:.6">declared ${mm.declared} —</span> <span style="color:${mm.color};font-weight:600">${mm.label}</span>`
+          : '';
+        return base + match;
       })() },
       { label: 'Total note events',    value: totalNoteEvents },
       { label: 'BPM events',           value: ch.bpmEvents.length },

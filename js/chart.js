@@ -403,6 +403,61 @@ export function honestLevelEstimate(raw = {}, opts = {}) {
   };
 }
 
+// Assemble the six-axis `raw` object the Honest Radar / Honest Level read, from a
+// computeChartStats() result plus the chart (for the reading-window engine). This
+// is the ONE place the raw inputs are built, so every surface that draws the radar
+// or shows the level — the Chart Statistics modal, the Tools-Hub Chart Statistics
+// tool and any future caller — feeds honestRadarProfile / honestLevelEstimate
+// IDENTICAL numbers, and the level, the radar shape and the tool row can never
+// disagree. Reading load only means something when there are notes to read, so a
+// note-less chart's reading spoke degrades to 0 (matching the modal's own gate),
+// and a missing reactionWindowMs engine (a plain-object caller) degrades to 0
+// rather than throwing. PURE apart from the read-only reactionWindowMs call; the
+// chart is never mutated.
+export function honestRadarRawFromStats(stats, chartObj) {
+  const s = stats || {};
+  const hasNotes = (Number(s.totalNotes) || 0) > 0;
+  const bpmMax = s.bpmMax || 120;
+  const readingMs = (hasNotes && chartObj && typeof chartObj.reactionWindowMs === 'function')
+    ? chartObj.reactionWindowMs(HONEST_RADAR_READING_REF_TICKS, bpmMax, 1)
+    : 0;
+  return {
+    readingMs,
+    peakNps: s.peakNps, meanNps: s.meanNps, peakJps: s.peakJps,
+    heavierShare: s.handHeavierShare, peakKps: s.peakKps,
+  };
+}
+
+// v0.0.79 — Meta-Level Match. Compare a MEASURED honest level (1..20, from
+// honestLevelEstimate) against the chart's DECLARED meta.level and classify the
+// gap, so a chartist sees "declared 15, measured 18 — plays 3 above its slot" as a
+// single flag. A positive delta means the chart plays HARDER than its declared
+// slot (under-rated); negative means EASIER (over-rated). Tiers, on the same
+// calm-green → hot-red ramp every honest-difficulty band uses:
+//   |Δ| = 0 → match,  = 1 → close (±1 is within normal charting tolerance),
+//   = 2 → off,        ≥ 3 → far.
+// A missing / non-positive declared level (no meta yet) returns hasDeclared:false
+// so the caller can simply omit the comparison. PURE and DOM-free — no chart
+// access, so the same report drives the modal badge and the tool row identically.
+export function levelMatchReport(measuredLevel, declaredLevel) {
+  const m = Math.max(1, Math.min(20, Math.round(Number(measuredLevel) || 0)));
+  const dRaw = Number(declaredLevel);
+  if (!Number.isFinite(dRaw) || dRaw <= 0) {
+    return { hasDeclared: false, measured: m, declared: null, delta: 0,
+             verdict: 'none', label: '', color: '#6fe08a', direction: 'even' };
+  }
+  const declared = Math.max(1, Math.min(20, Math.round(dRaw)));
+  const delta = m - declared;
+  const abs = Math.abs(delta);
+  const direction = delta > 0 ? 'harder' : delta < 0 ? 'easier' : 'even';
+  let verdict, label, color;
+  if (abs === 0)      { verdict = 'match'; label = 'matches declared';        color = '#6fe08a'; }
+  else if (abs === 1) { verdict = 'close'; label = '≈ declared (±1)';          color = '#66ddff'; }
+  else if (abs === 2) { verdict = 'off';   label = `${abs} ${direction === 'harder' ? 'above' : 'below'} declared`; color = '#ffcc55'; }
+  else                { verdict = 'far';   label = `${abs} ${direction === 'harder' ? 'above' : 'below'} declared`; color = '#ff4d4d'; }
+  return { hasDeclared: true, measured: m, declared, delta, verdict, label, color, direction };
+}
+
 // ── Quantize / Nudge engine ──────────────────────────────────────────────────
 // Shared, side-effect-isolated tick math used by the Tools Hub "Quantize" tool.
 // Kept here (not in tools.js) so it can be unit-tested without a DOM, and so any
