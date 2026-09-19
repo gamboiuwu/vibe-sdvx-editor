@@ -403,6 +403,38 @@ export function honestLevelEstimate(raw = {}, opts = {}) {
   };
 }
 
+// v0.0.79 — Level Check. Compare the MEASURED honest level (honestLevelEstimate)
+// against the level the chartist DECLARED in the metadata form (chart.meta.level),
+// and classify the gap so a mislabelled slot is flagged. A positive delta means
+// the chart plays HARDER than its label (under-rated: the label undersells it); a
+// negative delta means it plays EASIER (over-rated). This is an editing aid, not a
+// verdict — it only ever compares two 1..20 numbers and never touches the chart.
+// PURE and DOM-free, so the modal and the Tools-Hub stat panel read it identically.
+// A missing / non-numeric declared level (a chart that never set one) degrades to
+// status 'unknown' rather than pretending the gap is zero. Returns
+//   { measured, declared, delta, magnitude, status, label, color }.
+export function levelMatchReport(measuredLevel, declaredLevel) {
+  const m = Math.max(1, Math.min(20, Math.round(Number(measuredLevel) || 1)));
+  const dRaw = Number(declaredLevel);
+  const hasDeclared = Number.isFinite(dRaw) && dRaw >= 1;
+  if (!hasDeclared) {
+    return {
+      measured: m, declared: null, delta: null, magnitude: null,
+      status: 'unknown', label: 'no declared level', color: '#8890b0',
+    };
+  }
+  const d = Math.max(1, Math.min(20, Math.round(dRaw)));
+  const delta = m - d;                 // + = harder than labelled, − = easier
+  const mag = Math.abs(delta);
+  const dir = delta > 0 ? 'under-rated' : 'over-rated';
+  let status, label, color;
+  if (mag === 0)      { status = 'match'; label = 'matches declared';          color = '#6fe08a'; }
+  else if (mag === 1) { status = 'close'; label = `plays 1 ${delta > 0 ? 'above' : 'below'} declared`; color = '#a8e05a'; }
+  else if (mag <= 3)  { status = 'off';   label = `${dir} by ${mag}`;          color = '#ffcc55'; }
+  else                { status = 'far';   label = `badly ${dir} by ${mag}`;    color = '#ff6b4d'; }
+  return { measured: m, declared: d, delta, magnitude: mag, status, label, color };
+}
+
 // ── Quantize / Nudge engine ──────────────────────────────────────────────────
 // Shared, side-effect-isolated tick math used by the Tools Hub "Quantize" tool.
 // Kept here (not in tools.js) so it can be unit-tested without a DOM, and so any

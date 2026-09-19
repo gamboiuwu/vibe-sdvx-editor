@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.78 · 2026</span>
+  <span class="version">v0.0.79 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.79</span>Level Check &mdash; the measured level vs the level you declared</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Chart Statistics now tells you when your difficulty label is wrong.</strong> v0.0.78 reduced the six measured Honest-Radar axes to one estimated <strong>SDVX level 1&ndash;20</strong>. A new <strong>Level Check</strong> line sits directly beneath it in the <strong>&#128202; Chart Statistics</strong> modal: it compares that measured level against the <strong>Level (1&ndash;20)</strong> you typed into the Song Data metadata form and flags the gap &mdash; <span style="color:#6fe08a">matches declared</span> when they agree, an amber <em>under-rated / over-rated by N</em> when they drift, and a red <em>badly under/over-rated</em> when the label is off by four or more. A positive gap means the chart plays <em>harder</em> than its label (you undersold it); a negative gap means it plays <em>easier</em>. It is honestly an editing aid, not a verdict &mdash; but it catches the classic mistake of leaving a placeholder level on a finished chart.</li>
+    <li><span class="tag add">add</span><strong>The estimate finally lives in the Tools-Hub stat panel too.</strong> The <strong>Est.&nbsp;level</strong> readout (v0.0.78) was modal-only; the Tools-Hub <strong>Chart Statistics</strong> tool now carries the identical <strong>Est.&nbsp;level</strong> and <strong>Level Check</strong> rows, the way every prior measured metric lives in both places. Both surfaces rebuild the estimate from the <em>same</em> six axes through the same engine, so the modal, the tool and the radar shape can never disagree.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.levelMatchReport(measured, declared)</code> that classifies the gap into match / close / off / far with a stable status key, label and colour on the shared calm-green &rarr; hot-red ramp. A chart that never set a level degrades to a neutral <em>&ldquo;set a Level to compare&rdquo;</em> rather than pretending the gap is zero; out-of-range and NaN inputs clamp to 1&ndash;20 and never throw. The chart is never mutated. Verified with 16 Node unit tests and a real-browser run.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.78</span>Honest Level Estimate &mdash; the six measured axes reduced to one SDVX level</h4>
