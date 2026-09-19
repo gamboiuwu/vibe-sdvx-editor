@@ -1,4 +1,4 @@
-import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestRadarProfile, honestRadarScoreColor, honestLevelEstimate, honestLevelBand, HONEST_RADAR_READING_REF_TICKS, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
+import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestRadarProfile, honestRadarScoreColor, honestLevelEstimate, honestLevelBand, levelMatchReport, HONEST_RADAR_READING_REF_TICKS, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
 import { Renderer, C, laserColors, laserOpacity, laserWideMode, LASER_PRESETS, applyLaserPreset, setLaserColorCustom, buildLaneHeader, setLaserOpacity, setLaserWideMode } from './renderer.js';
 import { GameView } from './game.js';
 import { exportKsh, importKsh, downloadText } from './ksh.js';
@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.78';
+const APP_VERSION = '0.0.79';
 const CHANGELOG = [
+  {
+    version: '0.0.79',
+    title: 'Level Check — the measured level vs the level you declared',
+    entries: [
+      ['add', '<strong>Chart Statistics now tells you when your difficulty label is wrong.</strong> v0.0.78 reduced the six measured Honest-Radar axes to one estimated <strong>SDVX level 1&ndash;20</strong>. A new <strong>Level Check</strong> line sits directly beneath it in the <strong>📊 Chart Statistics</strong> modal: it compares that measured level against the <strong>Level (1&ndash;20)</strong> you typed into the Song Data metadata form and flags the gap &mdash; <span style="color:#6fe08a">matches declared</span> when they agree, an amber <em>under-rated / over-rated by N</em> when they drift, and a red <em>badly under/over-rated</em> when the label is off by four or more. A positive gap means the chart plays <em>harder</em> than its label (you undersold it); a negative gap means it plays <em>easier</em>. It is honestly an editing aid, not a verdict &mdash; but it catches the classic mistake of leaving a placeholder level on a finished chart.'],
+      ['add', '<strong>The estimate finally lives in the Tools-Hub stat panel too.</strong> The <strong>Est.&nbsp;level</strong> readout (v0.0.78) was modal-only; the Tools-Hub <strong>Chart Statistics</strong> tool now carries the identical <strong>Est.&nbsp;level</strong> and <strong>Level Check</strong> rows, the way every prior measured metric lives in both places. Both surfaces rebuild the estimate from the <em>same</em> six axes through the same engine, so the modal, the tool and the radar shape can never disagree.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.levelMatchReport(measured, declared)</code> that classifies the gap into match / close / off / far with a stable status key, label and colour on the shared calm-green &rarr; hot-red ramp. A chart that never set a level degrades to a neutral <em>&ldquo;set a Level to compare&rdquo;</em> rather than pretending the gap is zero; out-of-range and NaN inputs clamp to 1&ndash;20 and never throw. The chart is never mutated. Verified with 16 Node unit tests (match / &plusmn;1 / off-by-2&ndash;3 / far / unknown / clamping / numeric-string declared) and a real-browser run.'],
+    ],
+  },
   {
     version: '0.0.78',
     title: 'Honest Level Estimate — the six measured axes, reduced to one SDVX level',
@@ -11411,16 +11420,33 @@ const DisclaimerGate = (function() {
         const driver = est.axes.find(a => a.key === est.peakAxis);
         const drvName = driver ? driver.short : (est.driver || '—');
         const drvCol  = driver ? driver.color : est.color;
+        // v0.0.79 — Level Check. Compare the measured level against the level the
+        // chartist declared in the metadata form (chart.meta.level), via the
+        // shared, unit-tested chart.levelMatchReport, and append a second line
+        // flagging an under-/over-rated slot. Render-only; the chart is never read
+        // for anything but its declared level.
+        const declared = chart && chart.meta ? chart.meta.level : null;
+        const match = levelMatchReport(est.level, declared);
+        const checkLine = match.status === 'unknown'
+          ? `<span style="opacity:.55;font-size:11px">declared —</span>` +
+            ` <span style="color:${match.color};font-size:11px">· set a Level to compare</span>`
+          : `<span style="opacity:.6;font-size:11px">declared <strong>${match.declared}</strong></span>` +
+            ` <span style="color:${match.color};font-weight:600;font-size:12px">${match.label}</span>`;
         levelReadout.innerHTML =
           `Est. level <strong style="color:${est.color};font-size:17px">${est.level}</strong>` +
           ` <span style="color:${est.color};opacity:.9">${est.band}</span>` +
           ` <span style="opacity:.6;font-size:11px">— driven by</span>` +
-          ` <strong style="color:${drvCol}">${drvName}</strong>`;
+          ` <strong style="color:${drvCol}">${drvName}</strong>` +
+          `<br>${checkLine}`;
         levelReadout.title =
           `Estimated SDVX level from the six measured Honest-Radar axes (not the ` +
           `volatility heuristic). composite ${est.composite.toFixed(1)}/100 = ` +
           `0.6·peak(${est.peakScore.toFixed(0)}) + 0.4·mean(${est.meanScore.toFixed(0)}) ` +
-          `→ ${est.levelFloat.toFixed(1)}, rounded to ${est.level}. An estimate, not a verdict.`;
+          `→ ${est.levelFloat.toFixed(1)}, rounded to ${est.level}. An estimate, not a verdict.` +
+          (match.status !== 'unknown'
+            ? `\nLevel Check: measured ${match.measured} vs declared ${match.declared} ` +
+              `(${match.delta > 0 ? '+' : ''}${match.delta}) — ${match.label}.`
+            : `\nLevel Check: no Level declared in the metadata to compare against.`);
       }
     }
 

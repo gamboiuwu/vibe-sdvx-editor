@@ -1,5 +1,5 @@
 import { chart, renderer, gameView, render, saveUndo, updateSeekbar, addChartAnnotation, _seekTo, sel, playing, audioBuffer, flipHorizontalRange, flipTemporalRange, updateStopEventList } from './app.js';
-import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick } from './chart.js';
+import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestLevelEstimate, levelMatchReport, HONEST_RADAR_READING_REF_TICKS, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick } from './chart.js';
 import { Renderer } from './renderer.js';
 import { updateRadar } from './radar.js';
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -5900,6 +5900,44 @@ function _toolChartStats(c) {
         const det = (st.knobTotal || 0) > 0 ? ` <span style="opacity:.55">(${st.knobSlams || 0} slam${(st.knobSlams||0)!==1?'s':''}, ${st.knobReversals || 0} rev)</span>` : '';
         return `${(st.peakKps || 0).toFixed(1)} <span style="color:${kb.color};font-weight:600">${kb.label}</span>${det}`;
       })() },
+      // v0.0.78/79 — Est. level (parity with the Chart Statistics modal) + Level
+      // Check. honestLevelEstimate reduces the SAME six measured axes the modal's
+      // Honest Radar draws to one estimated SDVX level 1..20; the `raw` object is
+      // rebuilt exactly as the modal does (readingMs through the reactionWindowMs
+      // engine, gated to 0 when there are no notes) so the two can never disagree.
+      // A note-less chart has no level to estimate, so both rows read "—".
+      ...(() => {
+        const hasNotes = (st.totalNotes || 0) > 0;
+        const bpmMax = st.bpmMax || 120;
+        const readingMs = (hasNotes && typeof ch.reactionWindowMs === 'function')
+          ? ch.reactionWindowMs(HONEST_RADAR_READING_REF_TICKS, bpmMax, 1) : 0;
+        const est = honestLevelEstimate({
+          readingMs, peakNps: st.peakNps, meanNps: st.meanNps, peakJps: st.peakJps,
+          heavierShare: st.handHeavierShare, peakKps: st.peakKps,
+        });
+        if (!hasNotes) {
+          return [
+            { label: 'Est. level',  value: '<span style="opacity:.5">—</span>' },
+            { label: 'Level Check', value: '<span style="opacity:.5">—</span>' },
+          ];
+        }
+        // v0.0.79 — Level Check: the measured level vs the level declared in the
+        // metadata form (chart.meta.level), classified by the shared, unit-tested
+        // chart.levelMatchReport so the flag is one source of truth. Render-only.
+        const declared = ch.meta && ch.meta.level;
+        const match = levelMatchReport(est.level, declared);
+        const estRow = `<strong style="color:${est.color}">${est.level}</strong>` +
+          ` <span style="color:${est.color};opacity:.9">${est.band}</span>` +
+          ` <span style="opacity:.55">— ${est.driver || '—'}</span>`;
+        const checkRow = match.status === 'unknown'
+          ? `<span style="opacity:.6">declared —</span> <span style="color:${match.color}">· set a level to compare</span>`
+          : `<span style="opacity:.7">declared <b>${match.declared}</b> · measured <b>${match.measured}</b></span>` +
+            ` <span style="color:${match.color};font-weight:600">${match.label}</span>`;
+        return [
+          { label: 'Est. level',  value: estRow },
+          { label: 'Level Check', value: checkRow },
+        ];
+      })(),
       { label: 'Total note events',    value: totalNoteEvents },
       { label: 'BPM events',           value: ch.bpmEvents.length },
       { label: 'Chart sections',       value: (ch.sections||[]).length },
