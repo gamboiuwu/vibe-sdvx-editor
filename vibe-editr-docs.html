@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.78 · 2026</span>
+  <span class="version">v0.0.79 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,15 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.79</span>Level Check &mdash; does the chart play at the level it declares?</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>The measured level now checks itself against the level you typed.</strong> <strong>v0.0.78</strong> reduced the six measured axes to a single estimated <strong>SDVX level 1&ndash;20</strong>, but nothing compared that estimate to the level in the chart&rsquo;s <em>metadata</em>. A new <strong>Level check vs declared</strong> line takes the measured estimate, compares it to your declared <code>meta.level</code>, and tells you plainly whether the chart plays <span style="color:#6fe08a">at</span>, <span style="color:#ff8a3d">above</span>, or <span style="color:#66ddff">below</span> its stated slot. Declare a 15 that measures like an 18 and you get a <span style="color:#ff8a3d">&#9888; plays ABOVE declared (+3)</span> nudge; a gap of 2+ levels is flagged, &plusmn;1 reads as a healthy <span style="color:#6fe08a">&#10003; matches declared</span>.</li>
+    <li><span class="tag add">add</span><strong>In both Chart Statistics surfaces, and the estimate finally reaches the Tools&#8209;Hub tool.</strong> The check appears under the Honest Radar in the <strong>&#128202; Chart Statistics</strong> modal, and &mdash; closing a gap every other measured metric had already closed &mdash; the <strong>Est.&nbsp;level</strong> readout <em>and</em> the new Level Check both now also render in the <strong>Tools&#8209;Hub &rarr; Chart Statistics</strong> tool, so the tool and the modal carry the same numbers.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.levelCheck(measured, declared)</code> that both surfaces share, so the modal and the tool can never disagree. Fully guarded: a missing / NaN / non-positive measured or declared level degrades to a neutral &ldquo;&mdash;&rdquo; instead of throwing, and both inputs are clamped to the legal 1&ndash;20 range before comparison; the chart is never mutated. Verified with 433 Node assertions (every band boundary, the full 20&times;20 grid, every guard path) and a real-browser run.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.78</span>Honest Level Estimate &mdash; the six measured axes reduced to one SDVX level</h4>

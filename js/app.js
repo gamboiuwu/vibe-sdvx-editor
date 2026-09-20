@@ -1,4 +1,4 @@
-import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestRadarProfile, honestRadarScoreColor, honestLevelEstimate, honestLevelBand, HONEST_RADAR_READING_REF_TICKS, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
+import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestRadarProfile, honestRadarScoreColor, honestLevelEstimate, honestLevelBand, levelCheck, HONEST_RADAR_READING_REF_TICKS, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
 import { Renderer, C, laserColors, laserOpacity, laserWideMode, LASER_PRESETS, applyLaserPreset, setLaserColorCustom, buildLaneHeader, setLaserOpacity, setLaserWideMode } from './renderer.js';
 import { GameView } from './game.js';
 import { exportKsh, importKsh, downloadText } from './ksh.js';
@@ -60,8 +60,17 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.78';
+const APP_VERSION = '0.0.79';
 const CHANGELOG = [
+  {
+    version: '0.0.79',
+    title: 'Level Check — does the chart play at the level it declares?',
+    entries: [
+      ['add', '<strong>The measured level now checks itself against the level you typed.</strong> v0.0.78 reduced the six measured axes to a single estimated <strong>SDVX level 1&ndash;20</strong>, but nothing compared that estimate to the level in the chart&rsquo;s <em>metadata</em>. A new <strong>Level check vs declared</strong> line does exactly that: it takes the measured estimate, compares it to your declared <code>meta.level</code>, and tells you plainly whether the chart plays <span style="color:#6fe08a">at</span>, <span style="color:#ff8a3d">above</span>, or <span style="color:#66ddff">below</span> its stated slot. Declare a 15 that measures like an 18 and you get a <span style="color:#ff8a3d">&#9888; plays ABOVE declared (+3)</span> nudge; a gap of 2+ levels is flagged, &plusmn;1 reads as a healthy <span style="color:#6fe08a">&#10003; matches declared</span>.'],
+      ['add', '<strong>In both Chart Statistics surfaces, and the estimate finally reaches the Tools&#8209;Hub tool.</strong> The check appears under the Honest Radar in the <strong>📊 Chart Statistics</strong> modal, and &mdash; closing a gap every other measured metric had already closed &mdash; the <strong>Est. level</strong> readout <em>and</em> the new Level Check both now also render in the <strong>Tools&#8209;Hub &rarr; Chart Statistics</strong> tool, so the tool and the modal carry the same numbers.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Backed by a new DOM-free, unit-tested <code>chart.levelCheck(measured, declared)</code> that both surfaces share, so the modal and the tool can never disagree. Fully guarded: a missing / NaN / non-positive measured or declared level degrades to a neutral &ldquo;&mdash;&rdquo; instead of throwing, and both inputs are clamped to the legal 1&ndash;20 range before comparison; the chart is never mutated. Verified with 433 Node assertions (every band boundary, the full 20&times;20 measured&times;declared grid, and every guard path) and a real-browser run.'],
+    ],
+  },
   {
     version: '0.0.78',
     title: 'Honest Level Estimate — the six measured axes, reduced to one SDVX level',
@@ -11411,11 +11420,26 @@ const DisclaimerGate = (function() {
         const driver = est.axes.find(a => a.key === est.peakAxis);
         const drvName = driver ? driver.short : (est.driver || '—');
         const drvCol  = driver ? driver.color : est.color;
+        // v0.0.79 — Level Check ("meta nudge"): compare the measured estimate
+        // against the chart's DECLARED meta.level via the shared chart.levelCheck
+        // and append a one-line verdict when a declared level exists, so a
+        // mislabelled slot (declared 15, measures 18) is flagged right here.
+        const chk = levelCheck(est.level, chart && chart.meta && chart.meta.level);
+        let checkLine = '';
+        if (chk.status !== 'unknown') {
+          const icon = chk.status === 'match' ? '✓' : '⚠';
+          checkLine =
+            `<div style="margin-top:3px;font-size:11px" title="${chk.message}">` +
+            `<span style="color:${chk.color};font-weight:700">${icon}</span> ` +
+            `<span style="opacity:.6">declared</span> <strong>${chk.declared}</strong> · ` +
+            `<span style="color:${chk.color};font-weight:600">${chk.label}</span></div>`;
+        }
         levelReadout.innerHTML =
           `Est. level <strong style="color:${est.color};font-size:17px">${est.level}</strong>` +
           ` <span style="color:${est.color};opacity:.9">${est.band}</span>` +
           ` <span style="opacity:.6;font-size:11px">— driven by</span>` +
-          ` <strong style="color:${drvCol}">${drvName}</strong>`;
+          ` <strong style="color:${drvCol}">${drvName}</strong>` +
+          checkLine;
         levelReadout.title =
           `Estimated SDVX level from the six measured Honest-Radar axes (not the ` +
           `volatility heuristic). composite ${est.composite.toFixed(1)}/100 = ` +
