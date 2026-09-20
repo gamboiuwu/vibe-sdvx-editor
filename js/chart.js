@@ -403,6 +403,62 @@ export function honestLevelEstimate(raw = {}, opts = {}) {
   };
 }
 
+// v0.0.79 — Level Check (the "meta nudge"). Compares the MEASURED Honest Level
+// Estimate (v0.0.78) against the chart's DECLARED meta.level and reports whether
+// the chart plays AT, ABOVE, or BELOW its stated slot. Until now the six measured
+// axes and the level they reduce to lived entirely apart from the number the
+// chartist actually types into the metadata — nothing ever told them "you called
+// this a 15 but it measures like an 18". This is that sanity check. PURE and
+// DOM-free so it can back the row in BOTH the Chart Statistics modal and the
+// Tools-Hub tool without either disagreeing (the same one-source-of-truth pattern
+// as honestLevelEstimate / the difficulty bands). A gap of 2+ SDVX levels is the
+// threshold worth flagging — a 1-level difference is inside the noise of any
+// estimate, so it reads as "matches". Fully guarded: a missing/NaN/≤0 measured or
+// declared level degrades to an 'unknown' status rather than throwing, and both
+// inputs are clamped to the legal 1..20 SDVX range before comparison. Returns
+//   { status:'match'|'above'|'below'|'unknown', delta, declared, measured,
+//     label, color, message }.
+export function levelCheck(measuredLevel, declaredLevel) {
+  const m = Number(measuredLevel);
+  const d = Number(declaredLevel);
+  if (!Number.isFinite(m) || m <= 0 || !Number.isFinite(d) || d <= 0) {
+    return {
+      status:   'unknown',
+      delta:    0,
+      declared: (Number.isFinite(d) && d > 0) ? Math.max(1, Math.min(20, Math.round(d))) : null,
+      measured: (Number.isFinite(m) && m > 0) ? Math.max(1, Math.min(20, Math.round(m))) : null,
+      label:    '—',
+      color:    '#8a8a99',
+      message:  'No declared or measured level to compare yet.',
+    };
+  }
+  const md = Math.max(1, Math.min(20, Math.round(m)));   // measured, clamped
+  const dd = Math.max(1, Math.min(20, Math.round(d)));   // declared, clamped
+  const delta = md - dd;
+  if (Math.abs(delta) <= 1) {
+    return {
+      status: 'match', delta, declared: dd, measured: md,
+      label:  'matches declared',
+      color:  '#6fe08a',
+      message: `Measured level ${md} is within 1 of the declared level ${dd} — the slot looks honest.`,
+    };
+  }
+  if (delta >= 2) {
+    return {
+      status: 'above', delta, declared: dd, measured: md,
+      label:  `plays ABOVE declared (+${delta})`,
+      color:  '#ff8a3d',
+      message: `Measured level ${md} is ${delta} above the declared level ${dd} — consider raising the declared level.`,
+    };
+  }
+  return {
+    status: 'below', delta, declared: dd, measured: md,
+    label:  `plays below declared (${delta})`,
+    color:  '#66ddff',
+    message: `Measured level ${md} is ${-delta} below the declared level ${dd} — consider lowering the declared level.`,
+  };
+}
+
 // ── Quantize / Nudge engine ──────────────────────────────────────────────────
 // Shared, side-effect-isolated tick math used by the Tools Hub "Quantize" tool.
 // Kept here (not in tools.js) so it can be unit-tested without a DOM, and so any

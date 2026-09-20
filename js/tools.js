@@ -1,5 +1,5 @@
 import { chart, renderer, gameView, render, saveUndo, updateSeekbar, addChartAnnotation, _seekTo, sel, playing, audioBuffer, flipHorizontalRange, flipTemporalRange, updateStopEventList } from './app.js';
-import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick } from './chart.js';
+import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestLevelEstimate, levelCheck, HONEST_RADAR_READING_REF_TICKS, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick } from './chart.js';
 import { Renderer } from './renderer.js';
 import { updateRadar } from './radar.js';
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -5899,6 +5899,44 @@ function _toolChartStats(c) {
         const kb = knobDifficultyBand(st.peakKps);
         const det = (st.knobTotal || 0) > 0 ? ` <span style="opacity:.55">(${st.knobSlams || 0} slam${(st.knobSlams||0)!==1?'s':''}, ${st.knobReversals || 0} rev)</span>` : '';
         return `${(st.peakKps || 0).toFixed(1)} <span style="color:${kb.color};font-weight:600">${kb.label}</span>${det}`;
+      })() },
+      // v0.0.79 — Honest Level Estimate in the tool (parity with the Chart
+      // Statistics modal, v0.0.78): reduce the six measured axes to one estimated
+      // SDVX level 1–20 via the shared chart.honestLevelEstimate, reusing the exact
+      // `raw` the modal's Honest Radar is built from so the tool and the modal can
+      // never disagree. A note-less chart has no level to estimate, so it reads '—'.
+      { label: 'Est. level (measured)', value: (() => {
+        if ((st.totalNotes || 0) <= 0) return '<span style="opacity:.55">—</span>';
+        const bpmMax = st.bpmMax || 120;
+        const readingMs = (typeof ch.reactionWindowMs === 'function')
+          ? ch.reactionWindowMs(HONEST_RADAR_READING_REF_TICKS, bpmMax, 1) : 0;
+        const est = honestLevelEstimate({
+          readingMs, peakNps: st.peakNps, meanNps: st.meanNps, peakJps: st.peakJps,
+          heavierShare: st.handHeavierShare, peakKps: st.peakKps,
+        });
+        const drv = est.driver ? ` <span style="opacity:.55">— driven by ${est.driver}</span>` : '';
+        return `<strong style="color:${est.color}">${est.level}</strong> <span style="color:${est.color};font-weight:600">${est.band}</span>${drv}`;
+      })() },
+      // v0.0.79 — Level Check ("meta nudge"): does the chart PLAY at the level the
+      // metadata DECLARES? Compares the measured estimate above against ch.meta.level
+      // via the shared, unit-tested chart.levelCheck so a mislabelled slot (declared
+      // 15, measures 18) is flagged. A gap of 2+ levels is flagged; ±1 reads as a match.
+      { label: 'Level check vs declared', value: (() => {
+        const declared = ch.meta && ch.meta.level;
+        if ((st.totalNotes || 0) <= 0) return '<span style="opacity:.55">— (no notes)</span>';
+        const bpmMax = st.bpmMax || 120;
+        const readingMs = (typeof ch.reactionWindowMs === 'function')
+          ? ch.reactionWindowMs(HONEST_RADAR_READING_REF_TICKS, bpmMax, 1) : 0;
+        const est = honestLevelEstimate({
+          readingMs, peakNps: st.peakNps, meanNps: st.meanNps, peakJps: st.peakJps,
+          heavierShare: st.handHeavierShare, peakKps: st.peakKps,
+        });
+        const chk = levelCheck(est.level, declared);
+        if (chk.status === 'unknown') return `<span style="opacity:.55">declared ${declared ?? '—'}, measured ${est.level}</span>`;
+        const icon = chk.status === 'match' ? '✓' : '⚠';
+        return `<span title="${chk.message}"><span style="color:${chk.color};font-weight:700">${icon}</span> ` +
+               `declared <strong>${chk.declared}</strong> · measured <strong>${chk.measured}</strong> ` +
+               `<span style="color:${chk.color};font-weight:600">${chk.label}</span></span>`;
       })() },
       { label: 'Total note events',    value: totalNoteEvents },
       { label: 'BPM events',           value: ch.bpmEvents.length },
