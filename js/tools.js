@@ -1,5 +1,5 @@
 import { chart, renderer, gameView, render, saveUndo, updateSeekbar, addChartAnnotation, _seekTo, sel, playing, audioBuffer, flipHorizontalRange, flipTemporalRange, updateStopEventList } from './app.js';
-import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick } from './chart.js';
+import { TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, bpmFromTapTimes, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestLevelForChart, levelVsDeclared, quantizeRange, nudgeRange, grooveQuantizeRange, GROOVE_PRESETS, insertStopEvent, addStopsAtInterval, clearStopEvents, chartLastTick } from './chart.js';
 import { Renderer } from './renderer.js';
 import { updateRadar } from './radar.js';
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -5899,6 +5899,26 @@ function _toolChartStats(c) {
         const kb = knobDifficultyBand(st.peakKps);
         const det = (st.knobTotal || 0) > 0 ? ` <span style="opacity:.55">(${st.knobSlams || 0} slam${(st.knobSlams||0)!==1?'s':''}, ${st.knobReversals || 0} rev)</span>` : '';
         return `${(st.peakKps || 0).toFixed(1)} <span style="color:${kb.color};font-weight:600">${kb.label}</span>${det}`;
+      })() },
+      // v0.0.79 — Honest Level Estimate, mirroring the Chart Statistics modal so the
+      // Tools-Hub tool carries the same headline "what level did I just make?" number
+      // (every prior metric lives in both the modal and this tool). Same DOM-free
+      // source of truth — chart.honestLevelForChart reduces the six measured axes.
+      { label: 'Est. level',          value: (() => {
+        const lvl = honestLevelForChart(ch, st);
+        if (!lvl.hasNotes) return '<span style="opacity:.55">— (no notes)</span>';
+        return `<strong style="color:${lvl.color}">${lvl.level}</strong> <span style="color:${lvl.color};font-weight:600">${lvl.band}</span> <span style="opacity:.55">driven by ${lvl.driver}</span>`;
+      })() },
+      // v0.0.79 — Level Sanity Check. Compare the declared meta level against the
+      // measured estimate and flag drift, so a chartist sees when the slot they typed
+      // no longer matches how the chart plays. Same chart.levelVsDeclared source of
+      // truth as the modal; hidden when there are no notes or no valid declared level.
+      { label: 'Declared vs measured', value: (() => {
+        const lvl = honestLevelForChart(ch, st);
+        const cmp = levelVsDeclared(lvl.level, ch.meta?.level);
+        if (!lvl.hasNotes || !cmp.valid) return '<span style="opacity:.55">—</span>';
+        const sign = cmp.delta > 0 ? '+' : '';
+        return `declared ${Math.round(ch.meta.level)} · <strong style="color:${cmp.color}">${sign}${cmp.delta}</strong> <span style="color:${cmp.color};font-weight:600">${cmp.label}</span>`;
       })() },
       { label: 'Total note events',    value: totalNoteEvents },
       { label: 'BPM events',           value: ch.bpmEvents.length },

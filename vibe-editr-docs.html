@@ -182,7 +182,7 @@
 <div class="cover">
   <h1>vibe-editr</h1>
   <p class="subtitle">Sound Voltex Chart Editor — User Documentation</p>
-  <span class="version">v0.0.78 · 2026</span>
+  <span class="version">v0.0.79 · 2026</span>
 </div>
 
 <div class="toc">
@@ -437,6 +437,16 @@
 <section id="updates">
 <h2>14. Updates</h2>
 <p>Running history of user-visible changes, listed newest first. The system maintains continuous diagnostic routines and periodically generates feature improvements when safe to do so. Each entry documents production features and experimental toggles that have been validated for stability.</p>
+
+<div class="update-entry">
+  <h4><span class="ver-tag">v0.0.79</span>Level Sanity Check &mdash; is your declared level honest?</h4>
+  <ul>
+    <li><span class="tag add">add</span><strong>Chart Statistics now tells you whether the level you <em>typed</em> matches the level you <em>charted</em>.</strong> v0.0.78 gave every chart a single measured <strong>Est.&nbsp;level</strong> from the six Honest-Radar axes. This release closes the loop: a new <strong>Level Sanity Check</strong> compares that measured estimate against the <strong>declared level in your chart metadata</strong> and flags the drift. In the <strong>&#128202; Chart Statistics</strong> modal the <strong>Est.&nbsp;level</strong> line now ends with <em>&ldquo;&middot; vs declared&nbsp;N: &plusmn;&Delta; &hellip;&rdquo;</em>, colour-coded so you see at a glance whether the slot you declared still fits.</li>
+    <li><span class="tag add">add</span><strong>The verdict a human rater would give.</strong> Within one level of your declared number reads <span style="color:#6fe08a">on&nbsp;target</span> (a level is always a judgement call); two off reads <span style="color:#ffcc55">plays slightly harder / easier</span>; three or more off is a clear <span style="color:#ff5a4d">declared&nbsp;under-rated / over-rated</span>, so a chart you labelled 15 that actually plays like an 18 no longer slips through. The delta is signed (positive = the chart plays harder than you declared), and the modal tooltip spells out the full comparison.</li>
+    <li><span class="tag add">add</span><strong>Est.&nbsp;level and the sanity check now live in the Tools-Hub Chart Statistics tool too</strong>, alongside every other measured metric &mdash; the way every prior number lives in both the modal and the tool &mdash; so you never have to open the modal just to spot-check a level.</li>
+    <li><span class="tag add">add</span><strong>Render-only, one source of truth.</strong> Backed by new DOM-free, unit-tested <code>chart.honestLevelForChart(chart)</code> and <code>chart.levelVsDeclared(measured, declared)</code>. The raw-axis gathering the modal radar and the tool both feed is now a single shared <code>chart.honestRadarRaw</code>, so the shape, the level and the sanity check can never diverge at the input. Guarded end-to-end (a missing or out-of-range declared level simply hides the row, never throws); the chart is never mutated.</li>
+  </ul>
+</div>
 
 <div class="update-entry">
   <h4><span class="ver-tag">v0.0.78</span>Honest Level Estimate &mdash; the six measured axes reduced to one SDVX level</h4>

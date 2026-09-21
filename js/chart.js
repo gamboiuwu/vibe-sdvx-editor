@@ -403,6 +403,76 @@ export function honestLevelEstimate(raw = {}, opts = {}) {
   };
 }
 
+// v0.0.79 — Build the raw axis inputs the Honest Radar / Level consume, straight
+// from a chart plus its precomputed stats. This is the SINGLE SOURCE OF TRUTH for
+// assembling that `raw` object, so the Chart Statistics modal (app.js drawRadar),
+// the Tools-Hub Chart Statistics tool, and any future caller all feed
+// honestRadarProfile / honestLevelEstimate byte-identical numbers — the shape and
+// the level can never disagree because they never diverge at the input. Mirrors
+// the READING axis exactly: the reference green-number window at the chart's PEAK
+// BPM through the same reactionWindowMs engine the live green number uses, gated
+// on there being notes to read (a note-less chart has a BPM but no reading demand,
+// so its READ spoke stays 0). Pure and DOM-free; never mutates the chart. `stats`
+// is optional — pass computeChartStats(chart) to avoid recomputing it.
+export function honestRadarRaw(chart, stats) {
+  const s = stats || (chart ? computeChartStats(chart) : null);
+  if (!s) return { readingMs: 0, peakNps: 0, meanNps: 0, peakJps: 0, heavierShare: 0.5, peakKps: 0 };
+  const bpmMax = s.bpmMax || 120;
+  const readingMs = ((s.totalNotes || 0) > 0 && chart && typeof chart.reactionWindowMs === 'function')
+    ? chart.reactionWindowMs(HONEST_RADAR_READING_REF_TICKS, bpmMax, 1)
+    : 0;
+  return {
+    readingMs,
+    peakNps: s.peakNps, meanNps: s.meanNps, peakJps: s.peakJps,
+    heavierShare: s.handHeavierShare, peakKps: s.peakKps,
+  };
+}
+
+// v0.0.79 — Estimate the honest measured level directly from a chart. Convenience
+// wrapper that gathers the raw axes via honestRadarRaw and reduces them through
+// honestLevelEstimate, then flags whether the chart actually has notes (so the UI
+// can show "—" for a note-less chart rather than a false "level 1"). Pure and
+// DOM-free; never mutates the chart. `stats` is optional (pass computeChartStats
+// to avoid recomputing). Returns the honestLevelEstimate object plus { hasNotes }.
+export function honestLevelForChart(chart, stats) {
+  const s = stats || (chart ? computeChartStats(chart) : null);
+  const hasNotes = !!(s && (s.totalNotes || 0) > 0);
+  const est = honestLevelEstimate(honestRadarRaw(chart, s));
+  return { ...est, hasNotes };
+}
+
+// v0.0.79 — Level Sanity Check. Compare a chart's DECLARED metadata level against
+// its honest MEASURED level and classify the drift, so a chartist who typed a
+// level in the metadata gets told when the chart actually plays harder or easier
+// than the slot they declared. delta = measured − declared (positive ⇒ the chart
+// plays harder than declared ⇒ the declared number is under-rated). Bands mirror
+// the ±-tolerance a human rater would allow before calling a level "wrong":
+//   |delta| ≤ 1  → on target (green)  — within one level is a judgement call
+//   |delta| = 2  → slight drift (amber) — noticeable but defensible
+//   |delta| ≥ 3  → clear mismatch (red) — the declared level is off
+// Pure and DOM-free; reads only two numbers and never touches chart data. An
+// out-of-range or missing declared/measured level returns { valid:false } so the
+// caller can hide the row rather than render a nonsense verdict.
+export function levelVsDeclared(measuredLevel, declaredLevel) {
+  const m = Math.round(Number(measuredLevel));
+  const d = Math.round(Number(declaredLevel));
+  if (!(m >= 1 && m <= 20) || !(d >= 1 && d <= 20)) {
+    return { valid: false, delta: 0, magnitude: 0, verdict: 'unknown', label: '—', color: '#8a8ea8', direction: 'none' };
+  }
+  const delta = m - d;
+  const mag = Math.abs(delta);
+  const direction = delta > 0 ? 'harder' : delta < 0 ? 'easier' : 'none';
+  let verdict, label, color;
+  if (mag <= 1) {
+    verdict = 'match';  label = 'on target';  color = '#6fe08a';
+  } else if (mag === 2) {
+    verdict = 'slight'; label = delta > 0 ? 'plays slightly harder' : 'plays slightly easier'; color = '#ffcc55';
+  } else {
+    verdict = 'mismatch'; label = delta > 0 ? 'declared under-rated' : 'declared over-rated'; color = '#ff5a4d';
+  }
+  return { valid: true, delta, magnitude: mag, verdict, label, color, direction };
+}
+
 // ── Quantize / Nudge engine ──────────────────────────────────────────────────
 // Shared, side-effect-isolated tick math used by the Tools Hub "Quantize" tool.
 // Kept here (not in tools.js) so it can be unit-tested without a DOM, and so any
