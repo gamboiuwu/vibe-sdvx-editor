@@ -1,4 +1,4 @@
-import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestRadarProfile, honestRadarScoreColor, honestLevelEstimate, honestLevelBand, HONEST_RADAR_READING_REF_TICKS, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
+import { ChartData, TICKS_PER_MEASURE, TICKS_PER_BEAT, BEATS_PER_MEASURE, LASER_SLAM_TICKS, LASER_SLAM_V_EPS, setLaserSlamTicks, laserCharToPos, laserPosToChar, LANE, LANE_COUNT, LASER_CHARS, computeChartStats, npsDifficultyBand, jackDifficultyBand, handBalanceBand, knobDifficultyBand, honestRadarProfile, honestRadarScoreColor, honestLevelEstimate, honestLevelBand, honestRadarRaw, levelVsDeclared, HONEST_RADAR_READING_REF_TICKS, beatGridCrossings, countInGrid, beatFlashIntensity, chartLastTick } from './chart.js';
 import { Renderer, C, laserColors, laserOpacity, laserWideMode, LASER_PRESETS, applyLaserPreset, setLaserColorCustom, buildLaneHeader, setLaserOpacity, setLaserWideMode } from './renderer.js';
 import { GameView } from './game.js';
 import { exportKsh, importKsh, downloadText } from './ksh.js';
@@ -60,8 +60,18 @@ console.log(
 console.log('%cSDVX Chart Editor  ·  vibe-editr', 'color:#6668a0;font-size:11px');
 
 // ── Version & Changelog ───────────────────────────────────────────────────────
-const APP_VERSION = '0.0.78';
+const APP_VERSION = '0.0.79';
 const CHANGELOG = [
+  {
+    version: '0.0.79',
+    title: 'Level Sanity Check — is your declared level honest?',
+    entries: [
+      ['add', '<strong>Chart Statistics now tells you whether the level you <em>typed</em> matches the level you <em>charted</em>.</strong> v0.0.78 gave every chart a single measured <strong>Est. level</strong> from the six Honest-Radar axes. This release closes the loop: a new <strong>Level Sanity Check</strong> compares that measured estimate against the <strong>declared level in your chart metadata</strong> and flags the drift. In the <strong>📊 Chart Statistics</strong> modal the <strong>Est. level</strong> line now ends with <em>&ldquo;&middot; vs declared&nbsp;N: &plusmn;&Delta; &hellip;&rdquo;</em>, colour-coded so you see at a glance whether the slot you declared still fits.'],
+      ['add', '<strong>The verdict a human rater would give.</strong> Within one level of your declared number reads <span style="color:#6fe08a">on&nbsp;target</span> (a level is always a judgement call); two off reads <span style="color:#ffcc55">plays slightly harder / easier</span>; three or more off is a clear <span style="color:#ff5a4d">declared&nbsp;under-rated / over-rated</span>, so a chart you labelled 15 that actually plays like an 18 no longer slips through. The delta is signed (positive = the chart plays harder than you declared, i.e. the number is under-rated), and the modal tooltip spells out the full comparison.'],
+      ['add', '<strong>Est. level and the sanity check now live in the Tools-Hub Chart Statistics tool too</strong>, alongside every other measured metric &mdash; the way every prior number lives in both the modal and the tool &mdash; so you never have to open the modal just to spot-check a level.'],
+      ['add', '<strong>Render-only, one source of truth.</strong> Backed by new DOM-free, unit-tested <code>chart.honestLevelForChart(chart)</code> (which reduces the six measured axes via <code>honestLevelEstimate</code>) and <code>chart.levelVsDeclared(measured, declared)</code>. The raw-axis gathering that both the modal radar and the tool feed is now a single shared <code>chart.honestRadarRaw</code>, so the shape, the level and the sanity check can never diverge at the input. Guarded end-to-end (a missing or out-of-range declared level simply hides the row, never throws); the chart is never mutated.'],
+    ],
+  },
   {
     version: '0.0.78',
     title: 'Honest Level Estimate — the six measured axes, reduced to one SDVX level',
@@ -11340,15 +11350,11 @@ const DisclaimerGate = (function() {
     // Reading load only means something when there are notes to read — a
     // note-less chart has a defined BPM but no reading demand, so its reading
     // spoke stays at 0 and the whole radar reads truly empty.
-    const bpmMax = s.bpmMax || 120;
-    const readingMs = ((s.totalNotes || 0) > 0 && chart && typeof chart.reactionWindowMs === 'function')
-      ? chart.reactionWindowMs(HONEST_RADAR_READING_REF_TICKS, bpmMax, 1)
-      : 0;
-    const raw = {
-      readingMs,
-      peakNps: s.peakNps, meanNps: s.meanNps, peakJps: s.peakJps,
-      heavierShare: s.handHeavierShare, peakKps: s.peakKps,
-    };
+    // v0.0.79 — assemble the raw axes via the shared chart.honestRadarRaw so this
+    // modal, the Tools-Hub Chart Statistics tool, and honestLevelForChart all feed
+    // the profile / level identical numbers (single source of truth for the READ
+    // axis's reactionWindowMs gathering, formerly duplicated inline here).
+    const raw = honestRadarRaw(chart, s);
     const prof = honestRadarProfile(raw);
 
     const cx = W / 2, cy = H / 2 + 6, R = Math.min(W, H) * 0.34;
@@ -11416,11 +11422,25 @@ const DisclaimerGate = (function() {
           ` <span style="color:${est.color};opacity:.9">${est.band}</span>` +
           ` <span style="opacity:.6;font-size:11px">— driven by</span>` +
           ` <strong style="color:${drvCol}">${drvName}</strong>`;
+        // v0.0.79 — Level Sanity Check. When the chart declares a level in its
+        // metadata, compare it against the measured estimate and flag drift inline,
+        // so a chartist sees at a glance whether the slot they typed matches how the
+        // chart actually plays. Same DOM-free source of truth as the Tools-Hub row.
+        const declared = chart?.meta?.level;
+        const cmp = levelVsDeclared(est.level, declared);
+        const signStr = cmp.delta > 0 ? '+' : '';
+        if (cmp.valid) {
+          levelReadout.innerHTML +=
+            ` <span style="opacity:.5;font-size:11px">· vs declared ${Math.round(declared)}:</span>` +
+            ` <strong style="color:${cmp.color}">${signStr}${cmp.delta}</strong>` +
+            ` <span style="color:${cmp.color};font-weight:600;font-size:11px">${cmp.label}</span>`;
+        }
         levelReadout.title =
           `Estimated SDVX level from the six measured Honest-Radar axes (not the ` +
           `volatility heuristic). composite ${est.composite.toFixed(1)}/100 = ` +
           `0.6·peak(${est.peakScore.toFixed(0)}) + 0.4·mean(${est.meanScore.toFixed(0)}) ` +
-          `→ ${est.levelFloat.toFixed(1)}, rounded to ${est.level}. An estimate, not a verdict.`;
+          `→ ${est.levelFloat.toFixed(1)}, rounded to ${est.level}. An estimate, not a verdict.` +
+          (cmp.valid ? ` Declared meta level ${Math.round(declared)}; measured ${est.level} (${signStr}${cmp.delta}) — ${cmp.label}.` : '');
       }
     }
 
